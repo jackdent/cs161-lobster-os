@@ -41,6 +41,7 @@
 #include <sfs.h>
 #include <syscall.h>
 #include <test.h>
+#include "opt-synchprobs.h"
 #include "opt-sfs.h"
 #include "opt-net.h"
 
@@ -507,6 +508,10 @@ static const char *mainmenu[] = {
 	"[kh] Kernel heap stats              ",
 	"[khgen] Next kernel heap generation ",
 	"[khdump] Dump kernel heap           ",
+#if OPT_SYNCHPROBS
+    "[sp1] Elves                         ",
+    "[sp2] Air Balloon                   ",
+#endif
 	"[q] Quit and shut down              ",
 	NULL
 };
@@ -578,6 +583,10 @@ static struct {
 	{ "sy2",	locktest },
 	{ "sy3",	cvtest },
 	{ "sy4",	cvtest2 },
+#if OPT_SYNCHPROBS
+    { "sp1",    elves },
+    { "sp2",    airballoon },
+#endif
 
 	/* semaphore unit tests */
 	{ "semu1",	semu1 },

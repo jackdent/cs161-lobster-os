@@ -40,6 +40,10 @@
  * Test code.
  */
 
+/* These are only used during synchronization testing (OPT_SYNCHPROBS). */
+int elves(int, char **);
+int airballoon(int, char **);
+
 /* data structure tests */
 int arraytest(int, char **);
 int arraytest2(int, char **);
