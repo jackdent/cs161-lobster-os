@@ -89,11 +89,11 @@ DECLARRAY(knowndev, static __UNUSED inline);
 DEFARRAY(knowndev, static __UNUSED inline);
 
 static struct knowndevarray *knowndevs;
+static struct lock *knowndevs_lock;
 
-/* The big lock for all FS ops. Remove for filesystem assignment. */
+/* The big lock for all FS ops. */
 static struct lock *vfs_biglock;
 static unsigned vfs_biglock_depth;
-
 
 /*
  * Setup function
@@ -112,6 +112,12 @@ vfs_bootstrap(void)
 	}
 	vfs_biglock_depth = 0;
 
+	knowndevs_lock = lock_create("knowndevs");
+	if (knowndevs_lock==NULL) {
+		panic("vfs: Could not create knowndevs lock\n");
+	}
+
+	vfs_initbootfs();
 	devnull_create();
 	semfs_bootstrap();
 }
@@ -120,9 +126,9 @@ vfs_bootstrap(void)
  * Operations on vfs_biglock. We make it recursive to avoid having to
  * think about where we do and don't already hold it. This is an
  * undesirable hack that's frequently necessary when a lock covers too
- * much material. Your solution scheme for FS and VFS locking should
- * not require recursive locks.
+ * much material.
  */
+
 void
 vfs_biglock_acquire(void)
 {
@@ -200,7 +206,7 @@ vfs_sync(void)
 	struct knowndev *dev;
 	unsigned i, num;
 
-	vfs_biglock_acquire();
+	lock_acquire(knowndevs_lock);
 
 	num = knowndevarray_num(knowndevs);
 	for (i=0; i<num; i++) {
@@ -210,7 +216,7 @@ vfs_sync(void)
 		}
 	}
 
-	vfs_biglock_release();
+	lock_release(knowndevs_lock);
 
 	return 0;
 }
@@ -224,8 +230,9 @@ vfs_getroot(const char *devname, struct vnode **ret)
 {
 	struct knowndev *kd;
 	unsigned i, num;
+	int error;
 
-	KASSERT(vfs_biglock_do_i_hold());
+	lock_acquire(knowndevs_lock);
 
 	num = knowndevarray_num(knowndevs);
 	for (i=0; i<num; i++) {
@@ -246,12 +253,15 @@ vfs_getroot(const char *devname, struct vnode **ret)
 
 			if (!strcmp(kd->kd_name, devname) ||
 			    (volname!=NULL && !strcmp(volname, devname))) {
-				return FSOP_GETROOT(kd->kd_fs, ret);
+				error = FSOP_GETROOT(kd->kd_fs, ret);
+				lock_release(knowndevs_lock);
+				return error;
 			}
 		}
 		else {
 			if (kd->kd_rawname!=NULL &&
 			    !strcmp(kd->kd_name, devname)) {
+			    lock_release(knowndevs_lock);
 				return ENXIO;
 			}
 		}
@@ -267,6 +277,7 @@ vfs_getroot(const char *devname, struct vnode **ret)
 			KASSERT(kd->kd_device != NULL);
 			VOP_INCREF(kd->kd_vnode);
 			*ret = kd->kd_vnode;
+			lock_release(knowndevs_lock);
 			return 0;
 		}
 
@@ -278,6 +289,7 @@ vfs_getroot(const char *devname, struct vnode **ret)
 			KASSERT(kd->kd_device != NULL);
 			VOP_INCREF(kd->kd_vnode);
 			*ret = kd->kd_vnode;
+			lock_release(knowndevs_lock);
 			return 0;
 		}
 
@@ -291,7 +303,7 @@ vfs_getroot(const char *devname, struct vnode **ret)
 	/*
 	 * If we got here, the device specified by devname doesn't exist.
 	 */
-
+	lock_release(knowndevs_lock);
 	return ENODEV;
 }
 
@@ -306,13 +318,14 @@ vfs_getdevname(struct fs *fs)
 
 	KASSERT(fs != NULL);
 
-	KASSERT(vfs_biglock_do_i_hold());
+	lock_acquire(knowndevs_lock);
 
 	num = knowndevarray_num(knowndevs);
 	for (i=0; i<num; i++) {
 		kd = knowndevarray_get(knowndevs, i);
 
 		if (kd->kd_fs == fs) {
+			lock_release(knowndevs_lock);
 			/*
 			 * This is not a race condition: as long as the
 			 * guy calling us holds a reference to the fs,
@@ -322,6 +335,8 @@ vfs_getdevname(struct fs *fs)
 			return kd->kd_name;
 		}
 	}
+
+	lock_release(knowndevs_lock);
 
 	return NULL;
 }
@@ -383,7 +398,7 @@ badnames(const char *n1, const char *n2, const char *n3)
 	unsigned i, num;
 	struct knowndev *kd;
 
-	KASSERT(vfs_biglock_do_i_hold());
+	KASSERT(lock_do_i_hold(knowndevs_lock));
 
 	num = knowndevarray_num(knowndevs);
 	for (i=0; i<num; i++) {
@@ -423,8 +438,6 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 	unsigned index;
 	int result;
 
-	vfs_biglock_acquire();
-
 	name = kstrdup(dname);
 	if (name==NULL) {
 		result = ENOMEM;
@@ -460,14 +473,16 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 		volname = FSOP_GETVOLNAME(fs);
 	}
 
+	lock_acquire(knowndevs_lock);
+
 	if (badnames(name, rawname, volname)) {
 		result = EEXIST;
-		goto fail;
+		goto fail_unlock;
 	}
 
 	result = knowndevarray_add(knowndevs, kd, &index);
 	if (result) {
-		goto fail;
+		goto fail_unlock;
 	}
 
 	if (dev != NULL) {
@@ -475,8 +490,11 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 		dev->d_devnumber = index+1;
 	}
 
-	vfs_biglock_release();
+	lock_release(knowndevs_lock);
 	return 0;
+
+ fail_unlock:
+	lock_release(knowndevs_lock);
 
  fail:
 	if (name) {
@@ -492,7 +510,6 @@ vfs_doadd(const char *dname, int mountable, struct device *dev, struct fs *fs)
 		kfree(kd);
 	}
 
-	vfs_biglock_release();
 	return result;
 }
 
@@ -531,7 +548,7 @@ findmount(const char *devname, struct knowndev **result)
 	unsigned i, num;
 	bool found = false;
 
-	KASSERT(vfs_biglock_do_i_hold());
+	KASSERT(lock_do_i_hold(knowndevs_lock));
 
 	num = knowndevarray_num(knowndevs);
 	for (i=0; !found && i<num; i++) {
@@ -565,25 +582,24 @@ vfs_mount(const char *devname, void *data,
 	struct fs *fs;
 	int result;
 
-	vfs_biglock_acquire();
+	lock_acquire(knowndevs_lock);
+
 
 	result = findmount(devname, &kd);
 	if (result) {
-		vfs_biglock_release();
-		return result;
+		goto fail;
 	}
 
 	if (kd->kd_fs != NULL) {
-		vfs_biglock_release();
-		return EBUSY;
+		result = EBUSY;
+		goto fail;
 	}
 	KASSERT(kd->kd_rawname != NULL);
 	KASSERT(kd->kd_device != NULL);
 
 	result = mountfunc(data, kd->kd_device, &fs);
 	if (result) {
-		vfs_biglock_release();
-		return result;
+		goto fail;
 	}
 
 	KASSERT(fs != NULL);
@@ -595,8 +611,11 @@ vfs_mount(const char *devname, void *data,
 	kprintf("vfs: Mounted %s: on %s\n",
 		volname ? volname : kd->kd_name, kd->kd_name);
 
-	vfs_biglock_release();
-	return 0;
+	KASSERT(result==0);
+
+ fail:
+	lock_release(knowndevs_lock);
+	return result;
 }
 
 /*
@@ -662,7 +681,8 @@ vfs_unmount(const char *devname)
 	struct knowndev *kd;
 	int result;
 
-	vfs_biglock_acquire();
+	lock_acquire(knowndevs_lock);
+
 
 	result = findmount(devname, &kd);
 	if (result) {
@@ -695,7 +715,7 @@ vfs_unmount(const char *devname)
 	KASSERT(result==0);
 
  fail:
-	vfs_biglock_release();
+	lock_release(knowndevs_lock);
 	return result;
 }
 
@@ -746,7 +766,7 @@ vfs_unmountall(void)
 	unsigned i, num;
 	int result;
 
-	vfs_biglock_acquire();
+	lock_acquire(knowndevs_lock);
 
 	num = knowndevarray_num(knowndevs);
 	for (i=0; i<num; i++) {
@@ -802,7 +822,7 @@ vfs_unmountall(void)
 		dev->kd_fs = NULL;
 	}
 
-	vfs_biglock_release();
+	lock_release(knowndevs_lock);
 
 	return 0;
 }

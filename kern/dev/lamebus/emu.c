@@ -473,12 +473,10 @@ emufs_reclaim(struct vnode *v)
 	int result;
 
 	/*
-	 * Need all of these locks, e_lock to protect the device,
-	 * vfs_biglock to protect the fs-related material, and
-	 * vn_countlock for the reference count.
+	 * Need both of these locks: e_lock to protect the device,
+	 * and vn_countlock for the reference count.
 	 */
 
-	vfs_biglock_acquire();
 	lock_acquire(ef->ef_emu->e_lock);
 	spinlock_acquire(&ev->ev_v.vn_countlock);
 
@@ -488,7 +486,6 @@ emufs_reclaim(struct vnode *v)
 
 		spinlock_release(&ev->ev_v.vn_countlock);
 		lock_release(ef->ef_emu->e_lock);
-		vfs_biglock_release();
 		return EBUSY;
 	}
 	KASSERT(ev->ev_v.vn_refcount == 1);
@@ -503,7 +500,6 @@ emufs_reclaim(struct vnode *v)
 	result = emu_close(ev->ev_emu, ev->ev_handle);
 	if (result) {
 		lock_release(ef->ef_emu->e_lock);
-		vfs_biglock_release();
 		return result;
 	}
 
@@ -527,7 +523,6 @@ emufs_reclaim(struct vnode *v)
 	vnode_cleanup(&ev->ev_v);
 
 	lock_release(ef->ef_emu->e_lock);
-	vfs_biglock_release();
 
 	kfree(ev);
 	return 0;
@@ -1150,7 +1145,6 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 	unsigned i, num;
 	int result;
 
-	vfs_biglock_acquire();
 	lock_acquire(ef->ef_emu->e_lock);
 
 	num = vnodearray_num(ef->ef_vnodes);
@@ -1163,7 +1157,6 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 			VOP_INCREF(&ev->ev_v);
 
 			lock_release(ef->ef_emu->e_lock);
-			vfs_biglock_release();
 			*ret = ev;
 			return 0;
 		}
@@ -1184,7 +1177,6 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 			    &ef->ef_fs, ev);
 	if (result) {
 		lock_release(ef->ef_emu->e_lock);
-		vfs_biglock_release();
 		kfree(ev);
 		return result;
 	}
@@ -1194,13 +1186,11 @@ emufs_loadvnode(struct emufs_fs *ef, uint32_t handle, int isdir,
 		/* note: vnode_cleanup undoes vnode_init - it does not kfree */
 		vnode_cleanup(&ev->ev_v);
 		lock_release(ef->ef_emu->e_lock);
-		vfs_biglock_release();
 		kfree(ev);
 		return result;
 	}
 
 	lock_release(ef->ef_emu->e_lock);
-	vfs_biglock_release();
 
 	*ret = ev;
 	return 0;
