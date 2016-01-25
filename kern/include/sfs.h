@@ -36,6 +36,8 @@
  */
 
 
+struct buf; /* in buf.h */
+
 /*
  * Get abstract structure definitions
  */
@@ -73,6 +75,7 @@ struct sfs_fs {
 	bool sfs_freemapdirty;          /* true if freemap modified */
 	struct lock *sfs_vnlock;	/* lock for vnode table */
 	struct lock *sfs_freemaplock;	/* lock for freemap/superblock */
+	struct lock *sfs_renamelock;	/* lock for sfs_rename() */
 };
 
 /*

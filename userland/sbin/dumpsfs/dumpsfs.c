@@ -358,6 +358,10 @@ recursedirblock(uint32_t fileblock, uint32_t diskblock)
 			continue;
 		}
 		sds[i].sfd_name[SFS_NAMELEN-1] = 0; /* just in case */
+		if (!strcmp(sds[i].sfd_name, ".") ||
+		    !strcmp(sds[i].sfd_name, "..")) {
+			continue;
+		}
 		dumpinode(ino, sds[i].sfd_name);
 	}
 }
@@ -369,7 +373,7 @@ recursedir(uint32_t ino, const struct sfs_dinode *sfi)
 	int nentries;
 
 	nentries = SWAP32(sfi->sfi_size) / sizeof(struct sfs_direntry);
-	printf("Reading files in directory %u: %d entries\n", ino, nentries);
+	printf("Recursing into directory %u: %d entries\n", ino, nentries);
 	traverse(sfi, recursedirblock);
 	printf("Done with directory %u\n", ino);
 }

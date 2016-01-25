@@ -321,6 +321,7 @@ static
 void
 sfs_fs_destroy(struct sfs_fs *sfs)
 {
+	lock_destroy(sfs->sfs_renamelock);
 	lock_destroy(sfs->sfs_freemaplock);
 	lock_destroy(sfs->sfs_vnlock);
 	if (sfs->sfs_freemap != NULL) {
@@ -446,9 +447,15 @@ sfs_fs_create(void)
 	if (sfs->sfs_freemaplock == NULL) {
 		goto cleanup_vnlock;
 	}
+	sfs->sfs_renamelock = lock_create("sfs_renamelock");
+	if (sfs->sfs_renamelock == NULL) {
+		goto cleanup_freemaplock;
+	}
 
 	return sfs;
 
+cleanup_freemaplock:
+	lock_destroy(sfs->sfs_freemaplock);
 cleanup_vnlock:
 	lock_destroy(sfs->sfs_vnlock);
 cleanup_vnodes:

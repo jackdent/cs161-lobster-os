@@ -57,11 +57,17 @@ int sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock,
 int sfs_itrunc(struct sfs_vnode *sv, off_t len);
 
 /* Functions in sfs_dir.c */
+int sfs_readdir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd);
+int sfs_writedir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd);
+int sfs_dir_nentries(struct sfs_vnode *sv, int *ret);
 int sfs_dir_findname(struct sfs_vnode *sv, const char *name,
 		uint32_t *ino, int *slot, int *emptyslot);
+int sfs_dir_findino(struct sfs_vnode *sv, uint32_t ino,
+		struct sfs_direntry *retsd, int *slot);
 int sfs_dir_link(struct sfs_vnode *sv, const char *name, uint32_t ino,
 		int *slot);
 int sfs_dir_unlink(struct sfs_vnode *sv, int slot);
+int sfs_dir_checkempty(struct sfs_vnode *sv);
 int sfs_lookonce(struct sfs_vnode *sv, const char *name,
 		struct sfs_vnode **ret,
 		int *slot);

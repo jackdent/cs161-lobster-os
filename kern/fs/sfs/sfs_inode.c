@@ -288,7 +288,6 @@ sfs_reclaim(struct vnode *v)
 	lock_release(sfs->sfs_vnlock);
 	lock_release(sv->sv_lock);
 
-	/* Release the storage for the vnode structure itself. */
 	sfs_vnode_destroy(sv);
 
 	/* Done */
@@ -442,6 +441,7 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 
 /*
  * Create a new filesystem object and hand back its vnode.
+ * Always hands back vnode "locked and loaded"
  *
  * As a matter of convenience, returns the vnode with its inode loaded.
  *

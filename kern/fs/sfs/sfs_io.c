@@ -294,6 +294,8 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 /*
  * Do I/O of a whole region of data, whether or not it's block-aligned.
  *
+ * Locking: must hold vnode lock. May get/release sfs_freemaplock.
+ *
  * Requires up to 3 buffers.
  */
 int

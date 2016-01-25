@@ -60,6 +60,9 @@
 /* Maximum size of freemap we support */
 #define MAXFREEMAPBLOCKS 32
 
+/* Block number for the initial root directory contents */
+static uint32_t rootdir_data_block;
+
 /* Free block bitmap */
 static char freemapbuf[MAXFREEMAPBLOCKS * SFS_BLOCKSIZE];
 
@@ -113,6 +116,10 @@ initfreemap(uint32_t fsblocks)
 	for (i=0; i<freemapblocks; i++) {
 		allocblock(SFS_FREEMAP_START + i);
 	}
+
+	/* allocate a block for the root directory contents */
+	rootdir_data_block = SFS_FREEMAP_START + freemapblocks;
+	allocblock(rootdir_data_block);
 
 	/* all blocks in the freemap but past the volume end are "in use" */
 	for (i=fsblocks; i<freemapbits; i++) {
@@ -172,15 +179,30 @@ void
 writerootdir(void)
 {
 	struct sfs_dinode sfi;
+	struct sfs_direntry sfd[SFS_BLOCKSIZE / sizeof(struct sfs_direntry)];
+
+	assert(rootdir_data_block > 0);
+	assert(sizeof(sfd) >= sizeof(struct sfs_direntry) * 2);
 
 	/* Initialize the dinode */
 	bzero((void *)&sfi, sizeof(sfi));
-	sfi.sfi_size = SWAP32(0);
+
+	sfi.sfi_size = SWAP32(sizeof(struct sfs_direntry) * 2);
 	sfi.sfi_type = SWAP16(SFS_TYPE_DIR);
-	sfi.sfi_linkcount = SWAP16(1);
+	sfi.sfi_linkcount = SWAP16(2);
+	sfi.sfi_direct[0] = SWAP32(rootdir_data_block);
 
 	/* Write it out */
 	diskwrite(&sfi, SFS_ROOTDIR_INO);
+
+	/* Write out the initial root directory contents */
+	bzero((void *)sfd, sizeof(sfd));
+	sfd[0].sfd_ino = SWAP32(SFS_ROOTDIR_INO);
+	strcpy(sfd[0].sfd_name, ".");
+	sfd[1].sfd_ino = SWAP32(SFS_ROOTDIR_INO);
+	strcpy(sfd[1].sfd_name, "..");
+
+	diskwrite(sfd, rootdir_data_block);
 }
 
 /*
