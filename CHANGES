@@ -53,6 +53,14 @@ OS/161 2.0.2 released 20160112
      anyway. If they aren't actually constant because of bugs, reading
      a stale or even garbage value is not going to hurt more.
 
+20160107 dholland in deadlock-detector
+   - Add a deadlock detector. For now this will be supplied to
+     instructors as a supplementary patch, because it intrudes into
+     the synchronization primitives and affects what students do
+     there. We are planning to try it on our students this coming
+     semester; if that works out well, I'll probably merge it into
+     base.
+
 20160107 dholland in base
    - In testbin/multiexec, if fork fails partway through, continue
      with the forks we got. Otherwise the subprocesses we started hang
