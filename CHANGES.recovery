@@ -1,0 +1,23 @@
+The current SFS crash recovery solution set patches were written by
+David A. Holland. There is/was an older version called sfs-journaling
+by Nick Murphy; that has been retired and this solution is not derived
+from it.
+
+------------------------------------------------------------
+
+As of 2016, changes on the recovery-related branches go in CHANGES (q.v.).
+This file will be merged into there sometime.
+(Also see CHANGES.fs.)
+
+20150805 dholland      Version 2.0.1 of the SFS recovery solutions released.
+20150804 dholland      Fix dumpsfs journal record alignment assertions.
+20150804 dholland      Reserve buffers around the slots for recovery code.
+20150707 dholland      Rearrange sfs_jphys_flushforjournalblock logic.
+20150706 dholland      Add code to check for journal head/tail overruns.
+20150625 dholland      Add missing decl of sfs_jphys_client_recname.
+........               From Jonah Kallenbach.
+20150414 dholland      Cleanups/clarifications from jphys code review.
+20150127 dholland      Split the container-level code (jphys) to own branch.
+
+20150115 dholland      Version 2.0 of the SFS recovery solutions released.
+20140924 dholland      Version 1.99.08 of the SFS recovery solutions released.
