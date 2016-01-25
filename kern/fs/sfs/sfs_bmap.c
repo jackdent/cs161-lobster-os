@@ -35,6 +35,7 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
+#include <synch.h>
 #include <vfs.h>
 #include <buf.h>
 #include <sfs.h>
@@ -45,6 +46,9 @@
  * the disk) given a file and the logical block number within that
  * file. If DOALLOC is set, and no such block exists, one will be
  * allocated.
+ *
+ * Locking: must hold vnode lock. May get/release buffer cache locks
+ * and (via sfs_balloc) sfs_freemaplock.
  *
  * Requires up to 2 buffers.
  */
@@ -62,6 +66,7 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 	int result;
 
 	COMPILE_ASSERT(SFS_DBPERIDB * sizeof(idbufdata[0]) == SFS_BLOCKSIZE);
+	KASSERT(lock_do_i_hold(sv->sv_lock));
 
 	result = sfs_dinode_load(sv);
 	if (result) {
@@ -219,6 +224,8 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 /*
  * Do the work of truncating a file (or directory).
  *
+ * Locking: must hold vnode lock. Acquires/releases buffer locks.
+ *
  * Requires up to 3 buffers.
  */
 int
@@ -241,15 +248,15 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 	int hasnonzero;
 
 	COMPILE_ASSERT(SFS_DBPERIDB * sizeof(idptr[0]) == SFS_BLOCKSIZE);
-
-	vfs_biglock_acquire();
+	KASSERT(lock_do_i_hold(sv->sv_lock));
 
 	result = sfs_dinode_load(sv);
 	if (result) {
-		vfs_biglock_release();
 		return result;
 	}
 	inodeptr = sfs_dinode_map(sv);
+
+	sfs_lock_freemap(sfs);
 
 	/*
 	 * Go through the direct blocks. Discard any that are
@@ -259,7 +266,7 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 		block = inodeptr->sfi_direct[i];
 		if (i >= blocklen && block != 0) {
 			buffer_drop(&sfs->sfs_absfs, block, SFS_BLOCKSIZE);
-			sfs_bfree(sfs, block);
+			sfs_bfree_prelocked(sfs, block);
 			inodeptr->sfi_direct[i] = 0;
 			sfs_dinode_mark_dirty(sv);
 		}
@@ -281,8 +288,8 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 		result = buffer_read(&sfs->sfs_absfs, idblock, SFS_BLOCKSIZE,
 				     &idbuffer);
 		if (result) {
+			sfs_unlock_freemap(sfs);
 			sfs_dinode_unload(sv);
-			vfs_biglock_release();
 			return result;
 		}
 		idptr = buffer_map(idbuffer);
@@ -293,7 +300,7 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 			if (blocklen < baseblock+j && idptr[j] != 0) {
 				buffer_drop(&sfs->sfs_absfs, idptr[j],
 					    SFS_BLOCKSIZE);
-				sfs_bfree(sfs, idptr[j]);
+				sfs_bfree_prelocked(sfs, idptr[j]);
 				idptr[j] = 0;
 				buffer_mark_dirty(idbuffer);
 			}
@@ -306,7 +313,7 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 		if (!hasnonzero) {
 			/* The whole indirect block is empty now; free it */
 			buffer_release_and_invalidate(idbuffer);
-			sfs_bfree(sfs, idblock);
+			sfs_bfree_prelocked(sfs, idblock);
 			inodeptr->sfi_indirect = 0;
 			sfs_dinode_mark_dirty(sv);
 		}
@@ -321,9 +328,12 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 	/* Mark the inode dirty */
 	sfs_dinode_mark_dirty(sv);
 
+	/* release the freemap */
+	sfs_unlock_freemap(sfs);
+
+	/* release the inode buffer */
 	sfs_dinode_unload(sv);
 
-	vfs_biglock_release();
 	return 0;
 }
 

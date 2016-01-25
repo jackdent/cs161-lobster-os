@@ -57,6 +57,7 @@ struct sfs_vnode {
 	unsigned sv_type;		/* cache of sfi_type */
 	struct buf *sv_dinobuf;		/* buffer holding dinode */
 	uint32_t sv_dinobufcount;	/* # times dinobuf has been loaded */
+	struct lock *sv_lock;		/* lock for vnode */
 };
 
 /*
@@ -70,6 +71,8 @@ struct sfs_fs {
 	struct vnodearray *sfs_vnodes;  /* vnodes loaded into memory */
 	struct bitmap *sfs_freemap;     /* blocks in use are marked 1 */
 	bool sfs_freemapdirty;          /* true if freemap modified */
+	struct lock *sfs_vnlock;	/* lock for vnode table */
+	struct lock *sfs_freemaplock;	/* lock for freemap/superblock */
 };
 
 /*

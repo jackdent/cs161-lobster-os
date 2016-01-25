@@ -198,18 +198,4 @@ int vfs_unmountall(void);
 DECLARRAY(vnode, VFSINLINE);
 DEFARRAY(vnode, VFSINLINE);
 
-/*
- * Global one-big-lock for all filesystem operations.
- * You must remove this for the filesystem assignment.
- */
-void vfs_biglock_acquire(void);
-void vfs_biglock_release(void);
-bool vfs_biglock_do_i_hold(void);
-
-struct cv;
-void vfs_biglock_cv_wait(struct cv *);
-void vfs_biglock_cv_signal(struct cv *);
-void vfs_biglock_cv_broadcast(struct cv *);
-
-
 #endif /* _VFS_H_ */

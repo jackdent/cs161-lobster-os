@@ -91,10 +91,6 @@ DEFARRAY(knowndev, static __UNUSED inline);
 static struct knowndevarray *knowndevs;
 static struct lock *knowndevs_lock;
 
-/* The big lock for all FS ops. */
-static struct lock *vfs_biglock;
-static unsigned vfs_biglock_depth;
-
 /*
  * Setup function
  */
@@ -106,12 +102,6 @@ vfs_bootstrap(void)
 		panic("vfs: Could not create knowndevs array\n");
 	}
 
-	vfs_biglock = lock_create("vfs_biglock");
-	if (vfs_biglock==NULL) {
-		panic("vfs: Could not create vfs big lock\n");
-	}
-	vfs_biglock_depth = 0;
-
 	knowndevs_lock = lock_create("knowndevs");
 	if (knowndevs_lock==NULL) {
 		panic("vfs: Could not create knowndevs lock\n");
@@ -120,81 +110,6 @@ vfs_bootstrap(void)
 	vfs_initbootfs();
 	devnull_create();
 	semfs_bootstrap();
-}
-
-/*
- * Operations on vfs_biglock. We make it recursive to avoid having to
- * think about where we do and don't already hold it. This is an
- * undesirable hack that's frequently necessary when a lock covers too
- * much material.
- */
-
-void
-vfs_biglock_acquire(void)
-{
-	if (!lock_do_i_hold(vfs_biglock)) {
-		lock_acquire(vfs_biglock);
-	}
-	else if (vfs_biglock_depth == 0) {
-		/*
-		 * Supposedly we hold it, but the depth is 0. This may
-		 * mean: (1) the count is messed up, or (2)
-		 * lock_do_i_hold is lying. Since OS/161 ships out of
-		 * the box with unimplemented locks (students
-		 * implement them) that always return true, assume
-		 * situation (2). In this case acquire the lock
-		 * anyway.
-		 *
-		 * Once you have working locks, this won't be the
-		 * case, and if you get here it should be situation
-		 * (1), in which case the count is messed up and one
-		 * can panic.
-		 */
-		lock_acquire(vfs_biglock);
-	}
-	vfs_biglock_depth++;
-}
-
-void
-vfs_biglock_release(void)
-{
-	KASSERT(lock_do_i_hold(vfs_biglock));
-	KASSERT(vfs_biglock_depth > 0);
-	vfs_biglock_depth--;
-	if (vfs_biglock_depth == 0) {
-		lock_release(vfs_biglock);
-	}
-}
-
-bool
-vfs_biglock_do_i_hold(void)
-{
-	return lock_do_i_hold(vfs_biglock);
-}
-
-void
-vfs_biglock_cv_wait(struct cv *cv)
-{
-	unsigned depth;
-
-	/* Save the depth while we sleep */
-	depth = vfs_biglock_depth;
-	vfs_biglock_depth = 0;
-	cv_wait(cv, vfs_biglock);
-	KASSERT(vfs_biglock_depth == 0);
-	vfs_biglock_depth = depth;
-}
-
-void
-vfs_biglock_cv_signal(struct cv *cv)
-{
-	cv_signal(cv, vfs_biglock);
-}
-
-void
-vfs_biglock_cv_broadcast(struct cv *cv)
-{
-	cv_broadcast(cv, vfs_biglock);
 }
 
 /*
@@ -642,8 +557,6 @@ vfs_swapon(const char *devname, struct vnode **ret)
 		devname = myname;
 	}
 
-	vfs_biglock_acquire();
-
 	result = findmount(devname, &kd);
 	if (result) {
 		goto out;
@@ -663,7 +576,6 @@ vfs_swapon(const char *devname, struct vnode **ret)
 	*ret = kd->kd_vnode;
 
  out:
-	vfs_biglock_release();
 	if (myname != NULL) {
 		kfree(myname);
 	}
@@ -732,8 +644,6 @@ vfs_swapoff(const char *devname)
 	struct knowndev *kd;
 	int result;
 
-	vfs_biglock_acquire();
-
 	result = findmount(devname, &kd);
 	if (result) {
 		goto fail;
@@ -752,7 +662,6 @@ vfs_swapoff(const char *devname)
 	KASSERT(result==0);
 
  fail:
-	vfs_biglock_release();
 	return result;
 }
 

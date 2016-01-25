@@ -36,6 +36,7 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <uio.h>
+#include <synch.h>
 #include <vfs.h>
 #include <buf.h>
 #include <device.h>
@@ -62,8 +63,6 @@ sfs_rwblock(struct sfs_fs *sfs, struct uio *uio)
 {
 	int result;
 	int tries=0;
-
-	KASSERT(vfs_biglock_do_i_hold());
 
 	DEBUG(DB_SFS, "sfs: %s %llu\n",
 	      uio->uio_rw == UIO_READ ? "read" : "write",
@@ -168,6 +167,7 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	/* Allocate missing blocks if and only if we're writing */
 	bool doalloc = (uio->uio_rw==UIO_WRITE);
 
+	KASSERT(lock_do_i_hold(sv->sv_lock));
 	KASSERT(skipstart + len <= SFS_BLOCKSIZE);
 
 	/* Compute the block offset of this block in the file */
@@ -238,6 +238,8 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	int result;
 	bool doalloc = (uio->uio_rw==UIO_WRITE);
 
+	KASSERT(lock_do_i_hold(sv->sv_lock));
+
 	/* Get the block number within the file */
 	fileblock = uio->uio_offset / SFS_BLOCKSIZE;
 
@@ -302,6 +304,8 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 	int result = 0;
 	uint32_t origresid, extraresid = 0;
 	struct sfs_dinode *inodeptr;
+
+	KASSERT(lock_do_i_hold(sv->sv_lock));
 
 	origresid = uio->uio_resid;
 
@@ -433,6 +437,8 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	char *ioptr;
 	bool doalloc;
 	int result;
+
+	KASSERT(lock_do_i_hold(sv->sv_lock));
 
 	/* Figure out which block of the vnode (directory, whatever) this is */
 	vnblock = actualpos / SFS_BLOCKSIZE;

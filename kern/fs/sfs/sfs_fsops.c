@@ -38,6 +38,7 @@
 #include <lib.h>
 #include <array.h>
 #include <bitmap.h>
+#include <synch.h>
 #include <uio.h>
 #include <vfs.h>
 #include <buf.h>
@@ -78,6 +79,8 @@ sfs_freemapio(struct sfs_fs *sfs, enum uio_rw rw)
 	uint32_t j, freemapblocks;
 	char *freemapdata;
 	int result;
+
+	KASSERT(lock_do_i_hold(sfs->sfs_freemaplock));
 
 	/* Number of blocks in the free block bitmap. */
 	freemapblocks = SFS_FS_FREEMAPBLOCKS(sfs);
@@ -141,19 +144,25 @@ sfs_sync_freemap(struct sfs_fs *sfs)
 {
 	int result;
 
+	lock_acquire(sfs->sfs_freemaplock);
+
 	if (sfs->sfs_freemapdirty) {
 		result = sfs_freemapio(sfs, UIO_WRITE);
 		if (result) {
+			lock_release(sfs->sfs_freemaplock);
 			return result;
 		}
 		sfs->sfs_freemapdirty = false;
 	}
 
+	lock_release(sfs->sfs_freemaplock);
 	return 0;
 }
 
 /*
  * Sync routine for the superblock.
+ *
+ * For the time being at least the superblock shares the freemap lock.
  */
 static
 int
@@ -161,15 +170,19 @@ sfs_sync_superblock(struct sfs_fs *sfs)
 {
 	int result;
 
+	lock_acquire(sfs->sfs_freemaplock);
+
 	if (sfs->sfs_superdirty) {
 		result = sfs_writeblock(&sfs->sfs_absfs, SFS_SUPER_BLOCK,
 					NULL,
 					&sfs->sfs_sb, sizeof(sfs->sfs_sb));
 		if (result) {
+			lock_release(sfs->sfs_freemaplock);
 			return result;
 		}
 		sfs->sfs_superdirty = false;
 	}
+	lock_release(sfs->sfs_freemaplock);
 	return 0;
 }
 
@@ -184,7 +197,6 @@ sfs_sync(struct fs *fs)
 	struct sfs_fs *sfs;
 	int result;
 
-	vfs_biglock_acquire();
 
 	/*
 	 * Get the sfs_fs from the generic abstract fs.
@@ -221,25 +233,21 @@ sfs_sync(struct fs *fs)
 	/* Sync the buffer cache */
 	result = sync_fs_buffers(fs);
 	if (result) {
-		vfs_biglock_release();
 		return result;
 	}
 
 	/* If the free block map needs to be written, write it. */
 	result = sfs_sync_freemap(sfs);
 	if (result) {
-		vfs_biglock_release();
 		return result;
 	}
 
 	/* If the superblock needs to be written, write it. */
 	result = sfs_sync_superblock(sfs);
 	if (result) {
-		vfs_biglock_release();
 		return result;
 	}
 
-	vfs_biglock_release();
 	return 0;
 }
 
@@ -294,13 +302,16 @@ const char *
 sfs_getvolname(struct fs *fs)
 {
 	struct sfs_fs *sfs = fs->fs_data;
-	const char *ret;
 
-	vfs_biglock_acquire();
-	ret = sfs->sfs_sb.sb_volname;
-	vfs_biglock_release();
+	/*
+	 * VFS only uses the volume name transiently, and its
+	 * synchronization guarantees that we will not disappear while
+	 * it's using the name. Furthermore, we don't permit the volume
+	 * name to change on the fly (this is also a restriction in VFS)
+	 * so there's no need to synchronize.
+	 */
 
-	return ret;
+	return sfs->sfs_sb.sb_volname;
 }
 
 /*
@@ -310,6 +321,8 @@ static
 void
 sfs_fs_destroy(struct sfs_fs *sfs)
 {
+	lock_destroy(sfs->sfs_freemaplock);
+	lock_destroy(sfs->sfs_vnlock);
 	if (sfs->sfs_freemap != NULL) {
 		bitmap_destroy(sfs->sfs_freemap);
 	}
@@ -329,11 +342,14 @@ sfs_unmount(struct fs *fs)
 {
 	struct sfs_fs *sfs = fs->fs_data;
 
-	vfs_biglock_acquire();
+
+	lock_acquire(sfs->sfs_vnlock);
+	lock_acquire(sfs->sfs_freemaplock);
 
 	/* Do we have any files open? If so, can't unmount. */
 	if (vnodearray_num(sfs->sfs_vnodes) > 0) {
-		vfs_biglock_release();
+		lock_release(sfs->sfs_freemaplock);
+		lock_release(sfs->sfs_vnlock);
 		return EBUSY;
 	}
 
@@ -347,11 +363,14 @@ sfs_unmount(struct fs *fs)
 	/* The vfs layer takes care of the device for us */
 	sfs->sfs_device = NULL;
 
+	/* Release the locks. VFS guarantees we can do this safely. */
+	lock_release(sfs->sfs_vnlock);
+	lock_release(sfs->sfs_freemaplock);
+
 	/* Destroy the fs object; once we start nuking stuff we can't fail. */
 	sfs_fs_destroy(sfs);
 
 	/* nothing else to do */
-	vfs_biglock_release();
 	return 0;
 }
 
@@ -418,8 +437,22 @@ sfs_fs_create(void)
 	sfs->sfs_freemap = NULL;
 	sfs->sfs_freemapdirty = false;
 
+	/* locks */
+	sfs->sfs_vnlock = lock_create("sfs_vnlock");
+	if (sfs->sfs_vnlock == NULL) {
+		goto cleanup_vnodes;
+	}
+	sfs->sfs_freemaplock = lock_create("sfs_freemaplock");
+	if (sfs->sfs_freemaplock == NULL) {
+		goto cleanup_vnlock;
+	}
+
 	return sfs;
 
+cleanup_vnlock:
+	lock_destroy(sfs->sfs_vnlock);
+cleanup_vnodes:
+	vnodearray_destroy(sfs->sfs_vnodes);
 cleanup_object:
 	kfree(sfs);
 fail:
@@ -446,8 +479,6 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 	int result;
 	struct sfs_fs *sfs;
 
-	vfs_biglock_acquire();
-
 	/* We don't pass any options through mount */
 	(void)options;
 
@@ -460,7 +491,6 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 	 * don't do that in sfs.)
 	 */
 	if (dev->d_blocksize != SFS_BLOCKSIZE) {
-		vfs_biglock_release();
 		kprintf("sfs: Cannot mount on device with blocksize %zu\n",
 			dev->d_blocksize);
 		return ENXIO;
@@ -468,20 +498,24 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	sfs = sfs_fs_create();
 	if (sfs == NULL) {
-		vfs_biglock_release();
 		return ENOMEM;
 	}
 
 	/* Set the device so we can use sfs_readblock() */
 	sfs->sfs_device = dev;
 
+	/* Acquire the locks so various stuff works right */
+	lock_acquire(sfs->sfs_vnlock);
+	lock_acquire(sfs->sfs_freemaplock);
+
 	/* Load superblock */
 	result = sfs_readblock(&sfs->sfs_absfs, SFS_SUPER_BLOCK,
 			       &sfs->sfs_sb, sizeof(sfs->sfs_sb));
 	if (result) {
+		lock_release(sfs->sfs_vnlock);
+		lock_release(sfs->sfs_freemaplock);
 		sfs->sfs_device = NULL;
 		sfs_fs_destroy(sfs);
-		vfs_biglock_release();
 		return result;
 	}
 
@@ -492,9 +526,10 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 			"(0x%x, should be 0x%x)\n",
 			sfs->sfs_sb.sb_magic,
 			SFS_MAGIC);
+		lock_release(sfs->sfs_vnlock);
+		lock_release(sfs->sfs_freemaplock);
 		sfs->sfs_device = NULL;
 		sfs_fs_destroy(sfs);
-		vfs_biglock_release();
 		return EINVAL;
 	}
 
@@ -509,23 +544,27 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 	/* Load free block bitmap */
 	sfs->sfs_freemap = bitmap_create(SFS_FS_FREEMAPBITS(sfs));
 	if (sfs->sfs_freemap == NULL) {
+		lock_release(sfs->sfs_vnlock);
+		lock_release(sfs->sfs_freemaplock);
 		sfs->sfs_device = NULL;
 		sfs_fs_destroy(sfs);
-		vfs_biglock_release();
 		return ENOMEM;
 	}
 	result = sfs_freemapio(sfs, UIO_READ);
 	if (result) {
+		lock_release(sfs->sfs_vnlock);
+		lock_release(sfs->sfs_freemaplock);
 		sfs->sfs_device = NULL;
 		sfs_fs_destroy(sfs);
-		vfs_biglock_release();
 		return result;
 	}
 
 	/* Hand back the abstract fs */
 	*ret = &sfs->sfs_absfs;
 
-	vfs_biglock_release();
+	lock_release(sfs->sfs_vnlock);
+	lock_release(sfs->sfs_freemaplock);
+
 	return 0;
 }
 

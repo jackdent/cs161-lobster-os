@@ -46,7 +46,10 @@ extern const struct vnode_ops sfs_dirops;
 /* Functions in sfs_balloc.c */
 int sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret);
 void sfs_bfree(struct sfs_fs *sfs, daddr_t diskblock);
+void sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock);
 int sfs_bused(struct sfs_fs *sfs, daddr_t diskblock);
+void sfs_lock_freemap(struct sfs_fs *sfs);
+void sfs_unlock_freemap(struct sfs_fs *sfs);
 
 /* Functions in sfs_bmap.c */
 int sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock,
