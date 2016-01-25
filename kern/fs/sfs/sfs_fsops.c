@@ -40,6 +40,7 @@
 #include <bitmap.h>
 #include <uio.h>
 #include <vfs.h>
+#include <buf.h>
 #include <device.h>
 #include <sfs.h>
 #include "sfsprivate.h"
@@ -53,7 +54,10 @@
 /*
  * Routine for doing I/O (reads or writes) on the free block bitmap.
  * We always do the whole bitmap at once; writing individual sectors
- * might or might not be a worthwhile optimization.
+ * might or might not be a worthwhile optimization. Similarly, storing
+ * the freemap in the buffer cache might or might not be a worthwhile
+ * optimization. (But that would require a total rewrite of the way
+ * it's handled, so not now.)
  *
  * The free block bitmap consists of SFS_FREEMAPBLOCKS 512-byte
  * sectors of bits, one bit for each sector on the filesystem. The
@@ -89,12 +93,14 @@ sfs_freemapio(struct sfs_fs *sfs, enum uio_rw rw)
 
 		/* and read or write it. The freemap starts at sector 2. */
 		if (rw == UIO_READ) {
-			result = sfs_readblock(sfs, SFS_FREEMAP_START+j, ptr,
-					       SFS_BLOCKSIZE);
+			result = sfs_readblock(&sfs->sfs_absfs,
+					       SFS_FREEMAP_START + j,
+					       ptr, SFS_BLOCKSIZE);
 		}
 		else {
-			result = sfs_writeblock(sfs, SFS_FREEMAP_START+j, ptr,
-						SFS_BLOCKSIZE);
+			result = sfs_writeblock(&sfs->sfs_absfs,
+						SFS_FREEMAP_START + j, NULL,
+						ptr, SFS_BLOCKSIZE);
 		}
 
 		/* If we failed, stop. */
@@ -105,6 +111,7 @@ sfs_freemapio(struct sfs_fs *sfs, enum uio_rw rw)
 	return 0;
 }
 
+#if 0	/* This is subsumed by sync_fs_buffers, plus would now be recursive */
 /*
  * Sync routine for the vnode table.
  */
@@ -122,6 +129,8 @@ sfs_sync_vnodes(struct sfs_fs *sfs)
 	}
 	return 0;
 }
+
+#endif
 
 /*
  * Sync routine for the freemap.
@@ -153,8 +162,9 @@ sfs_sync_superblock(struct sfs_fs *sfs)
 	int result;
 
 	if (sfs->sfs_superdirty) {
-		result = sfs_writeblock(sfs, SFS_SUPER_BLOCK, &sfs->sfs_sb,
-					sizeof(sfs->sfs_sb));
+		result = sfs_writeblock(&sfs->sfs_absfs, SFS_SUPER_BLOCK,
+					NULL,
+					&sfs->sfs_sb, sizeof(sfs->sfs_sb));
 		if (result) {
 			return result;
 		}
@@ -208,8 +218,8 @@ sfs_sync(struct fs *fs)
 
 	sfs = fs->fs_data;
 
-	/* If any vnodes need to be written, write them. */
-	result = sfs_sync_vnodes(sfs);
+	/* Sync the buffer cache */
+	result = sync_fs_buffers(fs);
 	if (result) {
 		vfs_biglock_release();
 		return result;
@@ -231,6 +241,47 @@ sfs_sync(struct fs *fs)
 
 	vfs_biglock_release();
 	return 0;
+}
+
+/*
+ * Code called when buffers are attached to and detached from the fs.
+ * This can allocate and destroy fs-specific buffer data. We don't
+ * currently have any, but later changes might want to.
+ */
+static
+int
+sfs_attachbuf(struct fs *fs, daddr_t diskblock, struct buf *buf)
+{
+	struct sfs_fs *sfs = fs->fs_data;
+	void *olddata;
+
+	(void)sfs;
+	(void)diskblock;
+
+	/* Install null as the fs-specific buffer data. */
+	olddata = buffer_set_fsdata(buf, NULL);
+
+	/* There should have been no fs-specific buffer data beforehand. */
+	KASSERT(olddata == NULL);
+
+	return 0;
+}
+
+static
+void
+sfs_detachbuf(struct fs *fs, daddr_t diskblock, struct buf *buf)
+{
+	struct sfs_fs *sfs = fs->fs_data;
+	void *bufdata;
+
+	(void)sfs;
+	(void)diskblock;
+
+	/* Clear the fs-specific metadata by installing null. */
+	bufdata = buffer_set_fsdata(buf, NULL);
+
+	/* The fs-specific buffer data we installed before was just NULL. */
+	KASSERT(bufdata == NULL);
 }
 
 /*
@@ -290,6 +341,9 @@ sfs_unmount(struct fs *fs)
 	KASSERT(sfs->sfs_superdirty == false);
 	KASSERT(sfs->sfs_freemapdirty == false);
 
+	/* All buffers should be clean; invalidate them. */
+	drop_fs_buffers(fs);
+
 	/* The vfs layer takes care of the device for us */
 	sfs->sfs_device = NULL;
 
@@ -309,6 +363,10 @@ static const struct fs_ops sfs_fsops = {
 	.fsop_getvolname = sfs_getvolname,
 	.fsop_getroot = sfs_getroot,
 	.fsop_unmount = sfs_unmount,
+	.fsop_readblock = sfs_readblock,
+	.fsop_writeblock = sfs_writeblock,
+	.fsop_attachbuf = sfs_attachbuf,
+	.fsop_detachbuf = sfs_detachbuf,
 };
 
 /*
@@ -418,8 +476,8 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 	sfs->sfs_device = dev;
 
 	/* Load superblock */
-	result = sfs_readblock(sfs, SFS_SUPER_BLOCK, &sfs->sfs_sb,
-			       sizeof(sfs->sfs_sb));
+	result = sfs_readblock(&sfs->sfs_absfs, SFS_SUPER_BLOCK,
+			       &sfs->sfs_sb, sizeof(sfs->sfs_sb));
 	if (result) {
 		sfs->sfs_device = NULL;
 		sfs_fs_destroy(sfs);

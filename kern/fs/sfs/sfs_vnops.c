@@ -39,6 +39,7 @@
 #include <lib.h>
 #include <uio.h>
 #include <vfs.h>
+#include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
 
@@ -92,6 +93,8 @@ sfs_eachopendir(struct vnode *v, int openflags)
 
 /*
  * Called for read(). sfs_io() does the work.
+ *
+ * Requires up to 3 buffers.
  */
 static
 int
@@ -103,7 +106,11 @@ sfs_read(struct vnode *v, struct uio *uio)
 	KASSERT(uio->uio_rw==UIO_READ);
 
 	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
+
 	result = sfs_io(sv, uio);
+
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 
 	return result;
@@ -111,6 +118,8 @@ sfs_read(struct vnode *v, struct uio *uio)
 
 /*
  * Called for write(). sfs_io() does the work.
+ *
+ * Requires up to 3 buffers.
  */
 static
 int
@@ -122,7 +131,11 @@ sfs_write(struct vnode *v, struct uio *uio)
 	KASSERT(uio->uio_rw==UIO_WRITE);
 
 	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
+
 	result = sfs_io(sv, uio);
+
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 
 	return result;
@@ -148,30 +161,50 @@ sfs_ioctl(struct vnode *v, int op, userptr_t data)
 
 /*
  * Called for stat/fstat/lstat.
+ *
+ * Requires 1 buffer.
  */
 static
 int
 sfs_stat(struct vnode *v, struct stat *statbuf)
 {
 	struct sfs_vnode *sv = v->vn_data;
+	struct sfs_dinode *inodeptr;
 	int result;
+
+	vfs_biglock_acquire();
 
 	/* Fill in the stat structure */
 	bzero(statbuf, sizeof(struct stat));
 
 	result = VOP_GETTYPE(v, &statbuf->st_mode);
 	if (result) {
+		vfs_biglock_release();
 		return result;
 	}
 
-	statbuf->st_size = sv->sv_i.sfi_size;
-	statbuf->st_nlink = sv->sv_i.sfi_linkcount;
+	reserve_buffers(SFS_BLOCKSIZE);
+
+	result = sfs_dinode_load(sv);
+	if (result) {
+		unreserve_buffers(SFS_BLOCKSIZE);
+		vfs_biglock_release();
+		return result;
+	}
+
+	inodeptr = sfs_dinode_map(sv);
+
+	statbuf->st_size = inodeptr->sfi_size;
+	statbuf->st_nlink = inodeptr->sfi_linkcount;
 
 	/* We don't support this yet */
 	statbuf->st_blocks = 0;
 
 	/* Fill in other fields as desired/possible... */
 
+	sfs_dinode_unload(sv);
+	unreserve_buffers(SFS_BLOCKSIZE);
+	vfs_biglock_release();
 	return 0;
 }
 
@@ -187,7 +220,7 @@ sfs_gettype(struct vnode *v, uint32_t *ret)
 
 	vfs_biglock_acquire();
 
-	switch (sv->sv_i.sfi_type) {
+	switch (sv->sv_type) {
 	case SFS_TYPE_FILE:
 		*ret = S_IFREG;
 		vfs_biglock_release();
@@ -198,7 +231,8 @@ sfs_gettype(struct vnode *v, uint32_t *ret)
 		return 0;
 	}
 	panic("sfs: %s: gettype: Invalid inode type (inode %u, type %u)\n",
-	      sfs->sfs_sb.sb_volname, sv->sv_ino, sv->sv_i.sfi_type);
+	      sfs->sfs_sb.sb_volname, sv->sv_ino, sv->sv_type);
+	vfs_biglock_release();
 	return EINVAL;
 }
 
@@ -214,21 +248,18 @@ sfs_isseekable(struct vnode *v)
 }
 
 /*
- * Called for fsync(), and also on filesystem unmount, global sync(),
- * and some other cases.
+ * Called for fsync().
+ *
+ * Since for now the buffer cache can't sync just one file, sync the
+ * whole fs.
  */
 static
 int
 sfs_fsync(struct vnode *v)
 {
 	struct sfs_vnode *sv = v->vn_data;
-	int result;
 
-	vfs_biglock_acquire();
-	result = sfs_sync_inode(sv);
-	vfs_biglock_release();
-
-	return result;
+	return FSOP_SYNC(sv->sv_absvn.vn_fs);
 }
 
 /*
@@ -250,8 +281,14 @@ int
 sfs_truncate(struct vnode *v, off_t len)
 {
 	struct sfs_vnode *sv = v->vn_data;
+	int result;
 
-	return sfs_itrunc(sv, len);
+	reserve_buffers(SFS_BLOCKSIZE);
+
+	result = sfs_itrunc(sv, len);
+
+	unreserve_buffers(SFS_BLOCKSIZE);
+	return result;
 }
 
 /*
@@ -277,6 +314,8 @@ sfs_namefile(struct vnode *vv, struct uio *uio)
 /*
  * Create a file. If EXCL is set, insist that the filename not already
  * exist; otherwise, if it already exists, just open it.
+ *
+ * Requires up to 4 buffers as VOP_DECREF invocations may take 3.
  */
 static
 int
@@ -286,20 +325,24 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	struct sfs_fs *sfs = v->vn_fs->fs_data;
 	struct sfs_vnode *sv = v->vn_data;
 	struct sfs_vnode *newguy;
+	struct sfs_dinode *new_inodeptr;
 	uint32_t ino;
 	int result;
 
 	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
 
 	/* Look up the name */
 	result = sfs_dir_findname(sv, name, &ino, NULL, NULL);
 	if (result!=0 && result!=ENOENT) {
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return result;
 	}
 
 	/* If it exists and we didn't want it to, fail */
 	if (result==0 && excl) {
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return EEXIST;
 	}
@@ -308,10 +351,13 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		/* We got something; load its vnode and return */
 		result = sfs_loadvnode(sfs, ino, SFS_TYPE_INVAL, &newguy);
 		if (result) {
+			unreserve_buffers(SFS_BLOCKSIZE);
 			vfs_biglock_release();
 			return result;
 		}
+
 		*ret = &newguy->sv_absvn;
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return 0;
 	}
@@ -319,9 +365,13 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	/* Didn't exist - create it */
 	result = sfs_makeobj(sfs, SFS_TYPE_FILE, &newguy);
 	if (result) {
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return result;
 	}
+
+	/* sfs_makeobj loads the inode for us */
+	new_inodeptr = sfs_dinode_map(newguy);
 
 	/* We don't currently support file permissions; ignore MODE */
 	(void)mode;
@@ -329,19 +379,23 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	/* Link it into the directory */
 	result = sfs_dir_link(sv, name, newguy->sv_ino, NULL);
 	if (result) {
+		sfs_dinode_unload(newguy);
+		unreserve_buffers(SFS_BLOCKSIZE);
 		VOP_DECREF(&newguy->sv_absvn);
 		vfs_biglock_release();
 		return result;
 	}
 
 	/* Update the linkcount of the new file */
-	newguy->sv_i.sfi_linkcount++;
+	new_inodeptr->sfi_linkcount++;
 
 	/* and consequently mark it dirty. */
-	newguy->sv_dirty = true;
+	sfs_dinode_mark_dirty(newguy);
 
 	*ret = &newguy->sv_absvn;
 
+	sfs_dinode_unload(newguy);
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 	return 0;
 }
@@ -350,6 +404,8 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
  * Make a hard link to a file.
  * The VFS layer should prevent this being called unless both
  * vnodes are ours.
+ *
+ * Requires up to 4 buffers.
  */
 static
 int
@@ -357,35 +413,51 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 {
 	struct sfs_vnode *sv = dir->vn_data;
 	struct sfs_vnode *f = file->vn_data;
+	struct sfs_dinode *inodeptr;
 	int result;
 
 	KASSERT(file->vn_fs == dir->vn_fs);
 
-	vfs_biglock_acquire();
-
 	/* Hard links to directories aren't allowed. */
-	if (f->sv_i.sfi_type == SFS_TYPE_DIR) {
-		vfs_biglock_release();
+	if (f->sv_type == SFS_TYPE_DIR) {
 		return EINVAL;
+	}
+	KASSERT(file != dir);
+
+	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
+
+	result = sfs_dinode_load(f);
+	if (result) {
+		unreserve_buffers(SFS_BLOCKSIZE);
+		vfs_biglock_release();
+		return result;
 	}
 
 	/* Create the link */
 	result = sfs_dir_link(sv, name, f->sv_ino, NULL);
 	if (result) {
+		sfs_dinode_unload(f);
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return result;
 	}
 
 	/* and update the link count, marking the inode dirty */
-	f->sv_i.sfi_linkcount++;
-	f->sv_dirty = true;
+	inodeptr = sfs_dinode_map(f);
+	inodeptr->sfi_linkcount++;
+	sfs_dinode_mark_dirty(f);
 
+	sfs_dinode_unload(f);
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 	return 0;
 }
 
 /*
  * Delete a file.
+ *
+ * Requires up to 4 buffers.
  */
 static
 int
@@ -393,30 +465,45 @@ sfs_remove(struct vnode *dir, const char *name)
 {
 	struct sfs_vnode *sv = dir->vn_data;
 	struct sfs_vnode *victim;
+	struct sfs_dinode *victim_inodeptr;
 	int slot;
 	int result;
 
 	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
 
 	/* Look for the file and fetch a vnode for it. */
 	result = sfs_lookonce(sv, name, &victim, &slot);
 	if (result) {
-		vfs_biglock_release();
-		return result;
+		goto out_buffers;
 	}
+
+	result = sfs_dinode_load(victim);
+	if (result) {
+		VOP_DECREF(&victim->sv_absvn);
+		goto out_buffers;
+	}
+	victim_inodeptr = sfs_dinode_map(victim);
+	KASSERT(victim_inodeptr->sfi_linkcount > 0);
 
 	/* Erase its directory entry. */
 	result = sfs_dir_unlink(sv, slot);
-	if (result==0) {
-		/* If we succeeded, decrement the link count. */
-		KASSERT(victim->sv_i.sfi_linkcount > 0);
-		victim->sv_i.sfi_linkcount--;
-		victim->sv_dirty = true;
+	if (result) {
+		goto out_reference;
 	}
 
+	/* Decrement the link count. */
+	KASSERT(victim_inodeptr->sfi_linkcount > 0);
+	victim_inodeptr->sfi_linkcount--;
+	sfs_dinode_mark_dirty(victim);
+
+out_reference:
 	/* Discard the reference that sfs_lookonce got us */
+	sfs_dinode_unload(victim);
 	VOP_DECREF(&victim->sv_absvn);
 
+out_buffers:
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 	return result;
 }
@@ -426,6 +513,8 @@ sfs_remove(struct vnode *dir, const char *name)
  *
  * Since we don't support subdirectories, assumes that the two
  * directories passed are the same.
+ *
+ * Requires up to 4 buffers.
  */
 static
 int
@@ -435,10 +524,12 @@ sfs_rename(struct vnode *d1, const char *n1,
 	struct sfs_vnode *sv = d1->vn_data;
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_vnode *g1;
+	struct sfs_dinode *g1_inodeptr;
 	int slot1, slot2;
 	int result, result2;
 
 	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
 
 	KASSERT(d1==d2);
 	KASSERT(sv->sv_ino == SFS_ROOTDIR_INO);
@@ -446,12 +537,23 @@ sfs_rename(struct vnode *d1, const char *n1,
 	/* Look up the old name of the file and get its inode and slot number*/
 	result = sfs_lookonce(sv, n1, &g1, &slot1);
 	if (result) {
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return result;
 	}
 
+	result = sfs_dinode_load(g1);
+	if (result) {
+		VOP_DECREF(&g1->sv_absvn);
+		unreserve_buffers(SFS_BLOCKSIZE);
+		vfs_biglock_release();
+		return result;
+	}
+	g1_inodeptr = sfs_dinode_map(g1);
+	KASSERT(g1_inodeptr->sfi_linkcount > 0);
+
 	/* We don't support subdirectories */
-	KASSERT(g1->sv_i.sfi_type == SFS_TYPE_FILE);
+	KASSERT(g1->sv_type == SFS_TYPE_FILE);
 
 	/*
 	 * Link it under the new name.
@@ -467,8 +569,8 @@ sfs_rename(struct vnode *d1, const char *n1,
 	}
 
 	/* Increment the link count, and mark inode dirty */
-	g1->sv_i.sfi_linkcount++;
-	g1->sv_dirty = true;
+	g1_inodeptr->sfi_linkcount++;
+	sfs_dinode_mark_dirty(g1);
 
 	/* Unlink the old slot */
 	result = sfs_dir_unlink(sv, slot1);
@@ -480,13 +582,15 @@ sfs_rename(struct vnode *d1, const char *n1,
 	 * Decrement the link count again, and mark the inode dirty again,
 	 * in case it's been synced behind our back.
 	 */
-	KASSERT(g1->sv_i.sfi_linkcount>0);
-	g1->sv_i.sfi_linkcount--;
-	g1->sv_dirty = true;
+	KASSERT(g1_inodeptr->sfi_linkcount>0);
+	g1_inodeptr->sfi_linkcount--;
+	sfs_dinode_mark_dirty(g1);
 
 	/* Let go of the reference to g1 */
+	sfs_dinode_unload(g1);
 	VOP_DECREF(&g1->sv_absvn);
 
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 	return 0;
 
@@ -503,10 +607,14 @@ sfs_rename(struct vnode *d1, const char *n1,
 		panic("sfs: %s: rename: Cannot recover\n",
 		      sfs->sfs_sb.sb_volname);
 	}
-	g1->sv_i.sfi_linkcount--;
+	g1_inodeptr->sfi_linkcount--;
+	sfs_dinode_mark_dirty(g1);
  puke:
 	/* Let go of the reference to g1 */
+	sfs_dinode_unload(g1);
 	VOP_DECREF(&g1->sv_absvn);
+
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 	return result;
 }
@@ -527,7 +635,7 @@ sfs_lookparent(struct vnode *v, char *path, struct vnode **ret,
 
 	vfs_biglock_acquire();
 
-	if (sv->sv_i.sfi_type != SFS_TYPE_DIR) {
+	if (sv->sv_type != SFS_TYPE_DIR) {
 		vfs_biglock_release();
 		return ENOTDIR;
 	}
@@ -550,6 +658,8 @@ sfs_lookparent(struct vnode *v, char *path, struct vnode **ret,
  *
  * Since we don't support subdirectories, it's easy - just look up the
  * name.
+ *
+ * Requires up to 3 buffers.
  */
 static
 int
@@ -561,19 +671,23 @@ sfs_lookup(struct vnode *v, char *path, struct vnode **ret)
 
 	vfs_biglock_acquire();
 
-	if (sv->sv_i.sfi_type != SFS_TYPE_DIR) {
+	if (sv->sv_type != SFS_TYPE_DIR) {
 		vfs_biglock_release();
 		return ENOTDIR;
 	}
 
+	reserve_buffers(SFS_BLOCKSIZE);
+
 	result = sfs_lookonce(sv, path, &final, NULL);
 	if (result) {
+		unreserve_buffers(SFS_BLOCKSIZE);
 		vfs_biglock_release();
 		return result;
 	}
 
 	*ret = &final->sv_absvn;
 
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 	return 0;
 }

@@ -35,42 +35,151 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
+#include <thread.h>
+#include <current.h>
 #include <vfs.h>
+#include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
 
 
 /*
- * Write an on-disk inode structure back out to disk.
+ * Constructor for sfs_vnode.
+ */
+static
+struct sfs_vnode *
+sfs_vnode_create(uint32_t ino, unsigned type)
+{
+	struct sfs_vnode *sv;
+
+	sv = kmalloc(sizeof(*sv));
+	if (sv == NULL) {
+		return NULL;
+	}
+	sv->sv_ino = ino;
+	sv->sv_type = type;
+	sv->sv_dinobuf = NULL;
+	sv->sv_dinobufcount = 0;
+	return sv;
+}
+
+/*
+ * Destructor for sfs_vnode.
+ */
+static
+void
+sfs_vnode_destroy(struct sfs_vnode *victim)
+{
+	kfree(victim);
+}
+
+/*
+ * Load the on-disk inode into sv->sv_dinobuf. This should be done at
+ * the beginning of any operation that will need to read or change the
+ * inode. When the operation is done, sfs_dinode_unload should be
+ * called to release the buffer.
+ *
+ * XXX: currently it's not done at the beginning most places, and
+ * sometimes more than once, so for now it needs to be recursive and
+ * we count how many times it's been loaded.
+ *
+ * Locking: must hold the vnode lock.
  */
 int
-sfs_sync_inode(struct sfs_vnode *sv)
+sfs_dinode_load(struct sfs_vnode *sv)
 {
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	int result;
 
-	if (sv->sv_dirty) {
-		result = sfs_writeblock(sfs, sv->sv_ino, &sv->sv_i,
-					sizeof(sv->sv_i));
+	KASSERT(vfs_biglock_do_i_hold());
+
+	if (sv->sv_dinobufcount == 0) {
+		KASSERT(sv->sv_dinobuf == NULL);
+		result = buffer_read(&sfs->sfs_absfs, sv->sv_ino,SFS_BLOCKSIZE,
+				     &sv->sv_dinobuf);
 		if (result) {
 			return result;
 		}
-		sv->sv_dirty = false;
 	}
+	else {
+		KASSERT(sv->sv_dinobuf != NULL);
+	}
+	sv->sv_dinobufcount++;
+
 	return 0;
+}
+
+/*
+ * Unload the on-disk inode.
+ *
+ * This should be done in matching pairs with sfs_dinode_load.
+ * Ideally this should be exactly once per operation when the
+ * operation starts and ends, but we aren't there yet. (XXX)
+ *
+ * Locking: must hold the vnode lock.
+ */
+void
+sfs_dinode_unload(struct sfs_vnode *sv)
+{
+	KASSERT(vfs_biglock_do_i_hold());
+
+	KASSERT(sv->sv_dinobuf != NULL);
+	KASSERT(sv->sv_dinobufcount > 0);
+
+	sv->sv_dinobufcount--;
+	if (sv->sv_dinobufcount == 0) {
+		buffer_release(sv->sv_dinobuf);
+		sv->sv_dinobuf = NULL;
+	}
+}
+
+/*
+ * Return a pointer to the on-disk inode. Per the semantics of
+ * buffer_map, the pointer remains valid until the buffer is released,
+ * that is, when sfs_dinode_unload is called.
+ *
+ * Locking: must hold the vnode lock.
+ */
+struct sfs_dinode *
+sfs_dinode_map(struct sfs_vnode *sv)
+{
+	KASSERT(vfs_biglock_do_i_hold());
+
+	KASSERT(sv->sv_dinobuf != NULL);
+	return buffer_map(sv->sv_dinobuf);
+}
+
+/*
+ * Mark the on-disk inode dirty after scribbling in it with
+ * sfs_dinode_map.
+ *
+ * Locking: must hold the vnode lock.
+ */
+void
+sfs_dinode_mark_dirty(struct sfs_vnode *sv)
+{
+	KASSERT(vfs_biglock_do_i_hold());
+
+	KASSERT(sv->sv_dinobuf != NULL);
+	buffer_mark_dirty(sv->sv_dinobuf);
 }
 
 /*
  * Called when the vnode refcount (in-memory usage count) hits zero.
  *
  * This function should try to avoid returning errors other than EBUSY.
+ *
+ * Requires 1 buffer locally but may also afterward call sfs_itrunc,
+ * which takes 3.
  */
 int
 sfs_reclaim(struct vnode *v)
 {
 	struct sfs_vnode *sv = v->vn_data;
 	struct sfs_fs *sfs = v->vn_fs->fs_data;
+	struct sfs_dinode *iptr;
 	unsigned ix, i, num;
+	bool buffers_needed;
 	int result;
 
 	vfs_biglock_acquire();
@@ -93,25 +202,54 @@ sfs_reclaim(struct vnode *v)
 	}
 	spinlock_release(&v->vn_countlock);
 
-	/* If there are no on-disk references to the file either, erase it. */
-	if (sv->sv_i.sfi_linkcount == 0) {
-		result = sfs_itrunc(sv, 0);
-		if (result) {
-			vfs_biglock_release();
-			return result;
-		}
+	/*
+	 * This grossness arises because reclaim gets called via
+	 * VOP_DECREF, which can happen either from outside SFS or
+	 * from inside, so we might or might not be inside another
+	 * operation.
+	 */
+	buffers_needed = !curthread->t_did_reserve_buffers;
+	if (buffers_needed) {
+		reserve_buffers(SFS_BLOCKSIZE);
 	}
 
-	/* Sync the inode to disk */
-	result = sfs_sync_inode(sv);
+	/* Get the on-disk inode. */
+	result = sfs_dinode_load(sv);
 	if (result) {
+		/*
+		 * This case is likely to lead to problems, but
+		 * there's essentially no helping it...
+		 */
 		vfs_biglock_release();
+		if (buffers_needed) {
+			unreserve_buffers(SFS_BLOCKSIZE);
+		}
 		return result;
 	}
+	iptr = sfs_dinode_map(sv);
 
-	/* If there are no on-disk references, discard the inode */
-	if (sv->sv_i.sfi_linkcount==0) {
+	/* If there are no on-disk references to the file either, erase it. */
+	if (iptr->sfi_linkcount == 0) {
+		result = sfs_itrunc(sv, 0);
+		if (result) {
+			sfs_dinode_unload(sv);
+			vfs_biglock_release();
+			if (buffers_needed) {
+				unreserve_buffers(SFS_BLOCKSIZE);
+			}
+			return result;
+		}
+		sfs_dinode_unload(sv);
+		/* Discard the inode */
+		buffer_drop(&sfs->sfs_absfs, sv->sv_ino, SFS_BLOCKSIZE);
 		sfs_bfree(sfs, sv->sv_ino);
+	}
+	else {
+		sfs_dinode_unload(sv);
+	}
+
+	if (buffers_needed) {
+		unreserve_buffers(SFS_BLOCKSIZE);
 	}
 
 	/* Remove the vnode structure from the table in the struct sfs_fs. */
@@ -136,7 +274,7 @@ sfs_reclaim(struct vnode *v)
 	vfs_biglock_release();
 
 	/* Release the storage for the vnode structure itself. */
-	kfree(sv);
+	sfs_vnode_destroy(sv);
 
 	/* Done */
 	return 0;
@@ -145,6 +283,10 @@ sfs_reclaim(struct vnode *v)
 /*
  * Function to load a inode into memory as a vnode, or dig up one
  * that's already resident.
+ *
+ * The vnode is returned with its inode unloaded.
+ *
+ * May require 3 buffers if VOP_DECREF triggers reclaim.
  */
 int
 sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
@@ -152,6 +294,8 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 {
 	struct vnode *v;
 	struct sfs_vnode *sv;
+	struct buf *dinobuf;
+	struct sfs_dinode *dino;
 	const struct vnode_ops *ops;
 	unsigned i, num;
 	int result;
@@ -177,6 +321,7 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 			KASSERT(forcetype==SFS_TYPE_INVAL);
 
 			VOP_INCREF(&sv->sv_absvn);
+
 			*ret = sv;
 			return 0;
 		}
@@ -184,10 +329,8 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 
 	/* Didn't have it loaded; load it */
 
-	sv = kmalloc(sizeof(struct sfs_vnode));
-	if (sv==NULL) {
-		return ENOMEM;
-	}
+	/* Null out sv to avoid accidental use before it's reassigned below */
+	sv = NULL;
 
 	/* Must be in an allocated block */
 	if (!sfs_bused(sfs, ino)) {
@@ -195,31 +338,35 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 		      "unallocated block\n", sfs->sfs_sb.sb_volname, ino);
 	}
 
-	/* Read the block the inode is in */
-	result = sfs_readblock(sfs, ino, &sv->sv_i, sizeof(sv->sv_i));
+	/*
+	 * Read the block the inode is in.
+	 *
+	 * (We can do this before creating and locking the new vnode
+	 * because we are holding the vfs biglock. Nobody else can
+	 * be in here trying to load the same vnode at the same time.)
+	 */
+	result = buffer_read(&sfs->sfs_absfs, ino, SFS_BLOCKSIZE, &dinobuf);
 	if (result) {
-		kfree(sv);
 		return result;
 	}
-
-	/* Not dirty yet */
-	sv->sv_dirty = false;
+	dino = buffer_map(dinobuf);
 
 	/*
 	 * FORCETYPE is set if we're creating a new file, because the
-	 * block on disk will have been zeroed out by sfs_balloc and
-	 * thus the type recorded there will be SFS_TYPE_INVAL.
+	 * buffer will have been zeroed out already and thus the type
+	 * recorded there will be SFS_TYPE_INVAL.
 	 */
 	if (forcetype != SFS_TYPE_INVAL) {
-		KASSERT(sv->sv_i.sfi_type == SFS_TYPE_INVAL);
-		sv->sv_i.sfi_type = forcetype;
-		sv->sv_dirty = true;
+		KASSERT(dino->sfi_type == SFS_TYPE_INVAL);
+		dino->sfi_type = forcetype;
+		buffer_mark_dirty(dinobuf);
 	}
 
 	/*
-	 * Choose the function table based on the object type.
+	 * Choose the function table based on the object type,
+	 * and cache the type in the vnode.
 	 */
-	switch (sv->sv_i.sfi_type) {
+	switch (dino->sfi_type) {
 	    case SFS_TYPE_FILE:
 		ops = &sfs_fileops;
 		break;
@@ -229,24 +376,35 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 	    default:
 		panic("sfs: %s: loadvnode: Invalid inode type "
 		      "(inode %u, type %u)\n", sfs->sfs_sb.sb_volname,
-		      ino, sv->sv_i.sfi_type);
+		      ino, dino->sfi_type);
 	}
+
+	/*
+	 * Now, cons up a vnode. Don't give it the inode buffer, as to
+	 * be consistent with the case where the vnode is already in
+	 * memory we return the vnode without the inode loaded. (The
+	 * buffer will be warm in the buffer cache, so a subsequent
+	 * sfs_dinode_load won't incur another I/O.)
+	 */
+	sv = sfs_vnode_create(ino, dino->sfi_type);
+	if (sv==NULL) {
+		return ENOMEM;
+	}
+
+	buffer_release(dinobuf);
 
 	/* Call the common vnode initializer */
 	result = vnode_init(&sv->sv_absvn, ops, &sfs->sfs_absfs, sv);
 	if (result) {
-		kfree(sv);
+		sfs_vnode_destroy(sv);
 		return result;
 	}
-
-	/* Set the other fields in our vnode structure */
-	sv->sv_ino = ino;
 
 	/* Add it to our table */
 	result = vnodearray_add(sfs->sfs_vnodes, &sv->sv_absvn, NULL);
 	if (result) {
 		vnode_cleanup(&sv->sv_absvn);
-		kfree(sv);
+		sfs_vnode_destroy(sv);
 		return result;
 	}
 
@@ -257,11 +415,17 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 
 /*
  * Create a new filesystem object and hand back its vnode.
+ *
+ * As a matter of convenience, returns the vnode with its inode loaded.
+ *
+ * Requires up to 3 buffers as sfs_loadvnode might trigger reclaim and
+ * truncate.
  */
 int
 sfs_makeobj(struct sfs_fs *sfs, int type, struct sfs_vnode **ret)
 {
 	uint32_t ino;
+	struct sfs_dinode *dino;
 	int result;
 
 	/*
@@ -269,7 +433,7 @@ sfs_makeobj(struct sfs_fs *sfs, int type, struct sfs_vnode **ret)
 	 * number is the block number, so just get a block.)
 	 */
 
-	result = sfs_balloc(sfs, &ino);
+	result = sfs_balloc(sfs, &ino, NULL);
 	if (result) {
 		return result;
 	}
@@ -280,8 +444,24 @@ sfs_makeobj(struct sfs_fs *sfs, int type, struct sfs_vnode **ret)
 
 	result = sfs_loadvnode(sfs, ino, type, ret);
 	if (result) {
+		buffer_drop(&sfs->sfs_absfs, ino, SFS_BLOCKSIZE);
 		sfs_bfree(sfs, ino);
+		return result;
 	}
+
+	/* And load the inode. */
+	result = sfs_dinode_load(*ret);
+	if (result) {
+		VOP_DECREF(&(*ret)->sv_absvn);
+		buffer_drop(&sfs->sfs_absfs, ino, SFS_BLOCKSIZE);
+		sfs_bfree(sfs, ino);
+		return result;
+	}
+
+	/* new object; link count should start zero */
+	dino = sfs_dinode_map(*ret);
+	KASSERT(dino->sfi_linkcount == 0);
+
 	return result;
 }
 
@@ -297,6 +477,7 @@ sfs_getroot(struct fs *fs, struct vnode **ret)
 	int result;
 
 	vfs_biglock_acquire();
+	reserve_buffers(SFS_BLOCKSIZE);
 
 	result = sfs_loadvnode(sfs, SFS_ROOTDIR_INO, SFS_TYPE_INVAL, &sv);
 	if (result) {
@@ -306,13 +487,14 @@ sfs_getroot(struct fs *fs, struct vnode **ret)
 		return result;
 	}
 
-	if (sv->sv_i.sfi_type != SFS_TYPE_DIR) {
+	if (sv->sv_type != SFS_TYPE_DIR) {
 		kprintf("sfs: %s: getroot: not directory (type %u)\n",
-			sfs->sfs_sb.sb_volname, sv->sv_i.sfi_type);
+			sfs->sfs_sb.sb_volname, sv->sv_type);
 		vfs_biglock_release();
 		return EINVAL;
 	}
 
+	unreserve_buffers(SFS_BLOCKSIZE);
 	vfs_biglock_release();
 
 	*ret = &sv->sv_absvn;

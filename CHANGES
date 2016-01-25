@@ -112,6 +112,9 @@ OS/161 2.0.1 released 20150805
 20150710 dholland in base
    - Split out the pieces of sfs_sync for reusability.
 
+20150708 dholland in buffercache
+   - Avoid syncer livelock working the LRU list.
+
 20150706 dholland in base
    - Add support for new sys161 profiler control registers.
 

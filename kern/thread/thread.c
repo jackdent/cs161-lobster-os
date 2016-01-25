@@ -147,6 +147,9 @@ thread_create(const char *name)
 	thread->t_curspl = IPL_HIGH;
 	thread->t_iplhigh_count = 1; /* corresponding to t_curspl */
 
+	/* VFS fields */
+	thread->t_did_reserve_buffers = false;
+
 	/* If you add to struct thread, be sure to initialize here */
 
 	return thread;
@@ -271,6 +274,9 @@ thread_destroy(struct thread *thread)
 	 * If you add things to struct thread, be sure to clean them up
 	 * either here or in thread_exit(). (And not both...)
 	 */
+
+	/* VFS fields, cleaned up in thread_exit */
+	KASSERT(thread->t_did_reserve_buffers == false);
 
 	/* Thread subsystem fields */
 	KASSERT(thread->t_proc == NULL);
@@ -781,6 +787,8 @@ thread_exit(void)
 	struct thread *cur;
 
 	cur = curthread;
+
+	KASSERT(cur->t_did_reserve_buffers == false);
 
 	/*
 	 * Detach from our process. You might need to move this action

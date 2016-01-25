@@ -35,27 +35,54 @@
 #include <types.h>
 #include <lib.h>
 #include <bitmap.h>
+#include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
 
 /*
  * Zero out a disk block.
+ *
+ * Uses one buffer; returns it if bufret is not NULL.
  */
 static
 int
-sfs_clearblock(struct sfs_fs *sfs, daddr_t block)
+sfs_clearblock(struct sfs_fs *sfs, daddr_t block, struct buf **bufret)
 {
-	/* static -> automatically initialized to zero */
-	static char zeros[SFS_BLOCKSIZE];
+	struct buf *buf;
+	void *ptr;
+	int result;
 
-	return sfs_writeblock(sfs, block, zeros, SFS_BLOCKSIZE);
+	result = buffer_get(&sfs->sfs_absfs, block, SFS_BLOCKSIZE, &buf);
+	if (result) {
+		return result;
+	}
+
+	ptr = buffer_map(buf);
+	bzero(ptr, SFS_BLOCKSIZE);
+	buffer_mark_valid(buf);
+	buffer_mark_dirty(buf);
+
+	if (bufret != NULL) {
+		*bufret = buf;
+	}
+	else {
+		buffer_release(buf);
+	}
+
+	return 0;
 }
 
 /*
  * Allocate a block.
+ *
+ * Returns the block number, plus a buffer for it if BUFRET isn't
+ * null. The buffer, if any, is marked valid and dirty, and zeroed
+ * out.
+ *
+ * Uses 1 buffer.
  */
 int
-sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock)
+sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 {
 	int result;
 
@@ -71,7 +98,7 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock)
 	}
 
 	/* Clear block before returning it */
-	result = sfs_clearblock(sfs, *diskblock);
+	result = sfs_clearblock(sfs, *diskblock, bufret);
 	if (result) {
 		bitmap_unmark(sfs->sfs_freemap, *diskblock);
 	}
@@ -80,6 +107,11 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock)
 
 /*
  * Free a block.
+ *
+ * Note: the caller should in general invalidate any buffers it has
+ * for the block, either with buffer_release_and_invalidate() or
+ * buffer_drop(), before coming here. (We could call buffer_drop()
+ * here; but in some cases that would generate redundant work.)
  */
 void
 sfs_bfree(struct sfs_fs *sfs, daddr_t diskblock)

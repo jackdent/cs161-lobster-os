@@ -106,6 +106,9 @@ struct thread {
 	 * Public fields
 	 */
 
+	/* VFS */
+	bool t_did_reserve_buffers;	/* reserve_buffers() in effect */
+
 	/* add more here as needed */
 };
 

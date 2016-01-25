@@ -1278,6 +1278,9 @@ static const struct fs_ops emufs_fsops = {
 	.fsop_getvolname = emufs_getvolname,
 	.fsop_getroot = emufs_getroot,
 	.fsop_unmount = emufs_unmount,
+	/* we don't do block I/O */
+	.fsop_readblock = NULL,
+	.fsop_writeblock = NULL,
 };
 
 /*

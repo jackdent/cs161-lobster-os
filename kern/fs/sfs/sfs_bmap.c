@@ -36,6 +36,7 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <vfs.h>
+#include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
 
@@ -44,30 +45,29 @@
  * the disk) given a file and the logical block number within that
  * file. If DOALLOC is set, and no such block exists, one will be
  * allocated.
+ *
+ * Requires up to 2 buffers.
  */
 int
 sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 	 daddr_t *diskblock)
 {
-	/*
-	 * I/O buffer for handling indirect blocks.
-	 *
-	 * Note: in real life (and when you've done the fs assignment)
-	 * you would get space from the disk buffer cache for this,
-	 * not use a static area.
-	 */
-	static uint32_t idbuf[SFS_DBPERIDB];
-
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
+	struct sfs_dinode *inodeptr;
+	struct buf *idbuffer;
+	uint32_t *idbufdata;
 	daddr_t block;
 	daddr_t idblock;
 	uint32_t idnum, idoff;
 	int result;
 
-	KASSERT(sizeof(idbuf)==SFS_BLOCKSIZE);
+	COMPILE_ASSERT(SFS_DBPERIDB * sizeof(idbufdata[0]) == SFS_BLOCKSIZE);
 
-	/* Since we're using a static buffer, we'd better be locked. */
-	KASSERT(vfs_biglock_do_i_hold());
+	result = sfs_dinode_load(sv);
+	if (result) {
+		return result;
+	}
+	inodeptr = sfs_dinode_map(sv);
 
 	/*
 	 * If the block we want is one of the direct blocks...
@@ -76,20 +76,21 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 		/*
 		 * Get the block number
 		 */
-		block = sv->sv_i.sfi_direct[fileblock];
+		block = inodeptr->sfi_direct[fileblock];
 
 		/*
 		 * Do we need to allocate?
 		 */
 		if (block==0 && doalloc) {
-			result = sfs_balloc(sfs, &block);
+			result = sfs_balloc(sfs, &block, NULL);
 			if (result) {
+				sfs_dinode_unload(sv);
 				return result;
 			}
 
 			/* Remember what we allocated; mark inode dirty */
-			sv->sv_i.sfi_direct[fileblock] = block;
-			sv->sv_dirty = true;
+			inodeptr->sfi_direct[fileblock] = block;
+			sfs_dinode_mark_dirty(sv);
 		}
 
 		/*
@@ -101,6 +102,7 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 			      block, fileblock, sv->sv_ino);
 		}
 		*diskblock = block;
+		sfs_dinode_unload(sv);
 		return 0;
 	}
 
@@ -121,11 +123,12 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 	 * is too large, we can't handle it, so fail.
 	 */
 	if (idnum >= SFS_NINDIRECT) {
+		sfs_dinode_unload(sv);
 		return EFBIG;
 	}
 
 	/* Get the disk block number of the indirect block. */
-	idblock = sv->sv_i.sfi_indirect;
+	idblock = inodeptr->sfi_indirect;
 
 	if (idblock==0 && !doalloc) {
 		/*
@@ -134,6 +137,7 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 		 * block was filled with all zeros.
 		 */
 		*diskblock = 0;
+		sfs_dinode_unload(sv);
 		return 0;
 	}
 	else if (idblock==0) {
@@ -143,48 +147,59 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 		 * the indirect block. Thus, we need to allocate an
 		 * indirect block.
 		 */
-		result = sfs_balloc(sfs, &idblock);
+		result = sfs_balloc(sfs, &idblock, &idbuffer);
 		if (result) {
+			sfs_dinode_unload(sv);
 			return result;
 		}
 
 		/* Remember the block we just allocated */
-		sv->sv_i.sfi_indirect = idblock;
+		inodeptr->sfi_indirect = idblock;
 
 		/* Mark the inode dirty */
-		sv->sv_dirty = true;
+		sfs_dinode_mark_dirty(sv);
 
 		/* Clear the indirect block buffer */
-		bzero(idbuf, sizeof(idbuf));
+
+		idbufdata = buffer_map(idbuffer);
+
+		/*
+		 * sfs_balloc already does this...
+		 *
+		 * bzero(idbufdata, SFS_BLOCKSIZE);
+		 * buffer_mark_dirty(idbuffer);
+		 */
 	}
 	else {
 		/*
 		 * We already have an indirect block allocated; load it.
 		 */
-		result = sfs_readblock(sfs, idblock, idbuf, sizeof(idbuf));
+		result = buffer_read(&sfs->sfs_absfs, idblock, SFS_BLOCKSIZE,
+				     &idbuffer);
 		if (result) {
+			sfs_dinode_unload(sv);
 			return result;
 		}
+		idbufdata = buffer_map(idbuffer);
 	}
 
 	/* Get the block out of the indirect block buffer */
-	block = idbuf[idoff];
+	block = idbufdata[idoff];
 
 	/* If there's no block there, allocate one */
 	if (block==0 && doalloc) {
-		result = sfs_balloc(sfs, &block);
+		result = sfs_balloc(sfs, &block, NULL);
 		if (result) {
+			buffer_release(idbuffer);
+			sfs_dinode_unload(sv);
 			return result;
 		}
 
 		/* Remember the block we allocated */
-		idbuf[idoff] = block;
+		idbufdata[idoff] = block;
 
-		/* The indirect block is now dirty; write it back */
-		result = sfs_writeblock(sfs, idblock, idbuf, sizeof(idbuf));
-		if (result) {
-			return result;
-		}
+		/* The indirect block is now dirty; mark it so */
+		buffer_mark_dirty(idbuffer);
 	}
 
 	/* Hand back the result and return. */
@@ -193,26 +208,28 @@ sfs_bmap(struct sfs_vnode *sv, uint32_t fileblock, bool doalloc,
 		      "marked free\n", sfs->sfs_sb.sb_volname,
 		      block, fileblock, sv->sv_ino);
 	}
+
+	buffer_release(idbuffer);
+	sfs_dinode_unload(sv);
+
 	*diskblock = block;
 	return 0;
 }
 
 /*
- * Called for ftruncate() and from sfs_reclaim.
+ * Do the work of truncating a file (or directory).
+ *
+ * Requires up to 3 buffers.
  */
 int
 sfs_itrunc(struct sfs_vnode *sv, off_t len)
 {
-	/*
-	 * I/O buffer for handling the indirect block.
-	 *
-	 * Note: in real life (and when you've done the fs assignment)
-	 * you would get space from the disk buffer cache for this,
-	 * not use a static area.
-	 */
-	static uint32_t idbuf[SFS_DBPERIDB];
-
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
+
+	struct sfs_dinode *inodeptr;
+
+	struct buf *idbuffer;
+	uint32_t *idptr;
 
 	/* Length in blocks (divide rounding up) */
 	uint32_t blocklen = DIVROUNDUP(len, SFS_BLOCKSIZE);
@@ -221,27 +238,35 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 	daddr_t block, idblock;
 	uint32_t baseblock, highblock;
 	int result;
-	int hasnonzero, iddirty;
+	int hasnonzero;
 
-	KASSERT(sizeof(idbuf)==SFS_BLOCKSIZE);
+	COMPILE_ASSERT(SFS_DBPERIDB * sizeof(idptr[0]) == SFS_BLOCKSIZE);
 
 	vfs_biglock_acquire();
+
+	result = sfs_dinode_load(sv);
+	if (result) {
+		vfs_biglock_release();
+		return result;
+	}
+	inodeptr = sfs_dinode_map(sv);
 
 	/*
 	 * Go through the direct blocks. Discard any that are
 	 * past the limit we're truncating to.
 	 */
 	for (i=0; i<SFS_NDIRECT; i++) {
-		block = sv->sv_i.sfi_direct[i];
+		block = inodeptr->sfi_direct[i];
 		if (i >= blocklen && block != 0) {
+			buffer_drop(&sfs->sfs_absfs, block, SFS_BLOCKSIZE);
 			sfs_bfree(sfs, block);
-			sv->sv_i.sfi_direct[i] = 0;
-			sv->sv_dirty = true;
+			inodeptr->sfi_direct[i] = 0;
+			sfs_dinode_mark_dirty(sv);
 		}
 	}
 
 	/* Indirect block number */
-	idblock = sv->sv_i.sfi_indirect;
+	idblock = inodeptr->sfi_indirect;
 
 	/* The lowest block in the indirect block */
 	baseblock = SFS_NDIRECT;
@@ -253,49 +278,50 @@ sfs_itrunc(struct sfs_vnode *sv, off_t len)
 		/* We're past the proposed EOF; may need to free stuff */
 
 		/* Read the indirect block */
-		result = sfs_readblock(sfs, idblock, idbuf, sizeof(idbuf));
+		result = buffer_read(&sfs->sfs_absfs, idblock, SFS_BLOCKSIZE,
+				     &idbuffer);
 		if (result) {
+			sfs_dinode_unload(sv);
 			vfs_biglock_release();
 			return result;
 		}
+		idptr = buffer_map(idbuffer);
 
 		hasnonzero = 0;
-		iddirty = 0;
 		for (j=0; j<SFS_DBPERIDB; j++) {
 			/* Discard any blocks that are past the new EOF */
-			if (blocklen < baseblock+j && idbuf[j] != 0) {
-				sfs_bfree(sfs, idbuf[j]);
-				idbuf[j] = 0;
-				iddirty = 1;
+			if (blocklen < baseblock+j && idptr[j] != 0) {
+				buffer_drop(&sfs->sfs_absfs, idptr[j],
+					    SFS_BLOCKSIZE);
+				sfs_bfree(sfs, idptr[j]);
+				idptr[j] = 0;
+				buffer_mark_dirty(idbuffer);
 			}
 			/* Remember if we see any nonzero blocks in here */
-			if (idbuf[j]!=0) {
+			if (idptr[j] != 0) {
 				hasnonzero=1;
 			}
 		}
 
 		if (!hasnonzero) {
 			/* The whole indirect block is empty now; free it */
+			buffer_release_and_invalidate(idbuffer);
 			sfs_bfree(sfs, idblock);
-			sv->sv_i.sfi_indirect = 0;
-			sv->sv_dirty = true;
+			inodeptr->sfi_indirect = 0;
+			sfs_dinode_mark_dirty(sv);
 		}
-		else if (iddirty) {
-			/* The indirect block is dirty; write it back */
-			result = sfs_writeblock(sfs, idblock, idbuf,
-						sizeof(idbuf));
-			if (result) {
-				vfs_biglock_release();
-				return result;
-			}
+		else {
+			buffer_release(idbuffer);
 		}
 	}
 
 	/* Set the file size */
-	sv->sv_i.sfi_size = len;
+	inodeptr->sfi_size = len;
 
 	/* Mark the inode dirty */
-	sv->sv_dirty = true;
+	sfs_dinode_mark_dirty(sv);
+
+	sfs_dinode_unload(sv);
 
 	vfs_biglock_release();
 	return 0;

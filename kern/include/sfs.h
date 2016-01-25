@@ -53,9 +53,10 @@
  */
 struct sfs_vnode {
 	struct vnode sv_absvn;          /* abstract vnode structure */
-	struct sfs_dinode sv_i;		/* copy of on-disk inode */
 	uint32_t sv_ino;                /* inode number */
-	bool sv_dirty;                  /* true if sv_i modified */
+	unsigned sv_type;		/* cache of sfi_type */
+	struct buf *sv_dinobuf;		/* buffer holding dinode */
+	uint32_t sv_dinobufcount;	/* # times dinobuf has been loaded */
 };
 
 /*
