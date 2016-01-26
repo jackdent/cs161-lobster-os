@@ -557,6 +557,7 @@ vfs_swapon(const char *devname, struct vnode **ret)
 		devname = myname;
 	}
 
+    lock_acquire(knowndevs_lock);
 	result = findmount(devname, &kd);
 	if (result) {
 		goto out;
@@ -576,6 +577,7 @@ vfs_swapon(const char *devname, struct vnode **ret)
 	*ret = kd->kd_vnode;
 
  out:
+    lock_release(knowndevs_lock);
 	if (myname != NULL) {
 		kfree(myname);
 	}
@@ -644,6 +646,8 @@ vfs_swapoff(const char *devname)
 	struct knowndev *kd;
 	int result;
 
+    lock_acquire(knowndevs_lock);
+
 	result = findmount(devname, &kd);
 	if (result) {
 		goto fail;
@@ -662,6 +666,7 @@ vfs_swapoff(const char *devname)
 	KASSERT(result==0);
 
  fail:
+    lock_release(knowndevs_lock);
 	return result;
 }
 
