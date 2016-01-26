@@ -180,7 +180,7 @@ sfs_dinode_mark_dirty(struct sfs_vnode *sv)
  *    possibly also sfs_freemaplock, while holding the vnode lock.
  *
  * Requires 1 buffer locally but may also afterward call sfs_itrunc,
- * which takes 3.
+ * which takes 4.
  */
 int
 sfs_reclaim(struct vnode *v)

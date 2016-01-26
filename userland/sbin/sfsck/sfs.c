@@ -62,6 +62,8 @@ swapsb(struct sfs_superblock *sb)
 {
 	sb->sb_magic = SWAP32(sb->sb_magic);
 	sb->sb_nblocks = SWAP32(sb->sb_nblocks);
+	sb->sb_journalstart = SWAP32(sb->sb_journalstart);
+	sb->sb_journalblocks = SWAP32(sb->sb_journalblocks);
 }
 
 static

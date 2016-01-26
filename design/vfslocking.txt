@@ -1,0 +1,92 @@
+VFS-level locking
+-----------------
+
+(This is not so much a design document as an outline of the critical
+properties of the code -- writing a proper design document will have
+to be done sometime in the future.)
+
+At the VFS level we shall have the following locks:
+   - the vnode refcount spinlocks (these are now present in base)
+   - a global lock for the buffer cache (buffer_lock)
+   - a global lock for the devices/mounts list (knowndevs_lock)
+   - a lock for the bootfs vnode (bootfs_lock)
+
+The ordering of these is:
+   - The vnode refcount spinlock is a leaf.
+   - The bootfs lock comes before the (a) vnode refcount spinlock but
+     is independent of anything else.
+   - The buffer lock is a leaf; we never call out of the buffer cache
+     code (either a file system or to a device) while holding it. It
+     is used to set buffer busy bits but is released while waiting for
+     them.
+   - The buffer busy bits are manipulated mostly by file system code.
+     It is the file system's responsibility to not deadlock by calling
+     buffer_get in inconsistent orders, and to deal with the
+     interaction of buffer busy bits with its own locks. Note that
+     because we no longer release vfs_biglock while waiting for
+     buffers, it is possible for buffer bits and vfs_biglock to
+     deadlock; vfs_biglock should be acquired before getting any
+     buffers. (The other ordering is clearly unworkable.)
+   - Calls to sync_fs_buffers will mark arbitrary buffers busy but
+     only work with one at a time. Once marked busy the model in and
+     below the buffer cache is the same as actions taken by the file
+     system. It is the file system's responsibility to handle its own
+     locks appropriately when calling sync_fs_buffers.
+   - The background syncer behaves the same as sync_fs_buffers, except
+     it never holds any file system locks until/unless it calls into
+     the file system for buffer I/O, where its behavior is
+     indistinguishable from explicit buffer access by the file
+     system.
+   - Note however that calls to FSOP_READBLOCK and particularly
+     FSOP_WRITEBLOCK must be able to acquire any locks they need to
+     complete; there is currently no way for these operations to ask
+     the buffer cache to unlock and retry.
+   - The knowndevs lock comes before all file system locks. Note in
+     particular that it's held while calling into the fs during mount
+     and unmount.
+
+Implementing this entails the following changes:
+
+ - In emufs, remove references to vfs_biglock. The other locking
+present is sufficient.
+
+ - In the buffer cache:
+
+Add the lock (buffer_lock) and initialize it in buffer_bootstrap.
+
+Replace references to vfs_biglock with references to buffer_lock.
+
+Release buffer_lock around the calls back to the file system:
+FSOP_READBLOCK and FSOP_WRITEBLOCK. Add some notes elsewhere about
+places where this happens under the covers, as it can open race
+windows.
+
+We use the buffer busy bit to protect some fields in struct buf (XXX:
+which ones exactly? document this) and we don't need to lock
+buffer_lock to access them.
+
+Add buffer_lock to buffer_mark_dirty. It oesn't seem to have been
+using vfs_biglock for this -- I think that's a bug (XXX) in the
+pre-locking buffer cache code although not a critical one as the fs
+should itself be holding vfs_biglock when calling buffer_mark_dirty.
+
+Split buffer_get into buffer_get and buffer_get_internal, so
+buffer_lock doesn't need to be recursive. Same for buffer_release.
+
+ - In vfslist.c, create knowndevs_lock in vfs_bootstrap. Use it
+instead of vfs_biglock when accessing the knowndevs array. Don't
+acquire it around operations that don't actually use the knowndevs
+array.
+
+ - In vfslookup.c, add vfs_initbootfs to create bootfs_lock. Use
+bootfs_lock (only) when touching boofs_vnode and remove references to
+vfs_biglock.
+
+ - In vnode.c, remove unnecessary use of vfs_biglock in vnode_check.
+
+Now that vnode refcounts have their own spinlock, there is no need to
+change semfs as it already has its own locking.
+
+Do not change sfs; it still uses vfs_biglock. For this reason, don't
+remove vfs_biglock yet.
+

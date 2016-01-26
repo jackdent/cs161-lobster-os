@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2009, 2013
+ * Copyright (c) 2015
  *	The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,42 +27,58 @@
  * SUCH DAMAGE.
  */
 
-#ifndef FREEMAP_H
-#define FREEMAP_H
+#ifndef HANGMAN_H
+#define HANGMAN_H
 
 /*
- * The freemap module accumulates information about the free block
- * bitmap as other checks are made, and then uses that information
- * to check and correct it.
+ * Simple deadlock detector. Enable with "options hangman" in the
+ * kernel config.
  */
 
-#include <stdint.h>
+#include "opt-hangman.h"
 
-typedef enum {
-	B_SUPERBLOCK,	/* Block that is the superblock */
-	B_FREEMAPBLOCK,	/* Block used by free-block bitmap */
-	B_JOURNAL,	/* Block in the journal */
-	B_INODE,	/* Block that is an inode */
-	B_IBLOCK,	/* Indirect (or doubly-indirect etc.) block */
-	B_DIRDATA,	/* Data block of a directory */
-	B_DATA,		/* Data block */
-	B_PASTEND,	/* Block off the end of the fs */
-} blockusage_t;
+#if OPT_HANGMAN
 
-/* Call this after loading the superblock but before doing any checks. */
-void freemap_setup(void);
+struct hangman_actor {
+	const char *a_name;
+	const struct hangman_lockable *a_waiting;
+};
 
-/* Call this to note that a block has been found in use. */
-void freemap_blockinuse(uint32_t block, blockusage_t how, uint32_t howdesc);
+struct hangman_lockable {
+	const char *l_name;
+	const struct hangman_actor *l_holding;
+};
 
-/* Note that a block has been found where it should be dropped. */
-void freemap_blockfree(uint32_t block);
+void hangman_wait(struct hangman_actor *a, struct hangman_lockable *l);
+void hangman_acquire(struct hangman_actor *a, struct hangman_lockable *l);
+void hangman_release(struct hangman_actor *a, struct hangman_lockable *l);
 
-/* Call this after all checks that call freemap_block{inuse,free}. */
-void freemap_check(void);
+#define HANGMAN_ACTOR(sym)	struct hangman_actor sym
+#define HANGMAN_LOCKABLE(sym)	struct hangman_lockable sym
 
-/* Return the number of blocks in use. Valid after freemap_check(). */
-unsigned long freemap_blocksused(void);
+#define HANGMAN_ACTORINIT(a, n)	    ((a)->a_name = (n), (a)->a_waiting = NULL)
+#define HANGMAN_LOCKABLEINIT(l, n)  ((l)->l_name = (n), (l)->l_holding = NULL)
 
+#define HANGMAN_LOCKABLE_INITIALIZER	{ "spinlock", NULL }
 
-#endif /* FREEMAP_H */
+#define HANGMAN_WAIT(a, l)	hangman_wait(a, l)
+#define HANGMAN_ACQUIRE(a, l)	hangman_acquire(a, l)
+#define HANGMAN_RELEASE(a, l)	hangman_release(a, l)
+
+#else
+
+#define HANGMAN_ACTOR(sym)
+#define HANGMAN_LOCKABLE(sym)
+
+#define HANGMAN_ACTORINIT(a, name)
+#define HANGMAN_LOCKABLEINIT(a, name)
+
+#define HANGMAN_LOCKABLE_INITIALIZER
+
+#define HANGMAN_WAIT(a, l)
+#define HANGMAN_ACQUIRE(a, l)
+#define HANGMAN_RELEASE(a, l)
+
+#endif
+
+#endif /* HANGMAN_H */

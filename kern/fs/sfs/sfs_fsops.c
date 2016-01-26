@@ -248,6 +248,11 @@ sfs_sync(struct fs *fs)
 		return result;
 	}
 
+	result = sfs_jphys_flushall(sfs);
+	if (result) {
+		return result;
+	}
+
 	return 0;
 }
 
@@ -321,6 +326,7 @@ static
 void
 sfs_fs_destroy(struct sfs_fs *sfs)
 {
+	sfs_jphys_destroy(sfs->sfs_jphys);
 	lock_destroy(sfs->sfs_renamelock);
 	lock_destroy(sfs->sfs_freemaplock);
 	lock_destroy(sfs->sfs_vnlock);
@@ -353,6 +359,10 @@ sfs_unmount(struct fs *fs)
 		lock_release(sfs->sfs_vnlock);
 		return EBUSY;
 	}
+
+	sfs_jphys_stopwriting(sfs);
+
+	unreserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
 
 	/* We should have just had sfs_sync called. */
 	KASSERT(sfs->sfs_superdirty == false);
@@ -452,8 +462,16 @@ sfs_fs_create(void)
 		goto cleanup_freemaplock;
 	}
 
+	/* journal */
+	sfs->sfs_jphys = sfs_jphys_create();
+	if (sfs->sfs_jphys == NULL) {
+		goto cleanup_renamelock;
+	}
+
 	return sfs;
 
+cleanup_renamelock:
+	lock_destroy(sfs->sfs_renamelock);
 cleanup_freemaplock:
 	lock_destroy(sfs->sfs_freemaplock);
 cleanup_vnlock:
@@ -540,6 +558,10 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 		return EINVAL;
 	}
 
+	if (sfs->sfs_sb.sb_journalblocks >= sfs->sfs_sb.sb_nblocks) {
+		kprintf("sfs: warning - journal takes up whole volume\n");
+	}
+
 	if (sfs->sfs_sb.sb_nblocks > dev->d_blocks) {
 		kprintf("sfs: warning - fs has %u blocks, device has %u\n",
 			sfs->sfs_sb.sb_nblocks, dev->d_blocks);
@@ -571,6 +593,59 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	lock_release(sfs->sfs_vnlock);
 	lock_release(sfs->sfs_freemaplock);
+
+	reserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
+
+	/*
+	 * Load up the journal container. (basically, recover it)
+	 */
+
+	SAY("*** Loading up the jphys container ***\n");
+	result = sfs_jphys_loadup(sfs);
+	if (result) {
+		unreserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
+		drop_fs_buffers(&sfs->sfs_absfs);
+		sfs->sfs_device = NULL;
+		sfs_fs_destroy(sfs);
+		return result;
+    }
+
+	/*
+	 * High-level recovery.
+	 */
+
+	/* Enable container-level scanning */
+	sfs_jphys_startreading(sfs);
+
+	reserve_buffers(SFS_BLOCKSIZE);
+
+	/********************************/
+	/* Call your recovery code here */
+	/********************************/
+
+	unreserve_buffers(SFS_BLOCKSIZE);
+
+	/* Done with container-level scanning */
+	sfs_jphys_stopreading(sfs);
+
+	/* Spin up the journal. */
+	SAY("*** Starting up ***\n");
+	result = sfs_jphys_startwriting(sfs);
+	if (result) {
+		unreserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
+		drop_fs_buffers(&sfs->sfs_absfs);
+		sfs->sfs_device = NULL;
+		sfs_fs_destroy(sfs);
+		return result;
+	}
+
+	reserve_buffers(SFS_BLOCKSIZE);
+
+	/**************************************/
+	/* Maybe call more recovery code here */
+	/**************************************/
+
+	unreserve_buffers(SFS_BLOCKSIZE);
 
 	return 0;
 }

@@ -41,8 +41,8 @@
 #define SFS_VOLNAME_SIZE  32            /* max length of volume name */
 #define SFS_NDIRECT       15            /* # of direct blocks in inode */
 #define SFS_NINDIRECT     1             /* # of indirect blocks in inode */
-#define SFS_NDINDIRECT    0             /* # of 2x indirect blocks in inode */
-#define SFS_NTINDIRECT    0             /* # of 3x indirect blocks in inode */
+#define SFS_NDINDIRECT    1             /* # of 2x indirect blocks in inode */
+#define SFS_NTINDIRECT    1             /* # of 3x indirect blocks in inode */
 #define SFS_DBPERIDB      128           /* # direct blks per indirect blk */
 #define SFS_NAMELEN       60            /* max length of filename */
 #define SFS_SUPER_BLOCK   0             /* block the superblock lives in */
@@ -74,7 +74,9 @@ struct sfs_superblock {
 	uint32_t sb_magic;		/* Magic number; should be SFS_MAGIC */
 	uint32_t sb_nblocks;			/* Number of blocks in fs */
 	char sb_volname[SFS_VOLNAME_SIZE];	/* Name of this volume */
-	uint32_t reserved[118];			/* unused, set to 0 */
+	uint32_t sb_journalstart;		/* First block in journal */
+	uint32_t sb_journalblocks;		/* # of blocks in journal */
+	uint32_t reserved[116];			/* unused, set to 0 */
 };
 
 /*
@@ -86,7 +88,9 @@ struct sfs_dinode {
 	uint16_t sfi_linkcount;			/* # hard links to this file */
 	uint32_t sfi_direct[SFS_NDIRECT];	/* Direct blocks */
 	uint32_t sfi_indirect;			/* Indirect block */
-	uint32_t sfi_waste[128-3-SFS_NDIRECT];	/* unused space, set to 0 */
+	uint32_t sfi_dindirect;   /* Double indirect block */
+	uint32_t sfi_tindirect;   /* Triple indirect block */
+	uint32_t sfi_waste[128-5-SFS_NDIRECT];	/* unused space, set to 0 */
 };
 
 /*
@@ -95,6 +99,61 @@ struct sfs_dinode {
 struct sfs_direntry {
 	uint32_t sfd_ino;			/* Inode number */
 	char sfd_name[SFS_NAMELEN];		/* Filename */
+};
+
+/*
+ * On-disk journal container types and constants
+ */
+
+/*
+ * On-disk bit-packed type for use in record headers; contains the
+ * container-level information for a journal record, namely:
+ *     48-bit LSN
+ *     8-bit length, in 2-octet units
+ *     7-bit type code
+ *     1-bit type code class
+ *
+ * The type code class is either SFS_JPHYS_CONTAINER, for container-
+ * level records, or SFS_JPHYS_CLIENT, for records defined by higher-
+ * level code.
+ *
+ * The length is stored in 2-octet units so we only need 8 bits for a
+ * record of up to one whole block.
+ *
+ * The length includes the header. (struct sfs_jphys_header)
+ *
+ * Note that a coninfo whose integer value is 0 is not valid; this
+ * prevents us from getting confused by still-zeroed journal blocks.
+ */
+#define SFS_CONINFO_CLASS(ci)	((ci) >> 63)  /* client vs. container record */
+#define SFS_CONINFO_TYPE(ci)	(((ci) >> 56) & 0x7f)	/* record type */
+#define SFS_CONINFO_LEN(ci)	((((ci) >> 48) & 0xff)*2) /* record length */
+#define SFS_CONINFO_LSN(ci)	((ci) & 0xffffffffffff)	/* log sequence no. */
+#define SFS_MKCONINFO(cl, ty, len, lsn) \
+	(						\
+		((uint64_t)(cl) << 63) |		\
+		((uint64_t)(ty) << 56) |		\
+		((uint64_t)((len + 1) / 2) << 48) |	\
+		(lsn)					\
+	)
+
+/* symbolic names for the type code classes */
+#define SFS_JPHYS_CONTAINER	0
+#define SFS_JPHYS_CLIENT	1
+
+/* container-level record types (allowable range 0-127) */
+#define SFS_JPHYS_INVALID	0		/* No record here */
+#define SFS_JPHYS_PAD		1		/* Padding */
+#define SFS_JPHYS_TRIM		2		/* Log trim record */
+
+/* The record header */
+struct sfs_jphys_header {
+	uint64_t jh_coninfo;			/* Container info */
+};
+
+/* Contents for SFS_JPHYS_TRIM */
+struct sfs_jphys_trim {
+	uint64_t jt_taillsn;			/* Tail LSN */
 };
 
 

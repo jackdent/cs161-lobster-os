@@ -127,13 +127,51 @@ sfs_writeblock(struct fs *fs, daddr_t block, void *fsbufdata,
 	struct sfs_fs *sfs = fs->fs_data;
 	struct iovec iov;
 	struct uio ku;
+	bool isjournal;
+	int result;
 
 	(void)fsbufdata;
 
 	KASSERT(len == SFS_BLOCKSIZE);
 
+	isjournal = sfs_block_is_journal(sfs, block);
+
+	if (isjournal) {
+		/*
+		 * We're writing a journal buffer; the journal must be
+		 * written in order, so all earlier journal buffers
+		 * must be written first.
+		 *
+		 * One might think that a good and simple way to flush
+		 * the journal in order is to have each journal buffer
+		 * record that the previous journal buffer must be
+		 * written out before it. Then writing a journal
+		 * buffer will come here to write the previous one,
+		 * which will come here to write the previous one, and
+		 * so on until we get to the first remaining unwritten
+		 * journal buffer. This doesn't work: it runs off the
+		 * kernel stack. Also, it's likely to deadlock.
+		 *
+		 * Instead, we use special-case logic in the journal
+		 * code for this situation.
+		 */
+		result = sfs_jphys_flushforjournalblock(sfs, block);
+		if (result) {
+			return result;
+		}
+	}
+
 	SFSUIO(&iov, &ku, data, block, UIO_WRITE);
-	return sfs_rwblock(sfs, &ku);
+	result = sfs_rwblock(sfs, &ku);
+	if (result) {
+		return result;
+	}
+
+	if (isjournal) {
+		sfs_wrote_journal_block(sfs, block);
+	}
+
+	return 0;
 }
 
 ////////////////////////////////////////////////////////////
@@ -223,6 +261,8 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 
 /*
  * Do I/O (either read or write) of a single whole block.
+ *
+ * Locking: must hold vnode lock. May get/release sfs_freemaplock.
  *
  * Requires up to 2 buffers.
  */

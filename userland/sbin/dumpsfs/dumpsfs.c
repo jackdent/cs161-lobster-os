@@ -127,6 +127,67 @@ dumplval(const char *desc, const char *lval)
 	dumppos += 2;
 }
 
+#if 0 /* you may find these useful */
+static
+void
+dumphexrow(uint8_t *buf, size_t len, size_t padlen)
+{
+	size_t i;
+
+	for (i=0; i<padlen; i++) {
+		if (padlen % 8 == 0) {
+			putchar(' ');
+		}
+		if (i < len) {
+			printf("%02x", buf[i]);
+		}
+		else {
+			printf("  ");
+		}
+	}
+	printf("  ");
+	for (i=0; i<padlen; i++) {
+		if (i < len) {
+			if (buf[i] < 32 || buf[i] > 126) {
+				putchar('.');
+			}
+			else {
+				putchar(buf[i]);
+			}
+		}
+		else {
+			putchar(' ');
+		}
+	}
+}
+
+static
+void
+diffhexdump(uint8_t *od, uint8_t *nd, size_t len)
+{
+	size_t i, limit;
+	char posbuf[16];
+
+	for (i=0; i<len; i+=16) {
+		limit = len - i;
+		if (limit > 16) {
+			limit = 16;
+		}
+
+		snprintf(posbuf, sizeof(posbuf), "0x%zx", i);
+
+		printf("-       %4s", posbuf);
+		dumphexrow(od+i, limit, 16);
+		printf("\n");
+
+		printf("+       %4s", posbuf);
+		dumphexrow(nd+i, limit, 16);
+		printf("\n");
+	}
+}
+#endif
+
+
 ////////////////////////////////////////////////////////////
 // fs structures
 
@@ -162,6 +223,8 @@ dumpsb(void)
 	dumpvalf("Freemap size", "%u blocks",
 		 SFS_FREEMAPBLOCKS(SWAP32(sb.sb_nblocks)));
 	dumpvalf("Block size", "%u bytes", SFS_BLOCKSIZE);
+	dumpvalf("Journal start", "%u", SWAP32(sb.sb_journalstart));
+	dumpvalf("Journal size", "%u blocks", SWAP32(sb.sb_journalblocks));
 	dumplval("Volume name", sb.sb_volname);
 
 	for (i=0; i<ARRAYCOUNT(sb.reserved); i++) {
@@ -230,16 +293,492 @@ dumpfreemap(uint32_t fsblocks)
 
 static
 void
-dumpindirect(uint32_t block)
+copyandzero(void *dest, size_t destlen, const void *src, size_t srclen)
+{
+	if (destlen < srclen) {
+		printf("[too big: got %zu expected %zu] ", srclen, destlen);
+		memcpy(dest, src, destlen);
+	}
+	else if (destlen > srclen) {
+		printf("[too small: got %zu expected %zu] ", srclen, destlen);
+		memcpy(dest, src, srclen);
+		memset((char *)dest + srclen, '\0', destlen - srclen);
+	}
+	else {
+		memcpy(dest, src, destlen);
+	}
+}
+
+static
+bool
+iszeroed(const uint8_t *buf, size_t len)
+{
+	size_t i;
+
+	for (i=0; i<len; i++) {
+		if (buf[i]) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static
+void
+dump_container_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
+		      unsigned type, void *data, size_t len)
+{
+	char buf[64];
+
+	snprintf(buf, sizeof(buf), "[%u.%u]:", myblock, myoffset);
+	printf("    %-8s %-8llu ", buf, (unsigned long long)mylsn);
+	switch (type) {
+
+	    /* container-level records */
+	    case SFS_JPHYS_INVALID:
+		/* XXX: hexdump the contents */
+		printf("... invalid\n");
+		break;
+	    case SFS_JPHYS_PAD:
+		printf("[pad %zu]\n", len);
+		break;
+	    case SFS_JPHYS_TRIM:
+		{
+			struct sfs_jphys_trim jt;
+
+			copyandzero(&jt, sizeof(jt), data, len);
+			printf("TRIM -> %llu\n",
+			       (unsigned long long)SWAP64(jt.jt_taillsn));
+		}
+		break;
+	    default:
+		/* XXX hexdump it */
+		printf("Unknown record type %u\n", type);
+		break;
+	}
+}
+
+static
+void
+dump_client_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
+		   unsigned type, void *data, size_t len)
+{
+	char buf[64];
+
+	snprintf(buf, sizeof(buf), "[%u.%u]:", myblock, myoffset);
+	printf("    %-8s %-8llu ", buf, (unsigned long long)mylsn);
+	switch (type) {
+
+	    /* recovery-level records */
+
+		/*
+		 * You write this.
+		 */
+		(void)data;
+		(void)len;
+
+	    default:
+		/* XXX hexdump it */
+		printf("Unknown record type %u\n", type);
+		break;
+	}
+}
+
+/*
+ * Find the physical location of an LSN.
+ */
+static
+void
+findlsn(const uint64_t *firstlsns, uint32_t jstart, uint32_t jblocks,
+	uint64_t targetlsn,
+	uint32_t *block_ret, unsigned *offset_ret)
+{
+	uint32_t block, nextblock;
+	uint8_t buf[SFS_BLOCKSIZE];
+	unsigned offset;
+	struct sfs_jphys_header jh;
+	uint64_t ci;
+	uint64_t lsn;
+	unsigned len;
+
+	for (block = 0; block < jblocks; block++) {
+		nextblock = (block + 1) % jblocks;
+
+		if (targetlsn < firstlsns[block]) {
+			continue;
+		}
+		if (firstlsns[block] > firstlsns[nextblock] ||
+		    firstlsns[nextblock] == 0 ||
+		    targetlsn < firstlsns[nextblock]) {
+			goto found;
+		}
+	}
+	errx(1, "Cannot find block for tail LSN %llu",
+	     (unsigned long long)targetlsn);
+
+ found:
+
+	diskread(buf, jstart + block);
+	offset = 0;
+	while (offset + sizeof(jh) <= SFS_BLOCKSIZE) {
+		memcpy(&jh, buf + offset, sizeof(jh));
+		ci = SWAP64(jh.jh_coninfo);
+		assert(ci != 0);
+		lsn = SFS_CONINFO_LSN(ci);
+		len = SFS_CONINFO_LEN(ci);
+
+		if (lsn == targetlsn) {
+			*block_ret = block;
+			*offset_ret = offset;
+			return;
+		}
+		offset += len;
+	}
+	errx(1, "Cannot find offset for tail LSN %llu in block %u",
+	     (unsigned long long)targetlsn, block);
+}
+
+static
+void
+dumpjournal(void)
+{
+	struct sfs_superblock sb;
+	uint32_t jstart, jblocks;
+	struct sfs_jphys_header jh;
+	uint64_t ci;
+	unsigned len;
+	unsigned class, type;
+	struct sfs_jphys_trim jt;
+	uint8_t buf[SFS_BLOCKSIZE];
+
+	uint64_t bh_checkpoint_taillsn, eoj_checkpoint_taillsn;
+	//uint32_t bh_checkpoint_block, eoj_checkpoint_block;
+	//unsigned bh_checkpoint_offset, eoj_checkpoint_offset;
+
+	uint64_t veryfirstlsn, prevlsn, headlsn, smallestlsn, taillsn;
+	uint32_t headblock, smallestlsn_block, tailblock;
+	unsigned tailoffset;
+
+	uint64_t *firstlsns;
+
+	uint64_t mylsn, lsn;
+	uint32_t myblock, block;
+	unsigned myoffset, offset;
+	void *mydata;
+	unsigned mylen;
+
+
+	diskread(&sb, SFS_SUPER_BLOCK);
+	jstart = SWAP32(sb.sb_journalstart);
+	jblocks = SWAP32(sb.sb_journalblocks);
+
+	printf("Journal (%u blocks at %u)\n", jblocks, jstart);
+	printf("--------------------------------\n");
+
+	/*
+	 * First pass: read the LSNs and find the head. If this
+	 * doesn't work, try using -J to do a physical journal dump.
+	 */
+
+	bh_checkpoint_taillsn = eoj_checkpoint_taillsn = 0;
+	//bh_checkpoint_block = eoj_checkpoint_block = 0;
+	//bh_checkpoint_offset = eoj_checkpoint_offset = 0;
+
+	veryfirstlsn = 0;
+	prevlsn = 0;
+	headlsn = 0;
+	smallestlsn = 0;
+	headblock = 0;
+	smallestlsn_block = 0;
+	tailblock = 0;
+	tailoffset = 0;
+	firstlsns = malloc(jblocks * sizeof(firstlsns[0]));
+
+	for (block=0; block<jblocks; block++) {
+		diskread(buf, jstart + block);
+		offset = 0;
+		while (offset + sizeof(jh) <= SFS_BLOCKSIZE) {
+			assert(offset % sizeof(uint16_t) == 0);
+			memcpy(&jh, buf + offset, sizeof(jh));
+			ci = SWAP64(jh.jh_coninfo);
+			if (ci == 0) {
+				if (offset != 0) {
+					errx(1, "At %u[%u] in journal: "
+					     "zero header\n", block, offset);
+				}
+				/* block hasn't been used yet */
+				firstlsns[block] = 0;
+				if (headlsn == 0) {
+					headlsn = prevlsn + 1;
+					headblock = block;
+				}
+				break;
+			}
+			lsn = SFS_CONINFO_LSN(ci);
+			len = SFS_CONINFO_LEN(ci);
+
+			if (offset == 0) {
+				firstlsns[block] = lsn;
+			}
+
+			if (len == 0) {
+				errx(1, "At %u[%u] in journal: "
+				     "zero-length record", block, offset);
+			}
+			if (len < sizeof(jh)) {
+				errx(1, "At %u[%u] in journal: "
+				     "runt record (length %u)",
+				     block, offset, len);
+			}
+
+			if (block == 0 && offset == 0) {
+				veryfirstlsn = lsn;
+			}
+			else if (block > 0 && offset == 0 && lsn < prevlsn) {
+				if (lsn > veryfirstlsn) {
+					errx(1, "At %u[%u] in journal: "
+					     "duplicate lsn %llu\n",
+					     block, offset,
+					     (unsigned long long)lsn);
+				}
+				smallestlsn = lsn;
+				smallestlsn_block = block;
+				headlsn = prevlsn + 1;
+				headblock = block;
+			}
+			else {
+				if (lsn != prevlsn + 1) {
+					errx(1, "At %u[%u] in journal: "
+					     "discontiguous lsn %llu, "
+					     "after %llu\n",
+					     block, offset,
+					     (unsigned long long)lsn,
+					     (unsigned long long)prevlsn);
+				}
+			}
+
+			/*
+			 * Remember the location and save the contents of:
+			 *    - the last checkpoint we see before we find
+			 *      the head
+			 *    - the last checkpoint we see before the
+			 *      physical end of the journal
+			 */
+			if (SFS_CONINFO_CLASS(ci) == SFS_JPHYS_CONTAINER &&
+			    SFS_CONINFO_TYPE(ci) == SFS_JPHYS_TRIM) {
+				if (len != sizeof(jh) + sizeof(jt)) {
+					errx(1, "At %u[%u] in journal: "
+					     "bad trim record size %u\n",
+					     block, offset, len);
+				}
+				memcpy(&jt, buf + offset + sizeof(jh),
+				       sizeof(jt));
+				jt.jt_taillsn = SWAP64(jt.jt_taillsn);
+				if (headlsn == 0) {
+					bh_checkpoint_taillsn = jt.jt_taillsn;
+					//bh_checkpoint_block = block;
+					//bh_checkpoint_offset = offset;
+				}
+				else {
+					eoj_checkpoint_taillsn = jt.jt_taillsn;
+					//eoj_checkpoint_block = block;
+					//eoj_checkpoint_offset = offset;
+				}
+			}
+
+			prevlsn = lsn;
+			offset += len;
+		}
+	}
+
+	/*
+	 * Second: find the tail. We don't need to scan again; pick
+	 * either bh_checkpoint_taillsn or eoj_checkpoint_taillsn.
+	 * Or neither, in which case we use either veryfirstlsn or
+	 * smallestlsn.
+	 */
+	if (bh_checkpoint_taillsn != 0) {
+		taillsn = bh_checkpoint_taillsn;
+		findlsn(firstlsns, jstart, jblocks, taillsn,
+			&tailblock, &tailoffset);
+	}
+	else if (eoj_checkpoint_taillsn != 0) {
+		taillsn = eoj_checkpoint_taillsn;
+		findlsn(firstlsns, jstart, jblocks, taillsn,
+			&tailblock, &tailoffset);
+	}
+	else if (smallestlsn != 0) {
+		taillsn = smallestlsn;
+		tailblock = smallestlsn_block;
+		tailoffset = 0;
+	}
+	else {
+		taillsn = veryfirstlsn;
+		tailblock = 0;
+		tailoffset = 0;
+	}
+
+	free(firstlsns);
+	firstlsns = NULL;
+
+	printf("    head: lsn %llu, at %u[0]\n",
+	       (unsigned long long)headlsn, headblock);
+	printf("    tail: lsn %llu, at %u[%u]\n",
+	       (unsigned long long)taillsn, tailblock, tailoffset);
+	printf("\n");
+
+	myblock = tailblock;
+	myoffset = tailoffset;
+	mylsn = taillsn;
+	diskread(buf, jstart + myblock);
+	while (mylsn < headlsn) {
+		while (myoffset + sizeof(jh) <= SFS_BLOCKSIZE) {
+			memcpy(&jh, buf + myoffset, sizeof(jh));
+			ci = SWAP64(jh.jh_coninfo);
+			class = SFS_CONINFO_CLASS(ci);
+			type = SFS_CONINFO_TYPE(ci);
+			len = SFS_CONINFO_LEN(ci);
+			lsn = SFS_CONINFO_LSN(ci);
+
+			/* these have already been checked */
+			assert(lsn == mylsn);
+			assert(len >= sizeof(jh));
+
+			mydata = buf + myoffset + sizeof(jh);
+			mylen = len - sizeof(jh);
+
+			if (class == SFS_JPHYS_CONTAINER) {
+				dump_container_record(myblock, myoffset, mylsn,
+						      type, mydata, mylen);
+			}
+			else {
+				dump_client_record(myblock, myoffset, mylsn,
+						   type, mydata, mylen);
+			}
+
+			myoffset += len;
+			mylsn++;
+		}
+		myblock = (myblock + 1) % jblocks;
+		myoffset = 0;
+		diskread(buf, jstart + myblock);
+	}
+	printf("\n");
+}
+
+static
+void
+dumpphysjournal(void)
+{
+	struct sfs_superblock sb;
+	uint32_t jstart, jblocks;
+	uint8_t buf[SFS_BLOCKSIZE];
+	struct sfs_jphys_header jh;
+	uint64_t ci;
+	unsigned class, type;
+	unsigned len;
+
+	uint64_t lsn;
+	uint32_t block;
+	unsigned offset;
+
+	void *recdata;
+	size_t reclen;
+
+	unsigned slop, fix;
+
+	char pbuf[64];
+
+
+	diskread(&sb, SFS_SUPER_BLOCK);
+	jstart = SWAP32(sb.sb_journalstart);
+	jblocks = SWAP32(sb.sb_journalblocks);
+
+	printf("Physical journal (%u blocks at %u)\n", jblocks, jstart);
+	printf("----------------------------------------\n");
+
+	for (block=0; block<jblocks; block++) {
+		diskread(buf, jstart + block);
+		offset = 0;
+		while (offset + sizeof(jh) <= SFS_BLOCKSIZE) {
+			slop = offset % sizeof(uint16_t);
+			if (slop != 0) {
+				fix = sizeof(jh) - slop;
+				warnx("At %u[%u] in journal: "
+				      "unaligned, skipping %u bytes",
+				      block, offset, fix);
+				offset += fix;
+				continue;
+			}
+			assert(offset % sizeof(uint16_t) == 0);
+
+			if (iszeroed(buf, sizeof(buf))) {
+				snprintf(pbuf, sizeof(pbuf), "[%u.*]:", block);
+				printf("    %-8s [block is zero]\n", pbuf);
+				break;
+			}
+
+			memcpy(&jh, buf + offset, sizeof(jh));
+			ci = SWAP64(jh.jh_coninfo);
+			if (ci == 0) {
+				snprintf(pbuf, sizeof(pbuf), "[%u.%u]:",
+					 block, offset);
+				printf("    %-8s 0  [Zero record]\n", pbuf);
+				offset += sizeof(jh);
+				continue;
+			}
+
+			class = SFS_CONINFO_CLASS(ci);
+			type = SFS_CONINFO_TYPE(ci);
+			len = SFS_CONINFO_LEN(ci);
+			lsn = SFS_CONINFO_LSN(ci);
+
+			if (len < sizeof(jh)) {
+				warnx("At %u[%u] in journal: "
+				      "record too small (size %u)",
+				      block, offset, len);
+				/* There is at least this much data present. */
+				len = sizeof(jh);
+			}
+			if (offset + len > SFS_BLOCKSIZE) {
+				warnx("At %u[%u] in journal: "
+				      "record too large (size %u)",
+				      block, offset, len);
+				len = SFS_BLOCKSIZE - offset;
+			}
+			recdata = buf + offset + sizeof(jh);
+			reclen = len - sizeof(jh);
+			if (class == SFS_JPHYS_CONTAINER) {
+				dump_container_record(block, offset, lsn, type,
+						      recdata, reclen);
+			}
+			else {
+				dump_client_record(block, offset, lsn, type,
+						   recdata, reclen);
+			}
+			offset += len;
+		}
+	}
+}
+
+static
+void
+dumpindirect(uint32_t block, unsigned indirection)
 {
 	uint32_t ib[SFS_BLOCKSIZE/sizeof(uint32_t)];
 	char tmp[128];
 	unsigned i;
 
+	static const char *const names[4] = {
+		"Direct", "Indirect", "Double indirect", "Triple indirect"
+	};
+
+	assert(indirection < 4);
+
 	if (block == 0) {
 		return;
 	}
-	printf("Indirect block %u\n", block);
+	printf("%s block %u\n", names[indirection], block);
 
 	diskread(ib, block);
 	for (i=0; i<ARRAYCOUNT(ib); i++) {
@@ -253,12 +792,17 @@ dumpindirect(uint32_t block)
 			printf("\n");
 		}
 	}
+	if (indirection > 1) {
+		for (i=0; i<ARRAYCOUNT(ib); i++) {
+			dumpindirect(SWAP32(ib[i]), indirection - 1);
+		}
+	}
 }
 
 static
 uint32_t
 traverse_ib(uint32_t fileblock, uint32_t numblocks, uint32_t block,
-	    void (*doblock)(uint32_t, uint32_t))
+	    unsigned indirection, void (*doblock)(uint32_t, uint32_t))
 {
 	uint32_t ib[SFS_BLOCKSIZE/sizeof(uint32_t)];
 	unsigned i;
@@ -270,7 +814,14 @@ traverse_ib(uint32_t fileblock, uint32_t numblocks, uint32_t block,
 		diskread(ib, block);
 	}
 	for (i=0; i<ARRAYCOUNT(ib) && fileblock < numblocks; i++) {
-		doblock(fileblock++, SWAP32(ib[i]));
+		if (indirection > 1) {
+			fileblock = traverse_ib(fileblock, numblocks,
+						SWAP32(ib[i]), indirection-1,
+						doblock);
+		}
+		else {
+			doblock(fileblock++, SWAP32(ib[i]));
+		}
 	}
 	return fileblock;
 }
@@ -291,7 +842,15 @@ traverse(const struct sfs_dinode *sfi, void (*doblock)(uint32_t, uint32_t))
 	}
 	if (fileblock < numblocks) {
 		fileblock = traverse_ib(fileblock, numblocks,
-					SWAP32(sfi->sfi_indirect), doblock);
+					SWAP32(sfi->sfi_indirect), 1, doblock);
+	}
+	if (fileblock < numblocks) {
+		fileblock = traverse_ib(fileblock, numblocks,
+				       SWAP32(sfi->sfi_dindirect), 2, doblock);
+	}
+	if (fileblock < numblocks) {
+		fileblock = traverse_ib(fileblock, numblocks,
+				       SWAP32(sfi->sfi_tindirect), 3, doblock);
 	}
 	assert(fileblock == numblocks);
 }
@@ -480,6 +1039,10 @@ dumpinode(uint32_t ino, const char *name)
 	}
 	printf("    Indirect block: %u (0x%x)\n",
 	       SWAP32(sfi.sfi_indirect), SWAP32(sfi.sfi_indirect));
+	printf("    Double indirect block: %u (0x%x)\n",
+	       SWAP32(sfi.sfi_dindirect), SWAP32(sfi.sfi_dindirect));
+	printf("    Triple indirect block: %u (0x%x)\n",
+	       SWAP32(sfi.sfi_tindirect), SWAP32(sfi.sfi_tindirect));
 	for (i=0; i<ARRAYCOUNT(sfi.sfi_waste); i++) {
 		if (sfi.sfi_waste[i] != 0) {
 			printf("    Word %u in waste area: 0x%x\n",
@@ -488,7 +1051,9 @@ dumpinode(uint32_t ino, const char *name)
 	}
 
 	if (doindirect) {
-		dumpindirect(SWAP32(sfi.sfi_indirect));
+		dumpindirect(SWAP32(sfi.sfi_indirect), 1);
+		dumpindirect(SWAP32(sfi.sfi_dindirect), 2);
+		dumpindirect(SWAP32(sfi.sfi_tindirect), 3);
 	}
 
 	if (SWAP16(sfi.sfi_type) == SFS_TYPE_DIR && dodirs) {
@@ -512,6 +1077,8 @@ usage(void)
 	warnx("Usage: dumpsfs [options] device/diskfile");
 	warnx("   -s: dump superblock");
 	warnx("   -b: dump free block bitmap");
+	warnx("   -j: dump journal");
+	warnx("   -J: physical dump of journal");
 	warnx("   -i ino: dump specified inode");
 	warnx("   -I: dump indirect blocks");
 	warnx("   -f: dump file contents");
@@ -526,6 +1093,8 @@ main(int argc, char **argv)
 {
 	bool dosb = false;
 	bool dofreemap = false;
+	bool dojournal = false;
+	bool dophysjournal = false;
 	uint32_t dumpino = 0;
 	const char *dumpdisk = NULL;
 
@@ -544,6 +1113,8 @@ main(int argc, char **argv)
 				switch (argv[i][j]) {
 				    case 's': dosb = true; break;
 				    case 'b': dofreemap = true; break;
+				    case 'j': dojournal = true; break;
+				    case 'J': dophysjournal = true; break;
 				    case 'i':
 					if (argv[i][j+1] == 0) {
 						dumpino = atoi(argv[++i]);
@@ -588,7 +1159,8 @@ main(int argc, char **argv)
 		usage();
 	}
 
-	if (!dosb && !dofreemap && dumpino == 0) {
+	if (!dosb && !dofreemap && !dojournal && !dophysjournal &&
+	    dumpino == 0) {
 		dumpino = SFS_ROOTDIR_INO;
 	}
 
@@ -600,6 +1172,12 @@ main(int argc, char **argv)
 	}
 	if (dofreemap) {
 		dumpfreemap(nblocks);
+	}
+	if (dophysjournal) {
+		dumpphysjournal();
+	}
+	if (dojournal) {
+		dumpjournal();
 	}
 	if (dumpino != 0) {
 		dumpinode(dumpino, NULL);

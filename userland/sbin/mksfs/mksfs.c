@@ -63,6 +63,9 @@
 /* Block number for the initial root directory contents */
 static uint32_t rootdir_data_block;
 
+/* Journal location and size */
+static uint32_t journalstart, journalblocks;
+
 /* Free block bitmap */
 static char freemapbuf[MAXFREEMAPBLOCKS * SFS_BLOCKSIZE];
 
@@ -117,6 +120,13 @@ initfreemap(uint32_t fsblocks)
 		allocblock(SFS_FREEMAP_START + i);
 	}
 
+	/* journal goes after the freemap */
+	journalstart = SFS_FREEMAP_START + freemapblocks;
+	journalblocks = fsblocks / 20;
+	for (i=0; i<journalblocks; i++) {
+		allocblock(journalstart + i);
+	}
+
 	/* allocate a block for the root directory contents */
 	rootdir_data_block = SFS_FREEMAP_START + freemapblocks;
 	allocblock(rootdir_data_block);
@@ -147,6 +157,8 @@ writesuper(const char *volname, uint32_t nblocks)
 	sb.sb_magic = SWAP32(SFS_MAGIC);
 	sb.sb_nblocks = SWAP32(nblocks);
 	strcpy(sb.sb_volname, volname);
+	sb.sb_journalstart = SWAP32(journalstart);
+	sb.sb_journalblocks = SWAP32(journalblocks);
 
 	/* and write it out. */
 	diskwrite(&sb, SFS_SUPER_BLOCK);
@@ -206,6 +218,49 @@ writerootdir(void)
 }
 
 /*
+ * Write out the journal.
+ */
+static
+void
+writejournal(void)
+{
+	char block[SFS_BLOCKSIZE];
+	struct sfs_jphys_header hdr;
+	struct sfs_jphys_trim rec;
+	uint64_t coninfo;
+	unsigned i;
+
+	bzero((void *)block, sizeof(block));
+
+	/* Zero all of the journal but the first block */
+	for (i=1; i<journalblocks; i++) {
+		diskwrite(block, journalstart + i);
+	}
+
+	/* and write a trim record into the first block */
+	coninfo = SFS_MKCONINFO(SFS_JPHYS_CONTAINER,
+				SFS_JPHYS_TRIM,
+				sizeof(hdr) + sizeof(rec), 1 /* first lsn */);
+	hdr.jh_coninfo = SWAP64(coninfo);
+	rec.jt_taillsn = SWAP64(1 /* first lsn */);
+
+	memcpy(block, &hdr, sizeof(hdr));
+	memcpy(block + sizeof(hdr), &rec, sizeof(rec));
+
+	/* put more stuff in here if needed for your checkpoint scheme */
+
+	/* the rest of the block is a pad record */
+	coninfo = SFS_MKCONINFO(SFS_JPHYS_CONTAINER,
+				SFS_JPHYS_PAD,
+				SFS_BLOCKSIZE - sizeof(hdr) - sizeof(rec),
+				2 /* second lsn */);
+	hdr.jh_coninfo = SWAP64(coninfo);
+	memcpy(block + sizeof(hdr) + sizeof(rec), &hdr, sizeof(hdr));
+
+	diskwrite(block, journalstart);
+}
+
+/*
  * Main.
  */
 int
@@ -254,9 +309,11 @@ main(int argc, char **argv)
 	initfreemap(size);
 	writesuper(volname, size);
 	writefreemap(size);
+    writejournal();
 	writerootdir();
 
 	closedisk();
 
 	return 0;
 }
+

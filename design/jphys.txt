@@ -1,0 +1,374 @@
+
+Common physical journal container for SFS
+-----------------------------------------
+
+This code is a generic journal container for doing journaled recovery
+in SFS. It is set up so that you can put whatever records you like
+into it at run time, and read them out again at recovery time and do
+whatever you need to do. It takes care of recovering itself.
+
+This file has four parts: first, an overview of the functional
+behavior of the journal container; second, the interface documentation
+for the sfs_jphys module; third, the on-disk format documentation, in
+case you need to know it when debugging; and finally, the design of
+the internals.
+
+Terminology: because the journal is effectively a double-ended queue,
+one needs to be able to refer unambiguously to either end. In the
+jphys code, the ends are referred to as the HEAD and the TAIL; the
+newest records appear at the HEAD and the oldest appear at the TAIL.
+Specifically, new records are added at the HEAD (which moves it
+forward) and old records are discarded (by "trim") at the TAIL when no
+longer needed. The "forward" direction of the journal is from TAIL to
+HEAD (this is in order of increasing block number, and increasing byte
+offset within blocks); the "backward" direction of the journal is from
+HEAD to TAIL. However, because the on-disk journal is a circular
+buffer, the HEAD block may be either numerically less than or greater
+than the TAIL block, depending on whether the live portion of journal
+includes the wrap-around or not.
+
+If the journal fills up, the head collides with the tail; this causes
+a panic. Higher-level code needs to implement a checkpointing scheme
+to avoid this.
+
+
+1. Overview
+-----------
+
+The journal container has two quite distinct functions: first, during
+operation it provides a write interface for adding new records to the
+journal. These are flushed to disk on demand. And second, during
+recovery (at the end of mounting) it provides a read interface for
+iterating through the records previously written to the journal and
+inspecting them for actions to take.
+
+The contents of records written to the journal are entirely arbitrary;
+this is up to higher-level code. Each record has associated with it a
+type code and a length. Type codes are 7-bit unsigned integers (values
+0-127); the length may be from 0 to 512 but must be 2-byte aligned
+(thus, even numbers only). Writing a record to the journal returns a
+64-bit log sequence number (LSN) that can be used later for flushing
+the journal. Note that the first LSN is 1; zero is invalid and can be
+used as a magic signalling value.
+
+Note that because a record must fit in a disk block and the container
+needs to add header information, 512-byte records will not actually
+work. Currently the limit is 504 bytes; however, we recommend writing
+much smaller records.
+
+During volume startup (that is, mount), the journal container must
+first be created; then, once all the pieces of the file system are
+created and the superblock has been loaded, it must itself be
+recovered. If anything goes wrong at this point, it can just be
+destroyed.
+
+Once the container's own recovery has been run, higher-level recovery
+can be run to recover the rest of the volume. This happens in reader
+mode, which must be explicitly enabled and allows iterating the
+journal. If something goes wrong, reader mode must be disabled again
+before the container can be destroyed.
+
+Once the volume is ready to run, the container can be put in writer
+mode, which enables the journal write interface. Again, writer mode
+must be disabled again before the container can be destroyed, whether
+on error or during unmount.
+
+Normally one completes all recovery (or at least all recovery that
+requires scanning the journal) and switches off reader mode before
+enabling writer mode. This is the recommended procedure. However, it
+is possible to enable both modes at once. In this case the iterator
+interface will not see newly added records, nor will it be affected by
+trim operations. However, letting newly added journal records intrude
+into the journal area viewed by the iterator produces undefined
+behavior; for this reason if you really must run both modes at once,
+try to avoid writing a lot of material into the journal until reader
+mode is switched off.
+
+Note that the reader mode interface assumes that recovery is
+single-threaded and no other threads are working on the volume.
+Parallelized recovery is potentially a thing but not one we are
+pursuing here.
+
+
+2. Interface
+------------
+
+The interface to sfs_jphys has three parts:
+   A. Startup, shutdown, and mode changes.
+   B. Recovery-time journal access
+   C. Run-time journal writing
+
+A. Startup, shutdown, and mode changes.
+
+   sfs_jphys_create
+   sfs_jphys_loadup
+   sfs_jphys_startreading
+   sfs_jphys_stopreading
+   sfs_jphys_startwriting
+   sfs_jphys_unstartwriting
+   sfs_jphys_stopwriting
+   sfs_jphys_destroy
+
+As described above, on startup the journal container must first be
+created and then loaded/recovered. Then, the reader and writer modes
+may be turned on and off.
+
+sfs_jphys_create creates the jphys data structures. This should be
+(is) called in sfs_fs_create before reading the superblock. If it
+fails, no jphys structures are created.
+
+sfs_jphys_loadup loads and recovers the journal container; that is, it
+reads the journal to find where the head and tail are. It should be
+(and is) called from sfs_fs_domount. If it fails, the jphys data
+structures already created should be destroyed with sfs_jphys_destroy.
+
+sfs_jphys_startreading enables reader mode. This allows use of the
+reader mode interface for reading the journal, described in part B.
+This is called from sfs_fs_domount after sfs_jphys_loadup.
+
+sfs_jphys_stopreading disables reader mode. Once reader mode is
+enabled, this must be called before any call to sfs_jphys_destroy if
+something goes wrong during higher-level recovery. It should also be
+done prior to beginning normal file system operation.
+
+sfs_jphys_startwriting enables writer mode. This allows use of the
+writer mode interface for writing to the journal, described in part C.
+Currently this is called at the end of sfs_fs_domount. If it fails,
+the jphys data structures already created should be destroyed with
+sfs_jphys_destroy.
+
+Note that as described above it is possible to overlap reader and
+writer mode. However, this is not recommended, and it is preferable
+(for semantic recovery reasons) to disable reader mode before enabling
+writer mode. But even if overlapping reader and writer mode, it is
+important to disable reader mode prior to beginning normal file system
+operations, that is, before sfs_fs_domount returns. The journal is not
+designed to be read from on the fly at run time.
+
+Once writer mode is enabled, it must be disabled again before any call
+to sfs_jphys_destroy, whether because something goes wrong or at
+unmount time.
+
+If something goes wrong during mount but after writing mode is
+enabled, so the volume has not yet gone live, use
+sfs_jphys_unstartwriting to switch off writer mode. This makes no
+attempt to flush the journal, or care about whether the journal has
+been flushed.
+
+At unmount time, use sfs_jphys_stopwriting instead. This requires that
+the journal has been fully flushed beforehand, and that no more
+records get written; otherwise it will most likely assert.
+sfs_jphys_stopwriting should be (is) called from sfs_unmount.
+
+sfs_jphys_destroy destroys the jphys data structures. Both reader and
+writer mode must be disabled before calling this.
+
+
+B. Reader interface
+
+   sfs_jiter_fwdcreate
+   sfs_jiter_revcreate
+   sfs_jiter_done
+   sfs_jiter_type
+   sfs_jiter_lsn
+   sfs_jiter_rec
+   sfs_jiter_next
+   sfs_jiter_prev
+   sfs_jiter_seekhead
+   sfs_jiter_seektail
+   sfs_jiter_destroy
+
+The sfs_jiter interface allows iterating over the journal during
+recovery. It only works when reader mode is enabled, as per the above
+discussions.
+
+The iterator model is a bit complicated, because a number of the
+underlying operations can fail.
+
+The two functions for creating a journal iterator are
+sfs_jiter_fwdcreate and sfs_jiter_revcreate. These create an iterator
+and position it at the journal tail and head, respectively, for
+iterating forwards and backwards, also respectively. Creating an
+iterator can fail, both for mundane reasons like memory allocation
+failure and also in some cases because of read errors on the journal.
+Generally journal read errors are unrecoverable, in the sense that if
+you can't read the journal you can't continue mounting the volume.
+
+After creation (and after advancing the iterator), use sfs_jiter_done
+to test whether the other end of the journal has been reached. This
+function does not fail. Once the end has been reached, use one of the
+positioning functions to continue reading the journal, including if
+changing direction; otherwise you might read out an internal
+container-level record, or also potentially skip a record, which might
+cause confusion or panics. (That this can happen is a bug. XXX)
+
+The functions sfs_jiter_type, sfs_jiter_lsn, and sfs_jiter_rec return
+the contents of the current record: the type code, as passed earlier
+to sfs_jphys_write, the LSN, and a binary blob (void pointer and
+length in octets) for the record contents. These functions do not
+fail.
+
+The functions sfs_jiter_next and sfs_jiter_prev advance the iterator,
+towards the head and tail respectively. These can be mixed freely,
+regardless of the direction chosen when the iterator was initialized.
+They can fail if a read error on the journal occurs.
+
+The functions sfs_jiter_seekhead and sfs_jiter_seektail move the
+iterator to the head (newest record) and tail (oldest record)
+respectively. They can also fail.
+
+sfs_jiter_destroy should be used to clean up any iterator that was
+successfully created.
+
+Here is skeleton code for reading the journal forward:
+
+   sfs_jiter *ji;
+
+   result = sfs_jiter_fwdcreate(sfs, &ji);
+   if (result) fail;
+   while (!sfs_jiter_done(ji)) {
+      type = sfs_jiter_type(ji);
+      lsn = sfs_jiter_lsn(ji);
+      recptr = sfs_jiter_rec(ji, &reclen);
+      ...
+      result = sfs_jiter_next(sfs, ji);
+      if (result) fail;
+   }
+   sfs_jiter_destroy(ji);
+
+Backward is the same, except for using sfs_jiter_revcreate/prev
+instead of fwdcreate/next.
+
+The iterator always scans the entire live portion of the journal as
+found by sfs_jphys_loadup(). There is no good way to save positions
+and return to them later.
+
+
+C. Writer interface
+
+   sfs_jphys_write
+   sfs_jphys_flush
+   sfs_jphys_flushforjournalblock
+   sfs_jphys_flushall
+   sfs_wrote_journal_block
+   sfs_jphys_peeknextlsn
+   sfs_jphys_trim
+   sfs_jphys_getodometer
+   sfs_jphys_clearodometer
+   sfs_block_is_journal
+
+sfs_jphys_write is the main interface for issuing journal records.
+The type code and record size, as well as the record data itself,
+will be recorded in the journal and read back at recovery time with
+the journal reader interface.
+
+Type codes must range between 0 and 127. The record size may be
+between 0 and 504 (one block less the size of the 8-octet internal
+header) and must be aligned to a 2-byte boundary. (Thus, must be an
+even number.) The record contents may be whatever arbitrary binary
+data you wish.
+
+The callback function is provided because for the first record of a
+transaction (or for standalone records) it may be necessary to record
+the newly written LSN in upper-level control structures that keep
+track of where the journal tail is *before* the container code
+releases its internal locks. Otherwise, a race condition can exist
+where a simultaneously running checkpoint can conclude that no
+transactions are running and the whole journal can be trimmed away,
+and accidentally discard the newly added record. The callback function
+can be used to do this update. Note that the callback function is
+called with internal container-level locks held, so to avoid deadlock
+any locks it takes must come strictly after those locks. The context
+argument passed through to the callback has a type that you can define
+however you want for your own convenience.
+
+Whether you need to make use of the callback function for some journal
+writes depends to some extent on your data structures and locking
+model; it is believed possible to have a correct implementation that
+does not use it.
+
+If/when you don't need the callback function, pass NULL for it and the
+context pointer.
+
+Explicitly flushing the journal is in general required to maintain the
+write-ahead property of journaled recovery. There are three flushing
+functions:
+
+sfs_jphys_flush flushes the journal up to and including a designated
+LSN.  This is most likely the interface you will use to make sure that
+writing a block out occurs only after the log records describing it.
+
+sfs_jphys_flushforjournalblock flushes the journal up to but *not*
+including a specified journal block. This is used in sfs_writeblock to
+make sure the journal gets written out in order. (This code is already
+in place.)
+
+sfs_jphys_flushall flushes the entire journal. This may be useful when
+syncing or checkpointing.
+
+sfs_wrote_journal_block is a callback from sfs_writeblock to tell the
+journal container that a journal block got written out successfully.
+This updates the internal state that keeps track of which journal
+blocks need to be written. (This code is already in place.)
+
+sfs_jphys_peeknextlsn returns the next LSN that will be used. However,
+because it unlocks the container before returning, no guarantees are
+made about whether that LSN *stays* unused. This makes the safe uses
+of this function limited. (But not nonexistent - it is meant to provide
+an LSN to trim to when checkpointing if no other constraints apply.)
+
+sfs_jphys_trim updates the on-disk journal tail, discarding a portion
+of the log. This can be used as part of a checkpoint scheme. Note that
+it works by writing the tail position to the journal; you also need to
+flush the journal if you want the new tail to take effect on disk
+immediately.
+
+sfs_jphys_getodometer returns the number of journal blocks used since
+mount or the last call to sfs_jphys_clearodometer. This can be used to
+schedule checkpointing.
+
+sfs_block_is_journal is a utility function that returns whether a
+particular disk block number is part of the journal. This is used, for
+example, by sfs_writeblock.
+
+
+3. On-disk format
+-----------------
+
+The journal is a circular buffer of blocks. The start block and number
+of blocks are recorded in the superblock. Each block contains one or
+more records, each of which is an 8-byte header followed by an
+arbitrary chunk of data. The format of the header is described in
+kern/sfs.h; the format of the data chunks is determined by
+higher-level code, except for the container-level record types.
+
+If there's space at the end of the block that isn't big enough for a
+record header, that space is implicitly skipped. Otherwise, spaces not
+big enough to write the next record into are filled with a pad record.
+Trim records record sfs_jphys_trim calls made at runtime, and contain
+the LSN of the tail end of the journal as of the time the trim record
+was issued. This serves as a checkpoint for container-level recovery.
+A record that is all zeros is invalid; it is assumed in a number of
+places that if an all-zeros record is encountered, it is in an
+entirely unused journal block that can be ignored.
+
+Each record has a log sequence number (LSN), which is monotonically
+increasing as one goes forward through the journal. The head of the
+journal (the most recent point, where new records are added) is the
+point where the next record's LSN is lower than the current record's
+LSN. This should always be at a block boundary.
+
+At load/recovery time, the container code finds the head end by
+scanning the LSNs in the journal, and then searches backwards to find
+a trim record to tell it where the tail end is. Higher level code then
+iterates back and forth between the head and tail to figure out what
+to do to recover the volume.
+
+The structures and constants associated with the on-disk format are
+found in kern/sfs.h.
+
+
+4. Internals
+------------
+
+TBD (to be documented)

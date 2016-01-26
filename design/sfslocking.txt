@@ -1,0 +1,71 @@
+Locking in SFS
+--------------
+
+(This is not so much a design document as an outline of the critical
+properties of the code -- writing a proper design document will have
+to be done sometime in the future.)
+
+The key thing we need is a lock for each vnode. We also need whole-fs
+locks for the vnode table and for the freemap. We also need to
+interact correctly with buffer_lock and buffer busy bits from the
+buffer cache.
+
+The order is as follows:
+   vnode locks, in descending tree order
+   vnode table lock
+   buffer busy bits for buffers belonging to a vnode
+   freemap lock
+
+(Recall that buffer_lock is not directly exposed to the file system.
+See vfslocking.txt.)
+
+You can lock all the buffers you want that belong to a specific vnode,
+but only if you hold that vnode's vnode lock. As a result, no
+particular ordering is required.
+
+The freemap lock is in a number of ways equivalent to a buffer busy
+bit; if one were to rework the freemap code so the freemap is stored
+in the buffer cache, the locking model would not need to change but
+the freemap lock would be replaced with the buffer busy bits for
+freemap buffers. (What order would those buffers have? Probably none
+as there should be no reason to lock more than one freemap buffer at a
+time.)
+
+
+Implementation
+--------------
+
+One of the critical things is handling vnode reclaim properly. In
+order to make sure a vnode can't be re-referenced while we're looking
+at it, we need to hold the vnode table lock. But the ordering puts the
+vnode table lock after the vnode lock of the vnode being reclaimed.
+And worse, the vnode refcount lock, being a spinlock, must come after
+both of these.
+
+The model is: vnode_decref releases the refcount spinlock, and if it
+was at the time looking at the last reference, it speculatively calls
+VOP_RECLAIM and passes this last reference in. Then in sfs_reclaim we
+get the locks we need, in the order they need to be gotten in, and
+then finally take the refcount spinlock and check the reference
+count. If the reference count is still 1, we proceed to reclaim the
+vnode. If it's greater, someone else got the vnode during this
+process, so we decrement the reference coutn to consume the reference
+we were passed and return EBUSY. (If the reference count is 0 in
+sfs_reclaim, something went wrong.)
+
+Note that the vnode table lock must come after the vnode locks because
+you have to be able to load a vnode while holding the lock on a
+directory containing the vnode. Without an implementation of
+subdirectories this is not so obvious -- but it is the case, so if
+you've received this code and are expected to implement
+subdirectories, take note.
+
+Also if you are implementing subdirectories, be advised that while
+locking down the tree is conventional, locking up the tree instead is
+a viable alternative. Without subdirectory code, nothing in SFS really
+depends on the downward tree ordering of vnode locks except for the
+call to sfs_loadvnode() in sfs_lookonce(). This can be changed easily
+enough if desired. The choice of down or up should be driven by your
+design for handling rename and rmdir, which are ... not so easy.
+
+TBD (XXX): write about other implementation issues.

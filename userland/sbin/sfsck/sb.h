@@ -49,6 +49,10 @@ uint32_t sb_freemapblocks(void);
 /* After the superblock is loaded: return volume name. */
 const char *sb_volname(void);
 
+/* After the superblock is loaded: return journal info. */
+uint32_t sb_journalstart(void);
+uint32_t sb_journalblocks(void);
+
 /* Check the superblock. Must load it first. */
 void sb_check(void);
 

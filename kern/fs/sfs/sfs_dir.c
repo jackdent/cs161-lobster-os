@@ -44,7 +44,7 @@
  * Read the directory entry out of slot SLOT of a directory vnode.
  * The "slot" is the index of the directory entry, starting at 0.
  *
- * Locking: must hold vnode lock.
+ * Locking: Must hold the vnode lock. May get/release sfs_freemaplock.
  *
  * Requires up to 3 buffers.
  */

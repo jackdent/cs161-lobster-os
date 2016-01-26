@@ -57,9 +57,12 @@ freemap_setup(void)
 {
 	size_t i, mapbytes;
 	uint32_t fsblocks, mapblocks;
+	uint32_t jstart, jblocks;
 
 	fsblocks = sb_totalblocks();
 	mapblocks = sb_freemapblocks();
+	jstart = sb_journalstart();
+	jblocks = sb_journalblocks();
 	mapbytes = mapblocks * SFS_BLOCKSIZE;
 
 	freemapdata = domalloc(mapbytes * sizeof(uint8_t));
@@ -71,6 +74,11 @@ freemap_setup(void)
 	/* Mark off what's in the freemap but past the volume end. */
 	for (i=fsblocks; i < mapblocks*SFS_BITSPERBLOCK; i++) {
 		freemap_blockinuse(i, B_PASTEND, 0);
+	}
+
+	/* Mark off the blocks that are in the journal */
+	for (i=0; i<jblocks; i++) {
+		freemap_blockinuse(jstart + i, B_JOURNAL, i);
 	}
 
 	/* Mark the superblock block and the freemap blocks in use */
@@ -93,6 +101,10 @@ blockusagestr(blockusage_t how, uint32_t howdesc)
 		return "superblock";
 	    case B_FREEMAPBLOCK:
 		snprintf(rv, sizeof(rv), "freemap block %lu",
+			 (unsigned long) howdesc);
+		break;
+	    case B_JOURNAL:
+		snprintf(rv, sizeof(rv), "journal block %lu",
 			 (unsigned long) howdesc);
 		break;
 	    case B_INODE:

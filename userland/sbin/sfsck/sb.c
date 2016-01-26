@@ -83,6 +83,20 @@ sb_check(void)
 		setbadness(EXIT_RECOV);
 		schanged = 1;
 	}
+	if (sb.sb_journalstart <
+	    SFS_FREEMAP_START + SFS_FREEMAPBLOCKS(sb.sb_nblocks)) {
+		warnx("Journal begins at illegal block %lu (NOT FIXED)",
+		      (unsigned long)sb.sb_journalstart);
+		setbadness(EXIT_UNRECOV);
+	}
+	if (sb.sb_journalstart + sb.sb_journalblocks < sb.sb_journalstart) {
+		warnx("Journal extends past block 0xffffffff (NOT FIXED)");
+		setbadness(EXIT_UNRECOV);
+	}
+	if (sb.sb_journalstart + sb.sb_journalblocks >= sb.sb_nblocks) {
+		warnx("Journal extends past volume end (NOT FIXED)");
+		setbadness(EXIT_UNRECOV);
+	}
 	if (checkzeroed(sb.reserved, sizeof(sb.reserved))) {
 		warnx("Reserved section of superblock not zeroed (fixed)");
 		setbadness(EXIT_RECOV);
@@ -121,4 +135,22 @@ const char *
 sb_volname(void)
 {
 	return sb.sb_volname;
+}
+
+/*
+ * Return the journal start block.
+ */
+uint32_t
+sb_journalstart(void)
+{
+	return sb.sb_journalstart;
+}
+
+/*
+ * Return the number of blocks in the journal.
+ */
+uint32_t
+sb_journalblocks(void)
+{
+	return sb.sb_journalblocks;
 }

@@ -397,7 +397,7 @@ sfs_mmap(struct vnode *v   /* add stuff as needed */)
  *
  * Locking: gets/releases vnode lock.
  *
- * Requires up to 3 buffers.
+ * Requires up to 4 buffers.
  */
 static
 int

@@ -38,6 +38,21 @@ OS/161 2.0.2 released 20160112
 20160112 dholland in base, reported by Sam Fishman
    - In thread_make_runnable, don't send unidle IPIs to curcpu.
 
+20160111 dholland in sfs-jphys
+   - Add logic so that a journal write triggered by an eviction
+     triggered by turning over the journal head buffer after a
+     (different) journal write doesn't explode as long as the
+     still-available journal buffer doesn't fill up.
+
+20160111 dholland in sfs-jphys
+   - Add an additional #if 0'd call to sfs_getnextbuf() in
+     sfs_jphys_write_internal. This will need to be enabled if
+     flushing the journal very aggressively to avoid asserting in
+     sfs_advance_journal. See comments at the call site and in
+     sfs_advance_journal for the gory details. The call is not
+     enabled by default because it's been found to have adverse
+     effects in other circumstances.
+
 20160111 dholland in base
    - Provide some simple test automation logic, and install it in
      $(OSTREE)/testscripts. It uses Python and pexpect, so provide
