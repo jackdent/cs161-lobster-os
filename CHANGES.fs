@@ -11,6 +11,7 @@ As of 2016, changes on the fs-related branches go in CHANGES (q.v.).
 This file will be merged into there sometime.
 
 20150805 dholland	Version 2.0.1 of the file system solutions released.
+20150804 dholland	Add O_ACCMODE assertions to fssyscalls for safety.
 20150804 dholland	Always invalidate buffers when freeing blocks.
 20150709 dholland	Improve syncer logic and take steps to avoid having
 ........		it get too far behind.
@@ -34,6 +35,7 @@ This file will be merged into there sometime.
 20140924 dholland	Version 1.99.08 of the file system solutions released.
 20140922 dholland	If . or .. is missing, don't let mkdir use these names.
 20140919 dholland	Don't corrupt the fs if truncate fails in rmdir.
+20140919 dholland	Put the additional syscalls in their own file.
 20140918 dholland	Add support for fs-specific buffer metadata.
 20140917 dholland	Add support for "nosync" buffers. See buf.h.
 20140917 dholland	Kill off most of the buffer reservation logic.

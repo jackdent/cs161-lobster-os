@@ -51,6 +51,16 @@ void enter_forked_process(struct trapframe *tf);
 __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 		       vaddr_t stackptr, vaddr_t entrypoint);
 
+int sys_sync(void);
+int sys_mkdir(userptr_t path, mode_t mode);
+int sys_rmdir(userptr_t path);
+int sys_remove(userptr_t path);
+int sys_link(userptr_t oldpath, userptr_t newpath);
+int sys_rename(userptr_t oldpath, userptr_t newpath);
+int sys_getdirentry(int fd, userptr_t buf, size_t buflen, int *retval);
+int sys_fstat(int fd, userptr_t statptr);
+int sys_fsync(int fd);
+int sys_ftruncate(int fd, off_t len);
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.
