@@ -1,0 +1,11 @@
+build/*
+build
+defs.mk
+kern/compile/*
+*.swp
+.depend
+
+# ignore eclipse metadata files
+.cproject
+.project
+.settings

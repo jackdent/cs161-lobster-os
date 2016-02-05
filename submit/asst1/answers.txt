@@ -1,0 +1,197 @@
+Graham Lustiber
+
+1. Exceptions are handled in the os161/kern/arch/mips/locore/exception-mips1.S file. The assembly instruction j common_exception at line 87 jumps to the 
+instruction mfc0 k0, c0_status at line 105, which gets the status register
+apparently. After some more assembly, we jump to the function mips_trap(),
+which actually handles the exception and can be found in 
+os161/kern/arch/mips/locore/trap.c.
+
+
+2. Systems calls happen in mips_trap() in the file 
+os161/kern/arch/mips/syscall/syscall.c at line 102: switch (callno) {...
+We will add things like read, write, open, etc. to reboot and time.
+
+
+3. A user may want to modify or delete those libraries, so this lets
+the kernel retain what it needs to operate. Moreover, many of the userland
+functions seem to be built using the common/libc functions.
+
+
+4. i. Set up the path for os161's root directory to be installed via 
+line 30 OSTREE='$(HOME)/os161/root'. If you want to run os161 somewhere else,
+say, off an external drive, you'd want to change the installation path.
+
+ii. Establish a C compiler to use, via line 36 HOST_CC=gcc. If gcc breaks
+on your machine, you'd want to reconfigure with a new C compilers.
+
+
+5. Some things are assumptions about the size of primitive types (like ints),
+availability of networking ports, or the total available memory size. By separating
+machine dependent and independent code, it makes rewriting functions easier when
+something has to be ported to a different system: a smaller number of things have
+to be rewritten.
+
+
+6. Line 137 addi sp, sp, -168 in os161/kern/arch/mips/locore/exception-mips1.S,
+where we "Allocate stack space for 37 words to hold the trap frame, plus four more 
+words for a minimal argument block, plus one more for proper (64-bit) stack 
+alignment." We then save the current register values, plus a few other things,
+so that they can be restored when the kernel is done handling the exception.
+
+
+7. Scenario 1. - b, c, d
+Scenario 2. - c
+Scenario 3. - a, b, c, d
+Scenario 4. - d
+Scenario 5. - None
+
+
+8.
+
+#ifndef _ARRAY_H_
+#define _ARRAY_H_
+
+	if _ARRAY_H_ hasn't been defined yet in compilation, define it to prevent
+	it from happening in another .h files
+
+#include <cdefs.h>o
+#include <lib.h>
+
+	includes
+
+#define ARRAYS_CHECKED
+
+	define ARRAYS_CHECKED
+
+#ifdef ARRAYS_CHECKED
+#define ARRAYASSERT KASSERT
+#else
+#define ARRAYASSERT(x) ((void)(x))
+#endif
+
+	if ARRAYS_CHECKED has been defined, we want to check our array 
+	instantiations via KASSERT, defined somewhere else. Otherwise, ignore
+	all ARRAYASSERT macros via (void)
+
+#ifndef ARRAYINLINE
+#define ARRAYINLINE INLINE
+#endif
+
+	if ARRAYINLINE is not defined yet, make it the same as INLINE
+
+Using array.h allows you to use struct array, which is an easier way of keeping
+track of an array's # of items and total capacity rather than having to pass them
+around as separate int arguments.
+
+
+9. It is in the v0 register, with a 0 in a3 indicating error/no error.
+
+
+10. 
+
+i. 		Define its integer value as a MACRO in kern/include/kern/syscall.h
+ii. 	Set up a case for it in the switch (callno) {...} block at line 102 in
+		kern/arch/mips/syscall/syscall.c
+iii. 	Define the handler function in a new file kern/syscall/my_new_syscall.c
+iv. 	Declare the prototype in kern/include/syscall.h
+v. 		Do a, b, c, d from Q7
+
+
+11. start.S first sets up a boot stack for itself at the top of physical memory.
+The bootstring's address is moved to the s0 register. Memory is then set up to 
+give room for the first thread's stack space, the boot string argument, the 
+kernel's space, and exception handlers. The status register is set up for 
+hardware and software interrupts. We set the current thread to NULL, load the 
+cpu number, and then call kmain. In there, we first buffer out some license 
+info. Then:
+
+- ram_bootstrap() is called to figure out much physical memory is available to 
+use on the system
+- proc_bootstrap() is called to set up the kernel as a process
+- thread_bootstrap() is called to set-up the structure of the cpus and officially 
+set up a thread for kernel itself
+- hardclock_bootstrap() sets-up a pointer to an int to get # of clock cycles
+- vfs_bootstrap() sets up the virtual file system and dev/null
+- kheap_nextgeneration() increments mallocgeneration to 1 in begin the vm
+- mainbus_bootstrap() connects to devices, including the console, so now we
+see all our previous kprintf statements actually print out
+- kprintf_bootstrap() makes a kprintf lock for the current thread so we can then 
+create more threads
+- thread_start_cpus() beings secondary cpus
+- buffer_bootstrap() initializes the buffers and their memory limits
+- menu() is called
+
+
+12. When a thread calls wchan_sleep() to go to sleep, that is the same as 
+yielding the cpu,
+so wchan_sleep() calls  thread_switch() with a newstate of S_SLEEP, which will 
+put the 
+thread at the end of queue of threads waiting on the passed in wait channel.
+
+
+13. This is handled mainly by thread_switch(), which makes the current thread's state
+whatever is passed in as newstate, and then switches to a new thread. It gets help from:
+- splhigh() and splx(), which sets the priority level to high to turn off interrupts
+and then reverts it to the previous level
+- spinlock_acquire() and spinlock_release(), which get and release the spin lock for 
+the run queue of threads
+- threadlist_addtail() and threadlist_remhead() to append to pop threads off the queue
+- switchframe_switch() to actually make the switch to the popped thread
+- exorcise(), thread_checkstack(), etc. for clean-up and sanity checks
+
+
+14. Turning off interrupts means that the kernel will ignore incoming interrupts from 
+other processes or device drivers for some section of code. On os161, this is done via
+splhigh(), which sets the priority level to high. When done, calling splx() reverts 
+it to its previous level (which may be high in the case of nested critical sections of code).
+We do this to prevent deadlocks: if some subsystem code acquires some resource and is interrupted
+before releasing it by some other process, each will be waiting for the other to finish.
+
+
+15. A thread A wakes up another thread B via thread_make_runnable(), which will lock the run queue
+for B's cpu, add it to the tail of queue with a state of S_READY, tell the cpu to start if it 
+is idle, and then release the queue's lock. A sleeping thread can only run again if another 
+thread calls wchan_wakeone() or wchan_wakeall().
+
+
+16. Each thread is only allowed to run a certain amount of time before being descheduled to
+let other threads run, and it is the timer's job to let the kernel know to deschedule it
+if this happens before the thread calls sleep(), as denoted by SCHEDULE_HARDCLOCKS.
+thread_switch() is called to actually switch threads.
+
+
+17. Each semaphore has a wait channel built into it. P() uses wchan_sleep() so that if the count 
+on the semaphore is 0, the caller of P() is added to the list of threads waiting on the semaphore's
+channel. Since V() must increment the semaphore's count by 1 and wake up a waiting
+thread to use that resource "unit", V() uses wchan_wakeone() to wake up and run one of the threads
+on the semaphore's wait channel, which can now decrement the counter to use the resource unit.
+
+
+18. Since threads are supposed to be independent, there's no (non-malicious) reason
+for a thread to need to know what other thread holds a lock. 
+
+
+
+
+Lock criteria:
+
+A properly implemented lock will exhibit behavior such that...
+
+1) lock->lk_holder should be the thread's name after a thread acquires it.
+2) lock->lk_holder should be NULL after a thread releases it.
+3) A thread shouldn't be able to acquire a destroyed lock
+4) lock_do_i_hold should return true if the thread has the lock and false otherwise
+5) After a thread tries to acquire a lock already held, lock->lk_holder should still be the original holder's name. 
+
+
+
+
+CV criteria:
+
+A properly implemented CV will exhibit behavior such that...
+
+1) A thread shouldn't be able to wait on a CV that was destroyed.
+2_ A thread shouldn't be able to signal on a CV that was destroyed.
+3) If a thread broadcasts on a CV with n > 1 threads waiting on it, only 1 should wake up.
+4) Signaling on a CV that no thread is waiting on should have no effect on the CV.
+5) the name should be a distinct copy of the name passed in.

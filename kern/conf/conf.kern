@@ -450,6 +450,8 @@ file		test/threadtest.c
 file		test/tt3.c
 file		test/synchtest.c
 file		test/semunit.c
+file 		test/lockunit.c
+file 		test/cvunit.c
 file		test/kmalloctest.c
 file		test/fstest.c
 optfile net	test/nettest.c

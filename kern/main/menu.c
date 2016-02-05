@@ -494,6 +494,8 @@ static const char *testmenu[] = {
 	"[sy3] CV test               (1)     ",
 	"[sy4] CV test #2            (1)     ",
 	"[semu1-22] Semaphore unit tests     ",
+	"[locku1-3] Lock unit tests     	 ",
+	"[cvu1-2] CV unit tests     		 ",
 	"[fs1] Filesystem test               ",
 	"[fs2] FS read stress                ",
 	"[fs3] FS write stress               ",
@@ -629,6 +631,15 @@ static struct {
 	{ "semu20",	semu20 },
 	{ "semu21",	semu21 },
 	{ "semu22",	semu22 },
+
+	/* lock unit tests */
+	{ "locku1",	locku1 },
+	{ "locku2",	locku2 },
+	{ "locku3",	locku3 },
+
+	/* CV unit tests */
+	{ "cvu1",	cvu1 },
+	{ "cvu2",	cvu2 },
 
 	/* file system assignment tests */
 	{ "fs1",	fstest },

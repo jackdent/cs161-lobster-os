@@ -56,6 +56,12 @@ struct cpu;
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
 
 
+/* Wait channel. A wchan is protected by an associated, passed-in spinlock. */
+struct wchan {
+	const char *wc_name;		/* name for this channel */
+	struct threadlist wc_threads;	/* list of waiting threads */
+};
+
 /* States a thread can be in. */
 typedef enum {
 	S_RUN,		/* running */
