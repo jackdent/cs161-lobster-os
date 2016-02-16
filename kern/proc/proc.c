@@ -45,6 +45,7 @@
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
+#include <proctable.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
@@ -67,8 +68,16 @@ proc_create(const char *name)
 	if (proc == NULL) {
 		return NULL;
 	}
+
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
+		kfree(proc);
+		return NULL;
+	}
+
+	pid_t pid = assign_pid_to_proc(proc);
+	if (pid < 0) {
+		kfree(proc->p_name);
 		kfree(proc);
 		return NULL;
 	}
@@ -173,11 +182,14 @@ proc_destroy(struct proc *proc)
 }
 
 /*
- * Create the process structure for the kernel.
+ * Create the process structure for the kernel, and initialise
+ * the global process table lock
  */
 void
 proc_bootstrap(void)
 {
+	spinlock_init(proc_table.pt_spinlock);
+
 	kproc = proc_create("[kernel]");
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");

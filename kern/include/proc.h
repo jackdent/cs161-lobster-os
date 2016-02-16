@@ -60,6 +60,7 @@ struct vnode;
  * without sleeping.
  */
 struct proc {
+        pid_t p_pid;
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
@@ -69,12 +70,13 @@ struct proc {
 
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
-
-	/* add more material here as needed */
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
+
+/* This is the global process table */
+extern struct proc_table proc_table;
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
