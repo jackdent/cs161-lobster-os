@@ -53,6 +53,8 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 
 /* Gets called when the kernel first starts up */
 int runprogram(char *);
+/* Should not be called directly by the user; gets called by runprogram */
+int _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point);
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.
@@ -60,6 +62,6 @@ int runprogram(char *);
 
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
-int execv(const char*, char *const *);
+int sys_execv(userptr_t prog, userptr_t args);
 
 #endif /* _SYSCALL_H_ */

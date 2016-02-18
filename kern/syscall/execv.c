@@ -18,20 +18,24 @@
    of each argument, and argv_lens will contain the lengths */
 static
 int
-extract_args(char *const *args, char *buf, struct array *argv, struct array *argv_lens)
+extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens)
 {
         int arg, rem, result;
         size_t pos, copied;
+        char **args_p;
 
         if (args == NULL) {
                 return 0;
         }
 
+        // Cast args back into an array of (char *)s, so we can index into it
+        args_p = (char **)args;
+
         pos = 0;
         arg = 0;
-        while (args[arg] != NULL) {
+        while (args_p[arg] != NULL) {
                 rem = ARG_MAX - pos;
-                result = copyinstr((const_userptr_t) args[arg], &buf[pos], rem, &copied);
+                result = copyinstr((const_userptr_t) args_p[arg], &buf[pos], rem, &copied);
 
                 switch (result) {
                 case EFAULT:
@@ -48,9 +52,8 @@ extract_args(char *const *args, char *buf, struct array *argv, struct array *arg
         return 0;
 }
 
-// TODO: what happens if we exceed the maximum stack size/reach the end of the user address space
 static
-int
+void
 copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_lens)
 {
         int argc, i, len, padding;
@@ -81,25 +84,76 @@ copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_le
                 arg_ptr = (userptr_t) array_get(argv_lens, i);
                 copyout((const void*) arg_ptr, (userptr_t) *stack_ptr, 4);
         }
-
-        return 0;
 }
 
 int
-execv(const char *prog, char *const *args)
+_launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
+{
+        struct addrspace *as, *old_as;
+        struct vnode *v;
+        int result;
+
+        /* Save the old address space, if it exists */
+        if (proc_getas() != NULL) {
+                old_as = curthread->t_addrspace;
+        } else {
+                old_as = NULL;
+        }
+
+        /* Open the file. */
+        result = vfs_open(progname, O_RDONLY, 0, &v);
+        if (result) {
+                result = ENOMEM;
+                goto err1;
+        }
+
+        /* Create a new address space. */
+        as = as_create();
+        if (as == NULL) {
+                result = ENOMEM;
+                goto err2;
+        }
+
+        proc_setas(as);
+        as_activate();
+
+        /* Load the executable. */
+        result = load_elf(v, entry_point);
+        if (result) {
+                goto err3;
+        }
+
+        // Clean up
+        vfs_close(v);
+
+        /* Define the user stack in the address space */
+        result = as_define_stack(as, stack_ptr);
+        if (result) {
+                goto err3;
+        }
+
+        return 0;
+
+
+        err3:
+                proc_setas(old_as);
+                as_activate();
+                as_destroy(as);
+        err2:
+                vfs_close(v);
+        err1:
+                return result;
+}
+
+int
+sys_execv(userptr_t progname, userptr_t args)
 {
         int argc, result;
-        char *arg_buf, *prog_buf;
+        char *arg_buf, *progname_buf;
         struct array *argv, *argv_lens;
-        struct addrspace *new_as, *old_as;
-        struct vnode *v;
         vaddr_t entry_point, stack_ptr;
 
-
-        KASSERT(prog != NULL);
-
-        // Save old address space in case of failure
-        old_as = curthread->t_addrspace;
+        KASSERT(progname != NULL);
 
         arg_buf = kmalloc(ARG_MAX);
         if (!arg_buf) {
@@ -126,74 +180,42 @@ execv(const char *prog, char *const *args)
         }
         argc = argv->num;
 
-
         // Check user's program path
-        prog_buf = kmalloc(PATH_MAX);
-        if (prog_buf == NULL) {
-                result = ENOMEM;
-                goto err4;
-        }
-        result = copyinstr((const_userptr_t) prog, prog_buf, PATH_MAX, NULL);
-        if (result){
+        progname_buf = kmalloc(PATH_MAX);
+        if (progname_buf == NULL) {
                 result = ENOMEM;
                 goto err4;
         }
 
-        /* Open the file. */
-        result = vfs_open((char*) prog, O_RDONLY, 0, &v);
+        result = copyinstr(progname, progname_buf, PATH_MAX, NULL);
         if (result) {
-                result = ENOMEM;
-                goto err4;
-        }
-
-        /* Create a new address space. */
-        new_as = as_create();
-        if (new_as == NULL) {
                 result = ENOMEM;
                 goto err5;
         }
 
-        // Swap address spaces
-        curthread->t_addrspace = new_as;
-        as_activate();
-
-        /* Load the executable. */
-        result = load_elf(v, &entry_point);
+        result = _launch_program(progname_buf, &stack_ptr, &entry_point);
         if (result) {
-                goto err6;
+                goto err5;
         }
 
+        copy_args_to_stack(&stack_ptr, argv, argv_lens);
 
-        /* Define the user stack in the address space */
-        result = as_define_stack(curthread->t_addrspace, &stack_ptr);
-        if (result) {
-                goto err6;
-        }
-
-        result = copy_args_to_stack(&stack_ptr, argv, argv_lens);
-        if (result) {
-                goto err6;
-        }
-
-        // Clean up
-        vfs_close(v);
+        // Cleanup
         kfree(arg_buf);
         array_destroy(argv);
         array_destroy(argv_lens);
+        kfree(progname_buf);
 
         /* Warp to user mode. */
         enter_new_process(argc, (userptr_t) stack_ptr, NULL, stack_ptr, entry_point);
 
         /* enter_new_process does not return. */
-        panic("enter_new_process returned\n");
+        panic("sys_execv should never return\n");
+        return -1;
 
 
-        err6:
-                curthread->t_addrspace = old_as;
-                as_activate();
-                as_destroy(new_as);
         err5:
-                vfs_close(v);
+                kfree(progname_buf);
         err4:
                 array_destroy(argv_lens);
         err3:
@@ -201,5 +223,8 @@ execv(const char *prog, char *const *args)
         err2:
                 kfree(arg_buf);
         err1:
-                return -1;
+                return result;
 }
+
+
+// stach_ptr/entry_point

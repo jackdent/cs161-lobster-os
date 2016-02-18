@@ -5,7 +5,7 @@
 
 struct proc_table {
         struct proc *pt_table[PID_MAX];
-        struct spinlock *pt_spinlock;
+        struct spinlock pt_spinlock;
 };
 
 /* This is the global process table */

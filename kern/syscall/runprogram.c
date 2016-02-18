@@ -36,6 +36,7 @@
 #include <types.h>
 #include <lib.h>
 #include <syscall.h>
+#include <proc.h>
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -46,7 +47,14 @@
 int
 runprogram(char *progname)
 {
-	execv(progname, NULL);
+        vaddr_t stack_ptr, entry_point;
+
+        KASSERT(proc_getas() == NULL);
+        _launch_program(progname, &stack_ptr, &entry_point);
+
+        enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
+                          NULL /*userspace addr of environment*/,
+                          stack_ptr, entry_point);
 
 	panic("runprogram should never return");
 	return -1;

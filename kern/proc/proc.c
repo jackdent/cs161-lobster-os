@@ -188,7 +188,7 @@ proc_destroy(struct proc *proc)
 void
 proc_bootstrap(void)
 {
-	spinlock_init(proc_table.pt_spinlock);
+	spinlock_init(&proc_table.pt_spinlock);
 
 	kproc = proc_create("[kernel]");
 	if (kproc == NULL) {
