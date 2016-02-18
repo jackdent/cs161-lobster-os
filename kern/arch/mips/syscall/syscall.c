@@ -108,6 +108,33 @@ syscall(struct trapframe *tf)
 				 (userptr_t)tf->tf_a1);
 		break;
 
+	/* File system calls */
+
+	case SYS_open:
+		err = sys_open((userptr_t)tf->tf_a0, (int)tf->tf_a1);
+		break;
+
+	case SYS_close:
+		err = sys_close((int)tf->tf_a0);
+		break;
+
+	case SYS_read:
+		err = sys_read((int)tf->tf_a0, (userptr_t)tf->tf_a1, (size_t)tf->tf_a2);
+		break;
+
+	case SYS_write:
+		err = sys_write((int)tf->tf_a0, (userptr_t)tf->tf_a1, (size_t)tf->tf_a2);
+		break;
+
+	case SYS_lseek:
+		err = sys_lseek((int)tf->tf_a0, (off_t)tf->tf_a1, (int)tf->tf_a2);
+		break;
+
+	case SYS_dup2:
+		err = sys_dup2((int)tf->tf_a0, (int)tf->tf_a1);
+		break;
+
+	/* Process system calls */
 
 	case SYS_execv:
 		err = sys_execv((userptr_t)tf->tf_a0, (userptr_t)tf->tf_a1);

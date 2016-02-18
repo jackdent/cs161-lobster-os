@@ -75,8 +75,16 @@ proc_create(const char *name)
 		return NULL;
 	}
 
-	pid_t pid = assign_pid_to_proc(proc);
+	pid_t pid = assign_proc_to_pid(proc);
 	if (pid < 0) {
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+
+	proc->p_fd_table = fd_table_create();
+	if (proc->p_fd_table == NULL) {
+		release_pid(pid);
 		kfree(proc->p_name);
 		kfree(proc);
 		return NULL;
@@ -177,6 +185,8 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
+	fd_table_destroy(proc->p_fd_table);
+	release_pid(proc->p_pid);
 	kfree(proc->p_name);
 	kfree(proc);
 }
@@ -188,7 +198,7 @@ proc_destroy(struct proc *proc)
 void
 proc_bootstrap(void)
 {
-	spinlock_init(&proc_table.pt_spinlock);
+	proc_table_init();
 
 	kproc = proc_create("[kernel]");
 	if (kproc == NULL) {

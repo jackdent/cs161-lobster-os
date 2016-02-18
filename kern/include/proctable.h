@@ -1,6 +1,7 @@
+#include <types.h>
+#include <limits.h>
 #include <proc.h>
 #include <spinlock.h>
-#include <limits.h>
 
 
 struct proc_table {
@@ -10,8 +11,9 @@ struct proc_table {
 
 /* This is the global process table */
 struct proc_table proc_table;
+void proc_table_init(void);
 
 /* Find a free pid in the global process table and assign it to proc. Return the
    pid if found; otherwise, return -1 */
-pid_t assign_pid_to_proc(struct proc *);
+pid_t assign_proc_to_pid(struct proc *);
 void release_pid(pid_t pid);

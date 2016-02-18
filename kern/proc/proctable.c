@@ -1,10 +1,14 @@
-#include <types.h>
-#include <lib.h>
 #include <proctable.h>
+#include <lib.h>
 
+void
+proc_table_init()
+{
+        spinlock_init(&proc_table.pt_spinlock);
+}
 
 pid_t
-assign_pid_to_proc(struct proc *proc)
+assign_proc_to_pid(struct proc *proc)
 {
         KASSERT(proc != NULL);
 
