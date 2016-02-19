@@ -7,8 +7,8 @@ struct fd_file {
         struct vnode *fdf_vnode;
         struct lock *fdf_lock;
         int fdf_flags;
-        int fdf_offset;
         int fdf_refcount;
+        off_t fdf_offset;
 };
 
 struct fd_file * fd_file_create(struct vnode *vnode, int flags);

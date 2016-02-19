@@ -387,8 +387,7 @@ file      syscall/runprogram.c
 file      syscall/time_syscalls.c
 file      syscall/open.c
 file      syscall/close.c
-file      syscall/read.c
-file      syscall/write.c
+file      syscall/rw.c
 file      syscall/lseek.c
 file      syscall/dup2.c
 

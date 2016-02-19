@@ -69,8 +69,8 @@ int sys_execv(userptr_t prog, userptr_t args);
  */
 int sys_open(userptr_t filename, int flags);
 int sys_close(int fd);
-int sys_read(int fd, userptr_t buf, size_t buflen);
-int sys_write(int fd, userptr_t buf, size_t buflen);
+int sys_read(int fd, userptr_t buf, size_t len);
+int sys_write(int fd, userptr_t buf, size_t len);
 int sys_lseek(int fd, off_t pos, int whence);
 int sys_dup2(int oldfd, int newfd);
 

@@ -3,6 +3,13 @@
 #include <lib.h>
 #include <fdtable.h>
 
+static
+bool
+valid_fd(struct fd_table *fd_table, int fd)
+{
+        return fd >= 0 && fd < FD_MAX && fd_table->fdt_table[fd] != NULL;
+}
+
 struct fd_table *
 fd_table_create()
 {
@@ -45,16 +52,30 @@ add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file)
         return -1;
 }
 
+struct fd_file *
+get_file_from_fd_table(struct fd_table *fd_table, int fd)
+{
+        KASSERT(fd_table != NULL);
+
+        if (valid_fd(fd_table, fd)) {
+                return fd_table->fdt_table[fd];
+        } else {
+                return NULL;
+        }
+}
+
 int
 release_fd_from_fd_table(struct fd_table *fd_table, int fd)
 {
-        if (fd < 0 || fd >= FD_MAX || fd_table->fdt_table[fd] == NULL) {
-                return EBADF;
-        } else {
+        KASSERT(fd_table != NULL);
+
+        if (valid_fd(fd_table, fd)) {
                 spinlock_acquire(&fd_table->fdt_spinlock);
                 fd_file_release(fd_table->fdt_table[fd]);
                 fd_table->fdt_table[fd] = NULL;
                 spinlock_release(&fd_table->fdt_spinlock);
                 return 0;
+        } else {
+                return EBADF;
         }
 }

@@ -25,19 +25,15 @@ sys_open(userptr_t filename, int flags)
 
         result = copyinstr(filename, filename_buf, PATH_MAX, NULL);
         if (result) {
-                // TODO: do we need to do anything to result
                 goto err2;
         }
 
-        // TODO: validate flags and permissions
-
+        // Checks the flags are valid, and creates the file if it
+        // does not exist
         result = vfs_open(filename_buf, flags, 0, &vnode);
         if (result) {
-                // TODO: do we need to do anything to result
                 goto err2;
         }
-
-        // TODO: if it doesn't exists, create the vnode
 
         file = fd_file_create(vnode, flags);
         if (file == NULL) {
@@ -57,5 +53,6 @@ sys_open(userptr_t filename, int flags)
         err2:
                 kfree(filename_buf);
         err1:
-                return result;
+                // errno = result;
+                return -1;
 }
