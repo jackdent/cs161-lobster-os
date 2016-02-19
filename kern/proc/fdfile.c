@@ -29,6 +29,14 @@ fd_file_create(struct vnode *vnode, int flags)
         return file;
 }
 
+void
+fd_file_reference(struct fd_file *file)
+{
+        lock_acquire(file->fdf_lock);
+        file->fdf_refcount++;
+        lock_release(file->fdf_lock);
+}
+
 static
 void
 fd_file_destroy(struct fd_file *file)

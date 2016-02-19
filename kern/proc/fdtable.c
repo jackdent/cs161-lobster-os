@@ -52,6 +52,40 @@ add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file)
         return -1;
 }
 
+int
+clone_fd(struct fd_table *fd_table, int old_fd, int new_fd)
+{
+        int result;
+        struct fd_file *old_file;
+
+        KASSERT(fd_table != NULL);
+        spinlock_acquire(&fd_table->fdt_spinlock);
+
+        if (valid_fd(fd_table, old_fd)) {
+                old_file = fd_table->fdt_table[old_fd];
+        } else {
+                result = EBADF;
+                goto err1;
+        }
+
+        if (valid_fd(fd_table, new_fd)) {
+                fd_file_release(fd_table->fdt_table[new_fd]);
+                fd_table->fdt_table[new_fd] = old_file;
+                fd_file_reference(old_file);
+        } else {
+                result = EBADF;
+                goto err1;
+        }
+
+        spinlock_release(&fd_table->fdt_spinlock);
+        return new_fd;
+
+
+        err1:
+                spinlock_release(&fd_table->fdt_spinlock);
+                return result;
+}
+
 struct fd_file *
 get_file_from_fd_table(struct fd_table *fd_table, int fd)
 {
