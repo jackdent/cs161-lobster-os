@@ -390,6 +390,8 @@ file      syscall/close.c
 file      syscall/rw.c
 file      syscall/lseek.c
 file      syscall/dup2.c
+file      syscall/chdir.c
+file      syscall/__getcwd.c
 
 #
 # Startup and initialization
