@@ -36,11 +36,15 @@
  * Note: curproc is defined by <current.h>.
  */
 
+#include <array.h>
 #include <spinlock.h>
+#include <synch.h>
+
 
 struct addrspace;
 struct thread;
 struct vnode;
+
 
 /*
  * Process structure.
@@ -60,10 +64,16 @@ struct vnode;
  * without sleeping.
  */
 struct proc {
-        pid_t p_pid;
+        pid_t p_pid;			/* This process's pid */
+        pid_t parent_pid;		/* Parent's pid */
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
+
+	struct array children;		/* Array for keeping track of children pids
+					   -1 indicates an open slot in the array */
+	struct semaphore wait_sem; 	/* Call V() when exited so parent can P() on it */
+	int exit_status;		/* exit status */
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */

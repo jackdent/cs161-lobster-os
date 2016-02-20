@@ -283,6 +283,8 @@ thread_destroy(struct thread *thread)
 	/* sheer paranoia */
 	thread->t_wchan_name = "DESTROYED";
 
+	as_destroy(thread->t_addrspace);
+
 	kfree(thread->t_name);
 	kfree(thread);
 }
@@ -798,6 +800,10 @@ thread_exit(void)
 
 	/* Interrupts off on this processor */
         splhigh();
+
+        // Signal in case parent is/will be P()ing
+        V(&curproc->wait_sem);
+
 	thread_switch(S_ZOMBIE, NULL, NULL);
 	panic("braaaaaaaiiiiiiiiiiinssssss\n");
 }
