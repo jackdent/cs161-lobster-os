@@ -380,6 +380,7 @@ file      vfs/devnull.c
 #
 
 file      syscall/execv.c
+file      syscall/exit.c
 file      syscall/getpid.c
 file      syscall/loadelf.c
 file      syscall/runprogram.c
