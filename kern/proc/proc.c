@@ -58,40 +58,58 @@ struct proc *kproc;
 /*
  * Create a proc structure.
  */
-static
+
 struct proc *
-proc_create(const char *name)
-{
+proc_create(const char *name) {
 	struct proc *proc;
+	pid_t pid;
 
 	proc = kmalloc(sizeof(*proc));
 	if (proc == NULL) {
-		return NULL;
+		goto err1;
 	}
+
+	pid = assign_pid_to_proc(proc);
+	if (pid < 0) {
+		goto err1;
+	}
+
+	// To be set by caller
+	proc->parent_pid = -1;
 
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
-		kfree(proc);
-		return NULL;
+		goto err2;
 	}
 
-	pid_t pid = assign_pid_to_proc(proc);
-	if (pid < 0) {
-		kfree(proc->p_name);
-		kfree(proc);
-		return NULL;
-	}
-
-	proc->p_numthreads = 0;
 	spinlock_init(&proc->p_lock);
+	proc->p_numthreads = 0;
+	proc->children = array_create();
+	if (proc->children == NULL) {
+		goto err3;
+	}
 
-	/* VM fields */
-	proc->p_addrspace = NULL;
+	proc->wait_sem = sem_create(name, 0);
+	if (proc->wait_sem == NULL) {
+		goto err4;
+	}
 
-	/* VFS fields */
-	proc->p_cwd = NULL;
+	proc->exit_status = -1;
+
+	proc->p_addrspace = NULL; // Probably need to change
+	proc->p_cwd = NULL; // Probably need to change
 
 	return proc;
+
+
+	err4:
+		array_destroy(proc->children);
+	err3:
+		kfree(proc->p_name);
+	err2:
+		kfree(proc);
+	err1:
+		return NULL;
 }
 
 /*

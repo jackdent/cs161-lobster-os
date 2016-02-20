@@ -22,8 +22,8 @@ sys__exit(int exitcode)
 	// Mark all children as orphans
 	spinlock_acquire(&proc_table.pt_spinlock);
 
-	for (i = 0; i < curproc->children.num; i++) {
-		pid = (pid_t) array_get(&curproc->children, i);
+	for (i = 0; i < curproc->children->num; i++) {
+		pid = (pid_t) array_get(curproc->children, i);
 		if (pid != -1) {
 			spinlock_acquire(&proc_table.pt_table[pid]->p_lock);
 			proc_table.pt_table[pid]->parent_pid = -1;
@@ -40,8 +40,8 @@ sys__exit(int exitcode)
 	thread_exit(); // TODO more cleanup here
 
 	kfree(curproc->p_name);
-	array_destroy(&curproc->children);
-	sem_destroy(&curproc->wait_sem);
+	array_destroy(curproc->children);
+	sem_destroy(curproc->wait_sem);
 	as_destroy(curproc->p_addrspace);
 
 	// V() on wait_sem called in thread_exit

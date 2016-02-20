@@ -70,9 +70,9 @@ struct proc {
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
 
-	struct array children;		/* Array for keeping track of children pids
+	struct array *children;		/* Array for keeping track of children pids
 					   -1 indicates an open slot in the array */
-	struct semaphore wait_sem; 	/* Call V() when exited so parent can P() on it */
+	struct semaphore *wait_sem; 	/* Call V() when exited so parent can P() on it */
 	int exit_status;		/* exit status */
 
 	/* VM */
@@ -93,6 +93,9 @@ void proc_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
+
+/* Create a process */
+struct proc *proc_create(const char *name);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);

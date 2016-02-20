@@ -45,8 +45,8 @@ sys_waitpid(pid_t pid, int *status, int options, int *err)
 
 
 	found = false;
-	for (i = 0; i < curproc->children.num; i++) {
-		if ((pid_t) array_get(&curproc->children, i) == pid) {
+	for (i = 0; i < curproc->children->num; i++) {
+		if ((pid_t) array_get(curproc->children, i) == pid) {
 			found = true;
 			break;
 		}
@@ -57,7 +57,7 @@ sys_waitpid(pid_t pid, int *status, int options, int *err)
 		return -1;
 	}
 
-	P(&proc_table.pt_table[pid]->wait_sem);
+	P(proc_table.pt_table[pid]->wait_sem);
 
 	// Save exit value to status if not NULL
 	if (status) {
@@ -69,14 +69,14 @@ sys_waitpid(pid_t pid, int *status, int options, int *err)
 
 	// Finish cleaning up the child proc
 	spinlock_acquire(&proc_table.pt_spinlock);
-	sem_destroy(&proc_table.pt_table[pid]->wait_sem);
+	sem_destroy(proc_table.pt_table[pid]->wait_sem);
 	spinlock_cleanup(&proc_table.pt_table[pid]->p_lock);
 	kfree(proc_table.pt_table[pid]);
 	proc_table.pt_table[pid] = NULL;
 	spinlock_release(&proc_table.pt_spinlock);
 
 	// Remove pid from array of children
-	array_set(&curproc->children, i, (void*) -1);
+	array_set(curproc->children, i, (void*) -1);
 
 	spinlock_release(&curproc->p_lock);
 
