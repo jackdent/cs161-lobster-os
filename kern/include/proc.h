@@ -95,7 +95,7 @@ void proc_bootstrap(void);
 struct proc *proc_create_runprogram(const char *name);
 
 /* Create a process */
-struct proc *proc_create(const char *name);
+struct proc *proc_create(const char *name, int *err);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);

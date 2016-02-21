@@ -117,6 +117,10 @@ syscall(struct trapframe *tf)
 		sys__exit(tf->tf_a0);
 		break;
 
+	case SYS_fork:
+		sys_fork(tf, &err);
+		break;
+
 	case SYS_getpid:
 		retval = sys_getpid();
 		break;

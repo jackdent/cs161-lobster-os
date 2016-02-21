@@ -49,6 +49,8 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <kern/errno.h>
+
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -60,17 +62,19 @@ struct proc *kproc;
  */
 
 struct proc *
-proc_create(const char *name) {
+proc_create(const char *name, int *err) {
 	struct proc *proc;
 	pid_t pid;
 
 	proc = kmalloc(sizeof(*proc));
 	if (proc == NULL) {
+		*err = ENOMEM;
 		goto err1;
 	}
 
 	pid = assign_pid_to_proc(proc);
 	if (pid < 0) {
+		*err = ENPROC; // could also be EMPROC
 		goto err1;
 	}
 
@@ -79,6 +83,7 @@ proc_create(const char *name) {
 
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
+		*err = ENOMEM;
 		goto err2;
 	}
 
@@ -86,11 +91,13 @@ proc_create(const char *name) {
 	proc->p_numthreads = 0;
 	proc->children = array_create();
 	if (proc->children == NULL) {
+		*err = ENOMEM;
 		goto err3;
 	}
 
 	proc->wait_sem = sem_create(name, 0);
 	if (proc->wait_sem == NULL) {
+		*err = ENOMEM;
 		goto err4;
 	}
 
@@ -194,6 +201,7 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
+	sem_destroy(proc->wait_sem);
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -206,9 +214,10 @@ proc_destroy(struct proc *proc)
 void
 proc_bootstrap(void)
 {
+	int err;
 	spinlock_init(&proc_table.pt_spinlock);
 
-	kproc = proc_create("[kernel]");
+	kproc = proc_create("[kernel]", &err);
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
@@ -224,8 +233,9 @@ struct proc *
 proc_create_runprogram(const char *name)
 {
 	struct proc *newproc;
+	int err;
 
-	newproc = proc_create(name);
+	newproc = proc_create(name, &err);
 	if (newproc == NULL) {
 		return NULL;
 	}

@@ -64,6 +64,7 @@ int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 int sys_execv(userptr_t prog, userptr_t args);
 void sys__exit(int exitcode);
+pid_t sys_fork(struct trapframe *tf, int *err);
 pid_t sys_getpid(void);
 pid_t sys_waitpid(pid_t pid, int *status, int options, int *err);
 
