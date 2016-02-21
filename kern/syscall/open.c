@@ -28,8 +28,8 @@ sys_open(userptr_t filename, int flags, int *fd)
                 goto err2;
         }
 
-        // Checks the flags are valid, and creates the file if it
-        // does not exist
+        /* Checks the flags are valid, and creates the file if it
+           does not exist */
         err = vfs_open(filename_buf, flags, 0, &vnode);
         if (err) {
                 goto err2;
@@ -38,18 +38,23 @@ sys_open(userptr_t filename, int flags, int *fd)
         file = fd_file_create(vnode, flags);
         if (file == NULL) {
                 err = ENOMEM;
-                goto err2;
+                goto err3;
         }
 
         *fd = add_file_to_fd_table(curproc->p_fd_table, file);
         if (*fd < 0) {
-                err = ENOMEM;
-                goto err2;
+                err = EMFILE;
+                goto err4;
         }
 
         return 0;
 
 
+        err4:
+                fd_file_destroy(file);
+        err3:
+                // TODO: also VFS close?
+                vfs_close(vnode);
         err2:
                 kfree(filename_buf);
         err1:

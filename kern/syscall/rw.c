@@ -1,9 +1,11 @@
 #include <types.h>
 #include <kern/errno.h>
+#include <kern/fcntl.h>
 #include <syscall.h>
 #include <synch.h>
 #include <uio.h>
 #include <proc.h>
+#include <copyinout.h>
 #include <current.h>
 
 static
@@ -12,6 +14,7 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
 {
         int err;
         struct fd_file *file;
+        char *ker_buf;
         struct uio uio;
         struct iovec iov;
 
@@ -23,13 +26,39 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
 
         lock_acquire(file->fdf_lock);
 
-        /* check read/write flags on file?? */
-
-        /* NB security? buf should not overwrite memory in the kernel */
-        uio_kinit(&iov, &uio, buf, len, file->fdf_offset, rw);
-        err = uiomove(buf, len, &uio);
-        if (err) {
+        ker_buf = kmalloc(len);
+        if (ker_buf == NULL) {
+                err = ENOMEM;
                 goto err2;
+        }
+
+        uio_kinit(&iov, &uio, ker_buf, len, file->fdf_offset, rw);
+
+        switch (rw) {
+        case UIO_READ:
+                if (!fd_file_check_flag(file, O_RDONLY)) {
+                        err = EBADF;
+                } else {
+
+                        err = VOP_READ(file->fdf_vnode, &uio);
+                }
+        case UIO_WRITE:
+                if (!fd_file_check_flag(file, O_WRONLY)) {
+                        err = EBADF;
+                } else {
+                        err = VOP_WRITE(file->fdf_vnode, &uio);
+                }
+        default:
+                panic("Invalid rw option");
+        }
+
+        if (err) {
+                goto err3;
+        }
+
+        err = copyoutstr(ker_buf, buf, len, NULL);
+        if (err) {
+                goto err3;
         }
 
         file->fdf_offset = uio.uio_offset;
@@ -39,6 +68,8 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
         return 0;
 
 
+        err3:
+                kfree(ker_buf);
         err2:
                 lock_release(file->fdf_lock);
         err1:

@@ -3,13 +3,6 @@
 #include <lib.h>
 #include <fdtable.h>
 
-static
-bool
-valid_fd(struct fd_table *fd_table, int fd)
-{
-        return fd >= 0 && fd < FD_MAX && fd_table->fdt_table[fd] != NULL;
-}
-
 struct fd_table *
 fd_table_create()
 {
@@ -32,6 +25,18 @@ fd_table_destroy(struct fd_table *fd_table)
         kfree(fd_table);
 }
 
+bool
+fd_in_range(int fd)
+{
+        return fd >= 0 && fd < FD_MAX;
+}
+
+bool
+valid_fd(struct fd_table *fd_table, int fd)
+{
+        return fd_in_range(fd) && fd_table->fdt_table[fd] != NULL;
+}
+
 int
 add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file)
 {
@@ -52,64 +57,39 @@ add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file)
         return -1;
 }
 
-int
-clone_fd(struct fd_table *fd_table, int old_fd, int new_fd)
-{
-        int result;
-        struct fd_file *old_file;
-
-        KASSERT(fd_table != NULL);
-        spinlock_acquire(&fd_table->fdt_spinlock);
-
-        if (valid_fd(fd_table, old_fd)) {
-                old_file = fd_table->fdt_table[old_fd];
-        } else {
-                result = EBADF;
-                goto err1;
-        }
-
-        if (valid_fd(fd_table, new_fd)) {
-                fd_file_release(fd_table->fdt_table[new_fd]);
-                fd_table->fdt_table[new_fd] = old_file;
-                fd_file_reference(old_file);
-        } else {
-                result = EBADF;
-                goto err1;
-        }
-
-        spinlock_release(&fd_table->fdt_spinlock);
-        return new_fd;
-
-
-        err1:
-                spinlock_release(&fd_table->fdt_spinlock);
-                return result;
-}
-
 struct fd_file *
 get_file_from_fd_table(struct fd_table *fd_table, int fd)
 {
+        struct fd_file *file;
         KASSERT(fd_table != NULL);
 
-        if (valid_fd(fd_table, fd)) {
-                return fd_table->fdt_table[fd];
-        } else {
-                return NULL;
+        if (fd_in_range(fd)) {
+                spinlock_acquire(&fd_table->fdt_spinlock);
+                file = fd_table->fdt_table[fd];
+                spinlock_release(&fd_table->fdt_spinlock);
+                return file;
         }
+
+        return NULL;
 }
 
 int
 release_fd_from_fd_table(struct fd_table *fd_table, int fd)
 {
+        int result;
+
         KASSERT(fd_table != NULL);
 
+        spinlock_acquire(&fd_table->fdt_spinlock);
+
         if (valid_fd(fd_table, fd)) {
-                spinlock_acquire(&fd_table->fdt_spinlock);
                 fd_file_release(fd_table->fdt_table[fd]);
                 fd_table->fdt_table[fd] = NULL;
-                spinlock_release(&fd_table->fdt_spinlock);
-                return 0;
+                result = 0;
         } else {
-                return EBADF;
+                result = EBADF;
         }
+
+        spinlock_release(&fd_table->fdt_spinlock);
+        return result;
 }

@@ -22,7 +22,7 @@ sys_lseek(int fd, off_t pos, off_t *new_pos, int whence)
         lock_acquire(file->fdf_lock);
 
         if (!VOP_ISSEEKABLE(file->fdf_vnode)) {
-                err = EINVAL;
+                err = ESPIPE;
                 goto err2;
         }
 
@@ -43,7 +43,10 @@ sys_lseek(int fd, off_t pos, off_t *new_pos, int whence)
                 goto err2;
         }
 
-        KASSERT(*new_pos >= 0);
+        if (*new_pos < 0) {
+                err = EINVAL;
+                goto err2;
+        }
 
         file->fdf_offset = *new_pos;
         lock_release(file->fdf_lock);

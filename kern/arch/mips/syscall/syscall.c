@@ -127,6 +127,7 @@ syscall(struct trapframe *tf)
 		break;
 
 	case SYS_lseek:
+		// TODO: support 64 bit seek values, helpful functions: join32to64 and split64to32
 		err = sys_lseek((int)tf->tf_a0, (off_t)tf->tf_a1, (off_t *)&retval, (int)tf->tf_a2);
 		break;
 
@@ -140,7 +141,7 @@ syscall(struct trapframe *tf)
 		break;
 
 	case SYS___getcwd:
-		err = sys___getcwd((userptr_t)tf->tf_a0, (size_t)tf->tf_a1);
+		err = sys___getcwd((userptr_t)tf->tf_a0, (size_t)tf->tf_a1, (size_t *)&retval);
 		break;
 
 	/* Process system calls */

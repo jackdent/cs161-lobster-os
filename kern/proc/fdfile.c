@@ -11,13 +11,12 @@ fd_file_create(struct vnode *vnode, int flags)
 
         file = kmalloc(sizeof(struct fd_file));
         if (file == NULL) {
-                return NULL;
+                goto err1;
         }
 
-        lock = lock_create("file");
+        lock = lock_create("fd_file");
         if (lock == NULL) {
-                kfree(file);
-                return NULL;
+                goto err2;
         }
 
         file->fdf_vnode = vnode;
@@ -27,6 +26,20 @@ fd_file_create(struct vnode *vnode, int flags)
         file->fdf_refcount = 1;
 
         return file;
+
+
+        err2:
+                kfree(file);
+        err1:
+                return NULL;
+}
+
+void
+fd_file_destroy(struct fd_file *file)
+{
+        vfs_close(file->fdf_vnode);
+        lock_destroy(file->fdf_lock);
+        kfree(file);
 }
 
 void
@@ -37,13 +50,10 @@ fd_file_reference(struct fd_file *file)
         lock_release(file->fdf_lock);
 }
 
-static
-void
-fd_file_destroy(struct fd_file *file)
+bool
+fd_file_check_flag(struct fd_file *file, int flag)
 {
-        vfs_close(file->fdf_vnode);
-        lock_destroy(file->fdf_lock);
-        kfree(file);
+        return (file->fdf_flags & flag) == flag;
 }
 
 void

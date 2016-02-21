@@ -19,17 +19,19 @@ sys_chdir(userptr_t path)
 
         err = copyinstr(path, path_buf, PATH_MAX, NULL);
         if (err) {
-                goto err1;
+                goto err2;
         }
 
         err = vfs_chdir(path_buf);
         if (err) {
-                goto err1;
+                goto err2;
         }
 
         return 0;
 
 
+        err2:
+                kfree(path_buf);
         err1:
                 return err;
 }
