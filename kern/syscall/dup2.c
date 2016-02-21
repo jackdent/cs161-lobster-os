@@ -6,13 +6,9 @@
 int
 sys_dup2(int old_fd, int new_fd)
 {
-        int result;
+        int err;
 
-        result = clone_fd(curproc->p_fd_table, old_fd, new_fd);
-        if (result) {
-                // errno = result;
-                return -1;
-        }
+        err = clone_fd(curproc->p_fd_table, old_fd, new_fd);
 
-        return new_fd;
+        return err || 0;
 }

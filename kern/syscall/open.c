@@ -1,6 +1,6 @@
 #include <types.h>
-#include <limits.h>
 #include <kern/errno.h>
+#include <limits.h>
 #include <syscall.h>
 #include <copyinout.h>
 #include <vfs.h>
@@ -8,9 +8,9 @@
 #include <current.h>
 
 int
-sys_open(userptr_t filename, int flags)
+sys_open(userptr_t filename, int flags, int *fd)
 {
-        int result, fd;
+        int err;
         char *filename_buf;
         struct vnode *vnode;
         struct fd_file *file;
@@ -19,40 +19,39 @@ sys_open(userptr_t filename, int flags)
 
         filename_buf = kmalloc(PATH_MAX);
         if (filename_buf == NULL) {
-                result = ENOMEM;
+                err = ENOMEM;
                 goto err1;
         }
 
-        result = copyinstr(filename, filename_buf, PATH_MAX, NULL);
-        if (result) {
+        err = copyinstr(filename, filename_buf, PATH_MAX, NULL);
+        if (err) {
                 goto err2;
         }
 
         // Checks the flags are valid, and creates the file if it
         // does not exist
-        result = vfs_open(filename_buf, flags, 0, &vnode);
-        if (result) {
+        err = vfs_open(filename_buf, flags, 0, &vnode);
+        if (err) {
                 goto err2;
         }
 
         file = fd_file_create(vnode, flags);
         if (file == NULL) {
-                result = ENOMEM;
+                err = ENOMEM;
                 goto err2;
         }
 
-        fd = add_file_to_fd_table(curproc->p_fd_table, file);
-        if (fd < 0) {
-                result = ENOMEM;
+        *fd = add_file_to_fd_table(curproc->p_fd_table, file);
+        if (*fd < 0) {
+                err = ENOMEM;
                 goto err2;
         }
 
-        return fd;
+        return 0;
 
 
         err2:
                 kfree(filename_buf);
         err1:
-                // errno = result;
-                return -1;
+                return err;
 }

@@ -14,6 +14,7 @@ sys___getcwd(userptr_t buf, size_t len)
         cwd = curproc->p_cwd;
 
         // TODO: when can this fail?
+        // we don't have any error handling
         uio_kinit(&iov, &uio, buf, len, 0, UIO_READ);
         VOP_NAMEFILE(cwd, &uio);
 

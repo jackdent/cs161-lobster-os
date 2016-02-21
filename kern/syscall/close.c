@@ -7,13 +7,9 @@
 int
 sys_close(int fd)
 {
-        int result;
+        int err;
 
-        result = release_fd_from_fd_table(curproc->p_fd_table, fd);
-        if (result) {
-                // errno = result;
-                return -1;
-        }
+        err = release_fd_from_fd_table(curproc->p_fd_table, fd);
 
-        return 0;
+        return err || 0;
 }

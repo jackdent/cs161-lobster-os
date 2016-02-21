@@ -8,22 +8,22 @@
 int
 sys_chdir(userptr_t path)
 {
-        int result;
+        int err;
         char *path_buf;
 
         path_buf = kmalloc(PATH_MAX);
         if (path_buf == NULL) {
-                result = ENOMEM;
+                err = ENOMEM;
                 goto err1;
         }
 
-        result = copyinstr(path, path_buf, PATH_MAX, NULL);
-        if (result) {
+        err = copyinstr(path, path_buf, PATH_MAX, NULL);
+        if (err) {
                 goto err1;
         }
 
-        result = vfs_chdir(path_buf);
-        if (result) {
+        err = vfs_chdir(path_buf);
+        if (err) {
                 goto err1;
         }
 
@@ -31,6 +31,5 @@ sys_chdir(userptr_t path)
 
 
         err1:
-                // errno = result;
-                return -1;
+                return err;
 }

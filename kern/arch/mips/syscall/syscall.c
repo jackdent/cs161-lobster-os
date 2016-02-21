@@ -111,7 +111,7 @@ syscall(struct trapframe *tf)
 	/* File system calls */
 
 	case SYS_open:
-		err = sys_open((userptr_t)tf->tf_a0, (int)tf->tf_a1);
+		err = sys_open((userptr_t)tf->tf_a0, (int)tf->tf_a1, (int *)&retval);
 		break;
 
 	case SYS_close:
@@ -119,19 +119,20 @@ syscall(struct trapframe *tf)
 		break;
 
 	case SYS_read:
-		err = sys_read((int)tf->tf_a0, (userptr_t)tf->tf_a1, (size_t)tf->tf_a2);
+		err = sys_read((int)tf->tf_a0, (userptr_t)tf->tf_a1, (size_t)tf->tf_a2, (size_t *)&retval);
 		break;
 
 	case SYS_write:
-		err = sys_write((int)tf->tf_a0, (userptr_t)tf->tf_a1, (size_t)tf->tf_a2);
+		err = sys_write((int)tf->tf_a0, (userptr_t)tf->tf_a1, (size_t)tf->tf_a2, (size_t *)&retval);
 		break;
 
 	case SYS_lseek:
-		err = sys_lseek((int)tf->tf_a0, (off_t)tf->tf_a1, (int)tf->tf_a2);
+		err = sys_lseek((int)tf->tf_a0, (off_t)tf->tf_a1, (off_t *)&retval, (int)tf->tf_a2);
 		break;
 
 	case SYS_dup2:
 		err = sys_dup2((int)tf->tf_a0, (int)tf->tf_a1);
+		retval = (int32_t)tf->tf_a1;
 		break;
 
 	case SYS_chdir:
