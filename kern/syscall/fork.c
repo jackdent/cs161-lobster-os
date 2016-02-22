@@ -17,9 +17,9 @@
 #include <proc.h>
 
 /*
-Use 2 semaphores to communicate between parent and child threads
-for setup. First the child waits for the parent to finish filling
-in the struct. Then the parent waits while the child updates its trapframe.
+Use 1 semaphores to communicate between parent and child threads
+for setup. When the child has copied its trapframe over to a local
+struct variable, it signals to the parent that it can continue executing
 */
 
 
@@ -29,7 +29,7 @@ struct setup_data {
 };
 
 
-// To let child finish setting up its trapframe
+// To let child get its trapframe
 static
 void
 child_finish_setup(void *p, unsigned long n)
