@@ -61,6 +61,7 @@ struct fd_file *
 get_file_from_fd_table(struct fd_table *fd_table, int fd)
 {
         struct fd_file *file;
+
         KASSERT(fd_table != NULL);
 
         if (fd_in_range(fd)) {
@@ -71,6 +72,22 @@ get_file_from_fd_table(struct fd_table *fd_table, int fd)
         }
 
         return NULL;
+}
+
+void
+reference_each_file(struct fd_table *fd_table)
+{
+        KASSERT(fd_table != NULL);
+
+        spinlock_acquire(&fd_table->fdt_spinlock);
+
+        for (int i = 0; i < FD_MAX; ++i) {
+                if (fd_table->fdt_table[i] != NULL) {
+                        fd_file_reference(fd_table->fdt_table[i]);
+                }
+        }
+
+        spinlock_release(&fd_table->fdt_spinlock);
 }
 
 int

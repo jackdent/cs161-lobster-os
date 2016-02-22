@@ -22,12 +22,10 @@ for setup. When the child has copied its trapframe over to a local
 struct variable, it signals to the parent that it can continue executing
 */
 
-
 struct setup_data {
 	struct semaphore *parent_wait_for_child;
 	struct trapframe child_tf;
 };
-
 
 // To let child get its trapframe
 static
@@ -47,7 +45,6 @@ child_finish_setup(void *p, unsigned long n)
 	as_activate();
 	mips_usermode(&tf);
 }
-
 
 int sys_fork(struct trapframe *tf, pid_t *retval)
 {
@@ -105,16 +102,8 @@ int sys_fork(struct trapframe *tf, pid_t *retval)
 
 	child_proc->p_addrspace = child_as;
 
-
-
-
-	/*
-	TODO: Handle file descriptors here
-	*/
-
-
-
-
+	// TODO: copy parent's file table to child
+	reference_each_file(curproc->p_fd_table);
 
 	// Need to set up actual child thread
 	err = thread_fork("child", child_proc, child_finish_setup, sd, 0);
@@ -132,7 +121,8 @@ int sys_fork(struct trapframe *tf, pid_t *retval)
 	kfree(sd);
 
 	*retval = child_pid;
-	// err should be 0 at this point
+
+	KASSERT(err == 0);
 	return err;
 
 

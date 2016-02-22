@@ -37,5 +37,4 @@ sys__exit(int exitcode)
 
 	// V() on wait_sem called in thread_exit
 	thread_exit();
-
 }

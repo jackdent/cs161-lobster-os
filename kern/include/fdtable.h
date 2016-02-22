@@ -19,4 +19,5 @@ bool valid_fd(struct fd_table *fd_table, int fd);
    Return the file descriptor if found; otherwise, return -1 */
 int add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file);
 struct fd_file *get_file_from_fd_table(struct fd_table *fd_table, int fd);
+void reference_each_file(struct fd_table *fd_table);
 int release_fd_from_fd_table(struct fd_table *fd_table, int fd);
