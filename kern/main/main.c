@@ -119,6 +119,8 @@ boot(void)
 	KASSERT(curthread->t_curspl > 0);
 	mainbus_bootstrap();
 	KASSERT(curthread->t_curspl == 0);
+	/* Lives alongside the proc_bootstrap code */
+	kproc_stdio_bootstrap();
 	/* Now do pseudo-devices. */
 	pseudoconfig();
 	kprintf("\n");

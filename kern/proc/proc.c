@@ -44,11 +44,14 @@
 
 #include <types.h>
 #include <spl.h>
+#include <kern/fcntl.h>
+#include <kern/unistd.h>
 #include <proc.h>
 #include <proctable.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <vfs.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -204,6 +207,40 @@ proc_bootstrap(void)
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
+}
+
+/* Bind the console to STDIN, STDOUT and STDERR */
+void
+kproc_stdio_bootstrap(void)
+{
+	int err1, err2, err3;
+	struct vnode *stdin, *stdout, *stderr;
+	struct fd_file *stdin_f, *stdout_f, *stderr_f;
+
+	char *con1 = kstrdup("con:");
+	char *con2 = kstrdup("con:");
+	char *con3 = kstrdup("con:");
+
+	// TODO: do we need a different mode?
+	err1 = vfs_open(con1, O_RDONLY, 0, &stdin);
+	err2 = vfs_open(con2, O_WRONLY, 0, &stdout);
+	err3 = vfs_open(con3, O_WRONLY, 0, &stderr);
+
+	if (err1 || err2 || err3) {
+		panic("vfs_open for console devices during STDIO initialisation failed\n");
+	}
+
+	stdin_f = fd_file_create(stdin, O_RDONLY);
+	stdout_f = fd_file_create(stdout, O_WRONLY);
+	stderr_f = fd_file_create(stderr, O_WRONLY);
+
+        if (stdin_f == NULL || stdout_f == NULL || stderr_f == NULL) {
+		panic("fd_file_create for STDIO failed\n");
+        }
+
+	curproc->p_fd_table->fdt_table[STDIN_FILENO] = stdin_f;
+	curproc->p_fd_table->fdt_table[STDOUT_FILENO] = stdout_f;
+	curproc->p_fd_table->fdt_table[STDERR_FILENO] = stderr_f;
 }
 
 /*

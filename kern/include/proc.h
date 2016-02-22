@@ -83,6 +83,9 @@ extern struct proc_table proc_table;
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
 
+/* Call once during system startup to bind STDIN/OUT/ERR to kproc. */
+void kproc_stdio_bootstrap(void);
+
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
 
