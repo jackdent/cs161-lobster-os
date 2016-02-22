@@ -381,10 +381,18 @@ file      vfs/devnull.c
 # calls assignment.)
 #
 
-file      syscall/execv.c
 file      syscall/loadelf.c
-file      syscall/runprogram.c
 file      syscall/time_syscalls.c
+
+# Process system calls
+file      syscall/runprogram.c
+file      syscall/execv.c
+file      syscall/fork.c
+file      syscall/getpid.c
+file      syscall/waitpid.c
+file      syscall/exit.c
+
+# File system calls
 file      syscall/open.c
 file      syscall/close.c
 file      syscall/rw.c

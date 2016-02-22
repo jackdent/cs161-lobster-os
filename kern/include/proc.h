@@ -36,12 +36,15 @@
  * Note: curproc is defined by <current.h>.
  */
 
+#include <array.h>
 #include <spinlock.h>
 #include <fdtable.h>
+#include <synch.h>
 
 struct addrspace;
 struct thread;
 struct vnode;
+
 
 /*
  * Process structure.
@@ -61,11 +64,17 @@ struct vnode;
  * without sleeping.
  */
 struct proc {
-        pid_t p_pid;
+        pid_t p_pid;			/* This process's pid */
+        pid_t p_parent_pid;		/* Parent's pid */
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
         struct fd_table *p_fd_table;
+
+	struct array *p_children;	/* Array for keeping track of children pids
+					   -1 indicates an open slot in the array */
+	struct semaphore *p_wait_sem; 	/* Call V() when exited so parent can P() on it */
+	int p_exit_status;		/* exit status */
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -89,6 +98,9 @@ void kproc_stdio_bootstrap(void);
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
 
+/* Create a process */
+struct proc *proc_create(const char *name, int *err);
+
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);
 
@@ -104,5 +116,19 @@ struct addrspace *proc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
 
+/* Check if in range and actual process */
+int is_valid_pid(pid_t pid);
+
+/* Add a child pid to a parent's children array */
+int add_child_pid_to_parent(pid_t child_pid);
+
+/* Remove a child pid from a parent's children array */
+void remove_child_pid_from_parent(pid_t child_pid);
+
+/* Mark all children of curproc as orphans */
+void make_all_children_orphans(void);
+
+/* Check if pid is a child of curproc */
+bool is_child(pid_t pid);
 
 #endif /* _PROC_H_ */
