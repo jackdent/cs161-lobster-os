@@ -33,7 +33,7 @@
  * There is (intentionally) not much here; you will need to add stuff
  * and maybe change around what's already present.
  *
- * p_lock is intended to be held when manipulating the pointers in the
+ * p_spinlock is intended to be held when manipulating the pointers in the
  * proc structure, not while doing any significant work with the
  * things they point to. Rearrange this (and/or change it to be a
  * regular lock) as needed.
@@ -106,13 +106,13 @@ proc_create(const char *name, int *err) {
 		goto err6;
 	}
 
-	spinlock_init(&proc->p_lock);
+	spinlock_init(&proc->p_spinlock);
 
 	proc->p_parent_pid = -1; // To be set by caller
 	proc->p_numthreads = 0;
 	proc->p_exit_status = -1;
-	proc->p_addrspace = NULL; // Probably need to change
-	proc->p_cwd = NULL; // Probably need to change
+	proc->p_addrspace = NULL;
+	proc->p_cwd = NULL;
 
 	*err = 0;
 	return proc;
@@ -153,7 +153,7 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc != kproc);
 
 	/*
-	 * We don't take p_lock in here because we must have the only
+	 * We don't take p_spinlock in here because we must have the only
 	 * reference to this structure. (Otherwise it would be
 	 * incorrect to destroy it.)
 	 */
@@ -214,7 +214,7 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc->p_numthreads == 0);
 
-	spinlock_cleanup(&proc->p_lock);
+	spinlock_cleanup(&proc->p_spinlock);
 	sem_destroy(proc->p_wait_sem);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
@@ -302,12 +302,12 @@ proc_create_runprogram(const char *name)
 	 * (We don't need to lock the new process, though, as we have
 	 * the only reference to it.)
 	 */
-	spinlock_acquire(&curproc->p_lock);
+	spinlock_acquire(&curproc->p_spinlock);
 	if (curproc->p_cwd != NULL) {
 		VOP_INCREF(curproc->p_cwd);
 		newproc->p_cwd = curproc->p_cwd;
 	}
-	spinlock_release(&curproc->p_lock);
+	spinlock_release(&curproc->p_spinlock);
 
 	return newproc;
 }
@@ -328,9 +328,9 @@ proc_addthread(struct proc *proc, struct thread *t)
 
 	KASSERT(t->t_proc == NULL);
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlock);
 	proc->p_numthreads++;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlock);
 
 	spl = splhigh();
 	t->t_proc = proc;
@@ -357,10 +357,10 @@ proc_remthread(struct thread *t)
 	proc = t->t_proc;
 	KASSERT(proc != NULL);
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlock);
 	KASSERT(proc->p_numthreads > 0);
 	proc->p_numthreads--;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlock);
 
 	spl = splhigh();
 	t->t_proc = NULL;
@@ -385,9 +385,9 @@ proc_getas(void)
 		return NULL;
 	}
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlock);
 	as = proc->p_addrspace;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlock);
 	return as;
 }
 
@@ -403,10 +403,10 @@ proc_setas(struct addrspace *newas)
 
 	KASSERT(proc != NULL);
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlock);
 	oldas = proc->p_addrspace;
 	proc->p_addrspace = newas;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlock);
 	return oldas;
 }
 
@@ -474,9 +474,9 @@ make_all_children_orphans(void)
 	for (i = 0; i < curproc->p_children->num; i++) {
 		pid = (pid_t) array_get(curproc->p_children, i);
 		if (pid != (pid_t)-1) {
-			spinlock_acquire(&proc_table.pt_table[pid]->p_lock);
+			spinlock_acquire(&proc_table.pt_table[pid]->p_spinlock);
 			proc_table.pt_table[pid]->p_parent_pid = 0;
-			spinlock_release(&proc_table.pt_table[pid]->p_lock);
+			spinlock_release(&proc_table.pt_table[pid]->p_spinlock);
 		}
 	}
 }

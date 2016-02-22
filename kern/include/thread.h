@@ -112,8 +112,6 @@ struct thread {
 	 * Public fields
 	 */
 
-	struct addrspace *t_addrspace;	/* this thread's address space */
-
 	/* VFS */
 	bool t_did_reserve_buffers;	/* reserve_buffers() in effect */
 

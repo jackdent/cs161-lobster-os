@@ -283,8 +283,6 @@ thread_destroy(struct thread *thread)
 	/* sheer paranoia */
 	thread->t_wchan_name = "DESTROYED";
 
-	as_destroy(thread->t_addrspace);
-
 	kfree(thread->t_name);
 	kfree(thread);
 }

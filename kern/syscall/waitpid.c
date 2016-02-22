@@ -18,7 +18,7 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 	int err;
 
 	// Lock current proc struct
-	spinlock_acquire(&curproc->p_lock);
+	spinlock_acquire(&curproc->p_spinlock);
 
 	// Don't support any options
 	if (options != 0) {
@@ -55,19 +55,19 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 	// Finish cleaning up the child proc
 	spinlock_acquire(&proc_table.pt_spinlock);
 	sem_destroy(proc_table.pt_table[pid]->p_wait_sem);
-	spinlock_cleanup(&proc_table.pt_table[pid]->p_lock);
+	spinlock_cleanup(&proc_table.pt_table[pid]->p_spinlock);
 	kfree(proc_table.pt_table[pid]);
 	proc_table.pt_table[pid] = NULL;
 
 	// Remove pid from array of children
 	remove_child_pid_from_parent(pid);
 
-	spinlock_release(&curproc->p_lock);
+	spinlock_release(&curproc->p_spinlock);
 
 	*retval = pid;
 	return err;
 
 	err1:
-		spinlock_release(&curproc->p_lock);
+		spinlock_release(&curproc->p_spinlock);
 		return err;
 }

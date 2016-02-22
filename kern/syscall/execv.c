@@ -95,7 +95,7 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 
 	/* Save the old address space, if it exists */
 	if (proc_getas() != NULL) {
-		old_as = curthread->t_addrspace;
+		old_as = curproc->p_addrspace;
 	} else {
 		old_as = NULL;
 	}

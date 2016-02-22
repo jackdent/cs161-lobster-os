@@ -75,19 +75,24 @@ get_file_from_fd_table(struct fd_table *fd_table, int fd)
 }
 
 void
-reference_each_file(struct fd_table *fd_table)
+clone_fd_table(struct fd_table *src, struct fd_table *dest)
 {
-        KASSERT(fd_table != NULL);
+        KASSERT(src != NULL);
+        KASSERT(dest != NULL);
 
-        spinlock_acquire(&fd_table->fdt_spinlock);
+        spinlock_acquire(&src->fdt_spinlock);
+        spinlock_acquire(&dest->fdt_spinlock);
 
         for (int i = 0; i < FD_MAX; ++i) {
-                if (fd_table->fdt_table[i] != NULL) {
-                        fd_file_reference(fd_table->fdt_table[i]);
+
+                if (src->fdt_table[i] != NULL) {
+                        dest->fdt_table[i] = src->fdt_table[i];
+                        fd_file_reference(src->fdt_table[i]);
                 }
         }
 
-        spinlock_release(&fd_table->fdt_spinlock);
+        spinlock_release(&dest->fdt_spinlock);
+        spinlock_release(&src->fdt_spinlock);
 }
 
 int

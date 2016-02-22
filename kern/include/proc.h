@@ -64,22 +64,20 @@ struct vnode;
  * without sleeping.
  */
 struct proc {
-        pid_t p_pid;			/* This process's pid */
-        pid_t p_parent_pid;		/* Parent's pid */
-	char *p_name;			/* Name of this process */
-	struct spinlock p_lock;		/* Lock for this structure */
-	unsigned p_numthreads;		/* Number of threads in this process */
-        struct fd_table *p_fd_table;
+        /* These fields are all initialised by proc_create */
+        pid_t p_pid;                    /* This process's pid */
+        pid_t p_parent_pid;             /* Parent's pid */
+        char *p_name;                   /* Name of this process */
+        int p_exit_status;              /* exit status */
+        unsigned p_numthreads;          /* Number of threads in this process */
+        struct spinlock p_spinlock;     /* Lock for this structure */
+        struct fd_table *p_fd_table;    /* File descriptor table */
+        struct semaphore *p_wait_sem;   /* Call V() when exited so parent can P() on it */
+        struct array *p_children;       /* Array for keeping track of children pids
+                                           -1 indicates an open slot in the array */
 
-	struct array *p_children;	/* Array for keeping track of children pids
-					   -1 indicates an open slot in the array */
-	struct semaphore *p_wait_sem; 	/* Call V() when exited so parent can P() on it */
-	int p_exit_status;		/* exit status */
-
-	/* VM */
+        /* These fields are NOT initialised by proc_create */
 	struct addrspace *p_addrspace;	/* virtual address space */
-
-	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
 };
 
