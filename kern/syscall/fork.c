@@ -39,7 +39,7 @@ child_finish_setup(void *p, unsigned long n)
 	struct trapframe tf;
 
 	sd = (struct setup_data *)p;
-	tf = sd->trapframe;
+	tf = sd->child_tf;
 
 	// Tell parent we're done with the setup_data struct
 	V(sd->parent_wait_for_child);
@@ -51,16 +51,14 @@ child_finish_setup(void *p, unsigned long n)
 
 int sys_fork(struct trapframe *tf, pid_t *retval)
 {
-	unsigned i;
 	int err;
 	struct proc *child_proc;
-	struct trapframe child_tf;
-	pid_t tmp;
-	bool found;
+	struct setup_data *sd;
 	pid_t child_pid;
+	struct addrspace *child_as;
 
 
-	child_proc = proc_create(curproc->p_name, err);
+	child_proc = proc_create(curproc->p_name, &err);
 	if (child_proc == NULL) {
 		goto err1;
 	}
@@ -70,10 +68,10 @@ int sys_fork(struct trapframe *tf, pid_t *retval)
 	spinlock_acquire(&curproc->p_lock);
 
 	// Save parent's pid in child_proc
-	child_proc->parent_pid = curproc->p_pid;
+	child_proc->p_parent_pid = curproc->p_pid;
 
 	// Setup data to be passed into child's setup function
-	struct setup_data *sd = kmalloc(sizeof(struct setup_data));
+	sd = kmalloc(sizeof(struct setup_data));
 	if (sd == NULL){
 		err = ENOMEM;
 		goto err2;
@@ -88,10 +86,10 @@ int sys_fork(struct trapframe *tf, pid_t *retval)
 
 	// Alter child's return value
 	sd->child_tf = *tf;
-	tf.tf_v0 = 0;
-	tf.tf_v1 = 0;
-	tf.tf_a3 = 0;
-	tf.tf_epc += 4;
+	sd->child_tf.tf_v0 = 0;
+	sd->child_tf.tf_v1 = 0;
+	sd->child_tf.tf_a3 = 0;
+	sd->child_tf.tf_epc += 4;
 
 	// Copy over parent's address space
 	err = as_copy(curthread->t_addrspace, &child_as);
@@ -100,57 +98,46 @@ int sys_fork(struct trapframe *tf, pid_t *retval)
 		goto err4;
 	}
 
-	// Save child's pid in parent proc
-	found = false;
-	for (i = 0; i < curproc->children->num; i++) {
-		tmp = (pid_t) array_get(curproc->children, i);
-		if (tmp == -1) {
-			array_set(curproc->children, i, (void*)child_pid);
-			found = true;
-			break;
-		}
-	}
-	if (!found) {
-		err = array_add(curproc->children, (void*)child_pid, NULL);
-		if (*err) {
-			err = ENOMEM;
-			goto err5;
-		}
+	err = add_child_pid_to_parent(child_pid);
+	if (err) {
+		goto err5;
 	}
 
 	child_proc->p_addrspace = child_as;
 
-	// Need to set up actual child thread
-	*err = thread_fork("child", child_proc, child_finish_setup, sd, 0);
-	if (*err) {
-		goto err6;
-	}
 
-	spinlock_release(&curproc->p_lock);
+
 
 	/*
 	TODO: Handle file descriptors here
 	*/
 
 
-	V(sd->child_wait_for_parent);
+
+
+
+	// Need to set up actual child thread
+	err = thread_fork("child", child_proc, child_finish_setup, sd, 0);
+	if (err) {
+		goto err6;
+	}
+
+	spinlock_release(&curproc->p_lock);
+
+	// Wait for child to get its trapframe
 	P(sd->parent_wait_for_child);
 
 	// Now safe to destroy setup data structs
 	sem_destroy(sd->parent_wait_for_child);
 	kfree(sd);
 
-	return child_pid;
+	*retval = child_pid;
+	// err should be 0 at this point
+	return err;
 
 
 	err6:
-		// Remove child's pid from parent's children array
-		for (i = 0; i < curproc->children->num; i++) {
-			if ((pid_t)array_get(curproc->children, i) == child_pid) {
-				array_set(curproc->children, i, (void*)-1);
-				break;
-			}
-		}
+		remove_child_pid_from_parent(child_pid);
 		spinlock_release(&curproc->p_lock);
 	err5:
 		as_destroy(child_as);
@@ -161,5 +148,5 @@ int sys_fork(struct trapframe *tf, pid_t *retval)
 	err2:
 		proc_destroy(child_proc);
 	err1:
-		return -1;
+		return err;
 }

@@ -65,15 +65,15 @@ struct vnode;
  */
 struct proc {
         pid_t p_pid;			/* This process's pid */
-        pid_t parent_pid;		/* Parent's pid */
+        pid_t p_parent_pid;		/* Parent's pid */
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
 
-	struct array *children;		/* Array for keeping track of children pids
+	struct array *p_children;	/* Array for keeping track of children pids
 					   -1 indicates an open slot in the array */
-	struct semaphore *wait_sem; 	/* Call V() when exited so parent can P() on it */
-	int exit_status;		/* exit status */
+	struct semaphore *p_wait_sem; 	/* Call V() when exited so parent can P() on it */
+	int p_exit_status;		/* exit status */
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -112,5 +112,19 @@ struct addrspace *proc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
 
+/* Check if in range and actual process */
+int is_valid_pid(pid_t pid);
+
+/* Add a child pid to a parent's children array */
+int add_child_pid_to_parent(pid_t child_pid);
+
+/* Remove a child pid from a parent's children array */
+void remove_child_pid_from_parent(pid_t child_pid);
+
+/* Mark all children of curproc as orphans */
+void make_all_children_orphans(void);
+
+/* Check if pid is a child of curproc */
+bool is_child(pid_t pid);
 
 #endif /* _PROC_H_ */

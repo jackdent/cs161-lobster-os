@@ -802,7 +802,7 @@ thread_exit(void)
         splhigh();
 
         // Signal in case parent is/will be P()ing
-        V(curproc->wait_sem);
+        V(curproc->p_wait_sem);
 
 	thread_switch(S_ZOMBIE, NULL, NULL);
 	panic("braaaaaaaiiiiiiiiiiinssssss\n");

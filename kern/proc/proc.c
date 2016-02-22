@@ -75,44 +75,47 @@ proc_create(const char *name, int *err) {
 	pid = assign_pid_to_proc(proc);
 	if (pid < 0) {
 		*err = ENPROC; // could also be EMPROC
-		goto err1;
+		goto err2;
 	}
 
 	// To be set by caller
-	proc->parent_pid = -1;
+	proc->p_parent_pid = -1;
 
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
 		*err = ENOMEM;
-		goto err2;
+		goto err3;
 	}
 
 	spinlock_init(&proc->p_lock);
 	proc->p_numthreads = 0;
-	proc->children = array_create();
-	if (proc->children == NULL) {
-		*err = ENOMEM;
-		goto err3;
-	}
-
-	proc->wait_sem = sem_create(name, 0);
-	if (proc->wait_sem == NULL) {
+	proc->p_children = array_create();
+	if (proc->p_children == NULL) {
 		*err = ENOMEM;
 		goto err4;
 	}
 
-	proc->exit_status = -1;
+	proc->p_wait_sem = sem_create(name, 0);
+	if (proc->p_wait_sem == NULL) {
+		*err = ENOMEM;
+		goto err5;
+	}
+
+	proc->p_exit_status = -1;
 
 	proc->p_addrspace = NULL; // Probably need to change
 	proc->p_cwd = NULL; // Probably need to change
 
+	*err = 0;
 	return proc;
 
 
+	err5:
+		array_destroy(proc->p_children);
 	err4:
-		array_destroy(proc->children);
-	err3:
 		kfree(proc->p_name);
+	err3:
+		// Free pid
 	err2:
 		kfree(proc);
 	err1:
@@ -201,7 +204,8 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
-	sem_destroy(proc->wait_sem);
+	array_destroy(proc->p_children);
+	sem_destroy(proc->p_wait_sem);
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -218,7 +222,7 @@ proc_bootstrap(void)
 	spinlock_init(&proc_table.pt_spinlock);
 
 	kproc = proc_create("[kernel]", &err);
-	if (kproc == NULL) {
+	if (err) {
 		panic("proc_create for kproc failed\n");
 	}
 }
@@ -236,7 +240,7 @@ proc_create_runprogram(const char *name)
 	int err;
 
 	newproc = proc_create(name, &err);
-	if (newproc == NULL) {
+	if (err) {
 		return NULL;
 	}
 
@@ -357,4 +361,91 @@ proc_setas(struct addrspace *newas)
 	proc->p_addrspace = newas;
 	spinlock_release(&proc->p_lock);
 	return oldas;
+}
+
+
+
+int is_valid_pid(pid_t pid)
+{
+	int err;
+
+	if (!(pid >= PID_MIN && pid < PID_MAX)) {
+		return ESRCH;
+	}
+
+	spinlock_acquire(&proc_table.pt_spinlock);
+	if (!proc_table.pt_table[pid]) {
+		err = ESRCH;
+	}
+	else {
+		err = 0;
+	}
+	spinlock_release(&proc_table.pt_spinlock);
+	return err;
+}
+
+// Assumes curproc is already locked
+// Return 0 on success, ENOMEM on error
+int
+add_child_pid_to_parent(pid_t child_pid)
+{
+	unsigned i;
+	pid_t tmp;
+
+	for (i = 0; i < curproc->p_children->num; i++) {
+		tmp = (pid_t) array_get(curproc->p_children, i);
+		if (tmp == -1) {
+			array_set(curproc->p_children, i, (void*)child_pid);
+			return 0;
+		}
+	}
+	return array_add(curproc->p_children, (void*)child_pid, NULL);
+}
+
+// Assumes curproc is already locked, and the child_pid
+// is actually in the children array
+void
+remove_child_pid_from_parent(pid_t child_pid)
+{
+	unsigned i;
+
+	for (i = 0; i < curproc->p_children->num; i++) {
+		if ((pid_t)array_get(curproc->p_children, i) == child_pid) {
+			array_set(curproc->p_children, i, (void*)-1);
+			break;
+		}
+	}
+}
+
+// Assumes curproc is already locked
+void
+make_all_children_orphans(void)
+{
+	unsigned i;
+	pid_t pid;
+
+	for (i = 0; i < curproc->p_children->num; i++) {
+		pid = (pid_t) array_get(curproc->p_children, i);
+		if (pid != (pid_t)-1) {
+			spinlock_acquire(&proc_table.pt_table[pid]->p_lock);
+			proc_table.pt_table[pid]->p_parent_pid = 0;
+			spinlock_release(&proc_table.pt_table[pid]->p_lock);
+		}
+	}
+}
+
+// Assumes curproc is already locked
+// Check if pid is a child of curproc
+bool
+is_child(pid_t pid)
+{
+	unsigned i;
+
+	for (i = 0; i < curproc->p_children->num; i++) {
+		if ((pid_t) array_get(curproc->p_children, i) == pid) {
+			return true;
+		}
+	}
+
+	return false;
 }

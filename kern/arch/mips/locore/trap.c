@@ -211,7 +211,7 @@ mips_trap(struct trapframe *tf)
 	 */
 	spl = splhigh();
 	splx(spl);
-	kprintf("%d, %d\n", code, EX_SYS);
+
 	/* Syscall? Call the syscall handler and return. */
 	if (code == EX_SYS) {
 		/* Interrupts should have been on while in user mode. */

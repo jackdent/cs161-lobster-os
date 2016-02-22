@@ -16,32 +16,23 @@
 void
 sys__exit(int exitcode)
 {
-	pid_t pid;
-	unsigned i;
-
 	// Mark all children as orphans
 	spinlock_acquire(&proc_table.pt_spinlock);
 
-	for (i = 0; i < curproc->children->num; i++) {
-		pid = (pid_t) array_get(curproc->children, i);
-		if (pid != -1) {
-			spinlock_acquire(&proc_table.pt_table[pid]->p_lock);
-			proc_table.pt_table[pid]->parent_pid = -1;
-			spinlock_release(&proc_table.pt_table[pid]->p_lock);
-		}
-	}
+	make_all_children_orphans();
 
 	spinlock_release(&proc_table.pt_spinlock);
 
-	curproc->exit_status = _MKWAIT_EXIT(exitcode);
+	curproc->p_exit_status = _MKWAIT_EXIT(exitcode);
 
 	// Destory/free everything except the proc struct itself, the exit status,
 	// and the struct's lock
-	thread_exit(); // TODO more cleanup here
+
+	thread_exit(); // TODO: consult w/ TF about when to reap
 
 	kfree(curproc->p_name);
-	array_destroy(curproc->children);
-	sem_destroy(curproc->wait_sem);
+	array_destroy(curproc->p_children);
+	sem_destroy(curproc->p_wait_sem);
 	as_destroy(curproc->p_addrspace);
 
 	// V() on wait_sem called in thread_exit

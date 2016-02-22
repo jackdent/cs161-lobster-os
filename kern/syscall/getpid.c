@@ -1,10 +1,14 @@
 #include <types.h>
 #include <current.h>
 #include <proc.h>
+#include <synch.h>
 #include <syscall.h>
 
-pid_t
-sys_getpid(void)
+// Cannot fail
+void
+sys_getpid(pid_t* retval)
 {
-	return curproc->p_pid;
+	spinlock_acquire(&curproc->p_lock);
+	*retval = curproc->p_pid;
+	spinlock_release(&curproc->p_lock);
 }
