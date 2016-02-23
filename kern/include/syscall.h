@@ -32,6 +32,7 @@
 
 
 #include <cdefs.h> /* for __DEAD */
+#include <array.h>
 struct trapframe; /* from <machine/trapframe.h> */
 
 /*
@@ -55,6 +56,11 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 int runprogram(char *progname, char **args, int argc);
 /* Should not be called directly by the user; gets called by runprogram */
 int _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point);
+
+// Helper functions for both runprogram and execv
+int extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens, bool copy_args);
+void copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_lens);
+
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.

@@ -13,15 +13,19 @@
 #include <array.h>
 #include <limits.h>
 
+
 /* Returns 0 if we successfully copied the user's arguments into buf;
    otherwise, returns error code. argv will contain pointers to the starts
-   of each argument, and argv_lens will contain the lengths */
-static
+   of each argument, and argv_lens will contain the lengths
+
+   If copy is set to false, in the case of runprogram, extract_args will
+   simply save the addresses and lengths and verify that we don'y exceed
+   ARG_MAX, since the arguments already exist in the kernel space */
 int
-extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens)
+extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens, bool copy_args)
 {
-	int arg, rem, result;
-	size_t pos, copied;
+	int arg, result;
+	size_t pos, copied, rem;
 	char **args_p;
 
 	if (args == NULL) {
@@ -35,7 +39,15 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 	arg = 0;
 	while (args_p[arg] != NULL) {
 		rem = ARG_MAX - pos;
-		result = copyinstr((const_userptr_t) args_p[arg], &buf[pos], rem, &copied);
+		if (copy_args) {
+			result = copyinstr((const_userptr_t) args_p[arg], &buf[pos], rem, &copied);
+		}
+		else {
+			copied = strlen(args_p[arg]) + 1;
+			if (rem > copied) {
+				return E2BIG;
+			}
+		}
 
 		switch (result) {
 		case EFAULT:
@@ -43,8 +55,14 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 		case ENAMETOOLONG:
 			return E2BIG;
 		default:
-			array_add(argv, &buf[pos], NULL);
-			array_add(argv_lens, (void*) copied, NULL);
+			result = array_add(argv, &buf[pos], NULL);
+			if (result) {
+				return result;
+			}
+			result = array_add(argv_lens, (void*) copied, NULL);
+			if (result) {
+				return result;
+			}
 			pos += copied;
 		}
 	}
@@ -52,7 +70,6 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 	return 0;
 }
 
-static
 void
 copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_lens)
 {
@@ -68,6 +85,8 @@ copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_le
 		padding = len % 4 == 0 ? 0 : 4 - (len % 4);
 		*stack_ptr -= len + padding;
 		copyoutstr((const char*) start_ptr, (userptr_t) *stack_ptr, len, NULL);
+		// TODO: we should always have enough space, but still
+		// check the return value just in case
 
 		// Rather than allocating an new array, we reuse the argv_lens array to store pointers
 		// to the start of each argument on the stack
@@ -174,7 +193,7 @@ sys_execv(userptr_t progname, userptr_t args)
 		goto err3;
 	}
 
-	result = extract_args(args, arg_buf, argv, argv_lens);
+	result = extract_args(args, arg_buf, argv, argv_lens, true);
 	if (result != 0) {
 		result = ENOMEM;
 		goto err4;

@@ -50,50 +50,35 @@ int
 runprogram(char *progname, char **args, int argc)
 {
 	vaddr_t stack_ptr, entry_point;
+	int result;
 
-	int i, padding, result;
-	int length;
-	size_t offset;
-	userptr_t user_dest;
-	userptr_t *user_argv;
+	struct array *argv;
+	struct array *argv_lens;
 
 	KASSERT(proc_getas() == NULL);
 	_launch_program(progname, &stack_ptr, &entry_point);
 
 	// Need to copy arguments in
 	if (argc > 1) {
-		user_argv = kmalloc(sizeof(userptr_t) * argc);
-		if (user_argv == NULL) {
+
+		argv = array_create();
+		if (!argv) {
 			result = ENOMEM;
 			goto err1;
 		}
 
-		// Copy arg strings in
-		offset = 0;
-		for (i = argc - 1; i >= 0; i--) {
-			length = strlen(args[i]) + 1;
-			padding = length % 4 == 0 ? 0 : 4 - (length % 4);
-			offset += length + padding;
-			user_argv[i] = (userptr_t)(stack_ptr - offset);
-
-			result = copyoutstr((const char*)args[i], user_argv[i], length, NULL);
-			if (result){
-				goto err2;
-			}
+		argv_lens = array_create();
+		if (!argv_lens) {
+			result = ENOMEM;
+			goto err2;
 		}
 
-		// Copy pointers to arguments in
-		user_dest = user_argv[0] - 4 * (argc + 1);
-		stack_ptr = (vaddr_t)user_dest;
-		for (i = 0; i < argc; i++) {
-			result = copyout((const void *)&user_argv[i], user_dest, 4);
-			if (result) {
-				goto err2;
-			}
-			user_dest += 4;
+		result = extract_args((userptr_t) args, NULL, argv, argv_lens, false);
+		if (result) {
+			goto err2;
 		}
 
-		kfree(user_argv);
+		copy_args_to_stack(&stack_ptr, argv, argv_lens);
 
 		enter_new_process(0 /*argc*/, (userptr_t)stack_ptr
 			/*userspace addr of argv*/,
@@ -116,7 +101,8 @@ runprogram(char *progname, char **args, int argc)
 	// the result of _launch_program, right?
 
 	err2:
-		kfree(user_argv);
+		array_destroy(argv);
 	err1:
+		array_destroy(argv_lens);
 		return result;
 }
