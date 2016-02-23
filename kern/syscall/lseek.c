@@ -7,7 +7,7 @@
 #include <current.h>
 
 int
-sys_lseek(int fd, off_t pos, off_t *new_pos, int whence)
+sys_lseek(int fd, off_t pos, int whence, off_t *new_pos)
 {
         int err;
         struct fd_file *file;
@@ -35,7 +35,6 @@ sys_lseek(int fd, off_t pos, off_t *new_pos, int whence)
                 break;
         case SEEK_END:
                 VOP_STAT(file->fdf_vnode, &stat);
-                // TODO: is there an off by one err here?
                 *new_pos = stat.st_size + pos;
                 break;
         default:

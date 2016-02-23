@@ -35,6 +35,7 @@
 #include <thread.h>
 #include <current.h>
 #include <syscall.h>
+#include <endian.h>
 
 /*
  * System call dispatcher.
@@ -79,7 +80,13 @@ syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
+	int32_t retval_extra;
 	int err;
+
+	/* Used by SYS_lseek */
+	uint64_t pos;
+	uint64_t new_pos;
+	int *whence;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -97,6 +104,7 @@ syscall(struct trapframe *tf)
 	 */
 
 	retval = 0;
+	retval_extra = 0;
 
 	switch (callno) {
 	case SYS_reboot:
@@ -127,8 +135,10 @@ syscall(struct trapframe *tf)
 		break;
 
 	case SYS_lseek:
-		// TODO: support 64 bit seek values, helpful functions: join32to64 and split64to32
-		err = sys_lseek((int)tf->tf_a0, (off_t)tf->tf_a1, (off_t *)&retval, (int)tf->tf_a2);
+		whence = (int *)tf->tf_sp + 16;
+		join32to64(tf->tf_a2, tf->tf_a3, &pos); // TODO: are these in the right order?
+		err = sys_lseek((int)tf->tf_a0, (off_t)pos, *whence, (off_t *)&new_pos);
+		split64to32(new_pos, (uint32_t *)&retval, (uint32_t *)&retval_extra);
 		break;
 
 	case SYS_dup2:
@@ -184,7 +194,14 @@ syscall(struct trapframe *tf)
 	}
 	else {
 		/* Success. */
-		tf->tf_v0 = retval;
+		if (retval_extra != 0) {
+			tf->tf_v0 = retval;
+			tf->tf_v1 = retval_extra;
+		}
+		else {
+			tf->tf_v0 = retval;
+		}
+
 		tf->tf_a3 = 0;      /* signal no error */
 	}
 

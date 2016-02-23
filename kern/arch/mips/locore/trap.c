@@ -30,6 +30,7 @@
 #include <types.h>
 #include <signal.h>
 #include <lib.h>
+#include <kern/wait.h>
 #include <mips/specialreg.h>
 #include <mips/trapframe.h>
 #include <cpu.h>
@@ -37,6 +38,7 @@
 #include <thread.h>
 #include <current.h>
 #include <vm.h>
+#include <proc.h>
 #include <mainbus.h>
 #include <syscall.h>
 
@@ -108,13 +110,9 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 		break;
 	}
 
-	/*
-	 * You will probably want to change this.
-	 */
-
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
-	panic("I don't know how to handle this\n");
+	proc_exit(curproc, _MKWAIT_SIG(sig));
 }
 
 /*

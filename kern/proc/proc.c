@@ -250,6 +250,27 @@ proc_destroy(struct proc *proc) {
 	kfree(proc);
 }
 
+void
+proc_exit(struct proc *proc, int exitcode)
+{
+	spinlock_acquire(&proc->p_spinlock);
+
+	/* kproc should adopt all the children *before* we call proc_destroy */
+	kproc_adopt_children(proc);
+	proc->p_exit_status = exitcode;
+
+	spinlock_release(&proc->p_spinlock);
+
+	/* Cleanup everything except the proc struct itself, which contains
+	   the exit status */
+	proc_cleanup(proc);
+
+	/* This will set threads on the process to 0, so it can be reaped,
+	   and will call V() on wait_sem to notify any parents who have called
+	   wait_pid */
+	thread_exit();
+}
+
 /*
  * Create the process structure for the kernel, and initialise
  * the global process table lock
@@ -279,7 +300,6 @@ kproc_stdio_bootstrap(void)
 	char *con2 = kstrdup("con:");
 	char *con3 = kstrdup("con:");
 
-	// TODO: do we need a different mode?
 	err1 = vfs_open(con1, O_RDONLY, 0, &stdin);
 	err2 = vfs_open(con2, O_WRONLY, 0, &stdout);
 	err3 = vfs_open(con3, O_WRONLY, 0, &stderr);
@@ -319,10 +339,13 @@ proc_create_runprogram(const char *name)
 	}
 
 	/* VM fields */
-
 	newproc->p_addrspace = NULL;
 
 	/* VFS fields */
+
+	/* Clone the file descriptor table so the new proc has
+	   access to STDIN, STDOUT, and STDERR */
+	clone_fd_table(curproc->p_fd_table, newproc->p_fd_table);
 
 	/*
 	 * Lock the current process to copy its current directory.

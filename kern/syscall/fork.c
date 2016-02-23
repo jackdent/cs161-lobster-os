@@ -22,7 +22,6 @@ child_finish_setup(void *child_tf, unsigned long n)
 {
 	(void)n;
 
-	as_activate(); 	/* TODO: thread_fork may call as_activate? */
 	// TODO: when does child_tf get freed?
 	mips_usermode((struct trapframe *)child_tf);
 }

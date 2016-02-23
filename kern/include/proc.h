@@ -73,10 +73,12 @@ struct proc {
                                            is 0, either a thread never ran in the process or
                                            the process has completed, so the proc can be reaped */
         struct spinlock p_spinlock;     /* Lock for this structure */
-        struct fd_table *p_fd_table;    /* File descriptor table */
         struct semaphore *p_wait_sem;   /* Call V() when exited so parent can P() on it */
         struct array *p_children;       /* Array for keeping track of children pids
                                            -1 indicates an open slot in the array */
+
+        /* This is initialised by proc_create, but does not bind STDIN, STDOUT or STDERR */
+        struct fd_table *p_fd_table;    /* File descriptor table */
 
         /* These fields are NOT initialised by proc_create */
         struct addrspace *p_addrspace;  /* virtual address space */
@@ -109,6 +111,9 @@ void proc_reap(struct proc *proc);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);
+
+/* Exit a process */
+void proc_exit(struct proc *proc, int exitcode);
 
 /* Attach a thread to a process. Must not already have a process. */
 int proc_addthread(struct proc *proc, struct thread *t);

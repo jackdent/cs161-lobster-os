@@ -53,7 +53,8 @@ sys_open(userptr_t filename, int flags, int *fd)
         err4:
                 fd_file_destroy(file);
         err3:
-                // TODO: also VFS close?
+                /* N.B. if the file was created, then vfs_close will not
+                   delete it */
                 vfs_close(vnode);
         err2:
                 kfree(filename_buf);
