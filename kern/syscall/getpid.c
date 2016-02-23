@@ -8,7 +8,7 @@
 void
 sys_getpid(pid_t* retval)
 {
-	spinlock_acquire(&curproc->p_spinlock);
+	lock_acquire(curproc->p_lock);
 	*retval = curproc->p_pid;
-	spinlock_release(&curproc->p_spinlock);
+	lock_release(curproc->p_lock);
 }

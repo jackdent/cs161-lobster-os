@@ -20,7 +20,7 @@ sys_dup2(int old_fd, int new_fd)
         fd_table = curproc->p_fd_table;
 
         KASSERT(fd_table != NULL);
-        spinlock_acquire(&fd_table->fdt_spinlock);
+        lock_acquire(fd_table->fdt_lock);
 
         if (valid_fd(fd_table, old_fd)) {
                 old_file = fd_table->fdt_table[old_fd];
@@ -32,7 +32,7 @@ sys_dup2(int old_fd, int new_fd)
         /* If old_fd is the same as new_fd, and if they are both valid,
            do nothing */
         if (old_fd == new_fd) {
-                spinlock_release(&fd_table->fdt_spinlock);
+                lock_release(fd_table->fdt_lock);
                 return 0;
         }
 
@@ -48,11 +48,11 @@ sys_dup2(int old_fd, int new_fd)
                 goto err1;
         }
 
-        spinlock_release(&fd_table->fdt_spinlock);
+        lock_release(fd_table->fdt_lock);
         return 0;
 
 
         err1:
-                spinlock_release(&fd_table->fdt_spinlock);
+                lock_release(fd_table->fdt_lock);
                 return err;
 }

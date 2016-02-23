@@ -13,6 +13,8 @@ fd_table_create()
                 return NULL;
         }
 
+        fd_table->fdt_lock = lock_create("fd_table lock");
+
         return fd_table;
 };
 
@@ -21,7 +23,7 @@ fd_table_destroy(struct fd_table *fd_table)
 {
         KASSERT(fd_table != NULL);
 
-        spinlock_cleanup(&fd_table->fdt_spinlock);
+        lock_destroy(fd_table->fdt_lock);
         kfree(fd_table);
 }
 
@@ -44,17 +46,17 @@ add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file)
         KASSERT(fd_table != NULL);
         KASSERT(file != NULL);
 
-        spinlock_acquire(&fd_table->fdt_spinlock);
+        lock_acquire(fd_table->fdt_lock);
 
         for (int i = 0; i < FD_MAX; ++i) {
                 if (fd_table->fdt_table[i] == NULL) {
                         fd_table->fdt_table[i] = file;
-                        spinlock_release(&fd_table->fdt_spinlock);
+                        lock_release(fd_table->fdt_lock);
                         return i;
                 }
         }
 
-        spinlock_release(&fd_table->fdt_spinlock);
+        lock_release(fd_table->fdt_lock);
         return -1;
 }
 
@@ -66,9 +68,9 @@ get_file_from_fd_table(struct fd_table *fd_table, int fd)
         KASSERT(fd_table != NULL);
 
         if (fd_in_range(fd)) {
-                spinlock_acquire(&fd_table->fdt_spinlock);
+                lock_acquire(fd_table->fdt_lock);
                 file = fd_table->fdt_table[fd];
-                spinlock_release(&fd_table->fdt_spinlock);
+                lock_release(fd_table->fdt_lock);
                 return file;
         }
 
@@ -81,8 +83,8 @@ clone_fd_table(struct fd_table *src, struct fd_table *dest)
         KASSERT(src != NULL);
         KASSERT(dest != NULL);
 
-        spinlock_acquire(&src->fdt_spinlock);
-        spinlock_acquire(&dest->fdt_spinlock);
+        lock_acquire(src->fdt_lock);
+        lock_acquire(dest->fdt_lock);
 
         for (int i = 0; i < FD_MAX; ++i) {
 
@@ -92,8 +94,8 @@ clone_fd_table(struct fd_table *src, struct fd_table *dest)
                 }
         }
 
-        spinlock_release(&dest->fdt_spinlock);
-        spinlock_release(&src->fdt_spinlock);
+        lock_release(src->fdt_lock);
+        lock_release(dest->fdt_lock);
 }
 
 int
@@ -103,7 +105,7 @@ release_fd_from_fd_table(struct fd_table *fd_table, int fd)
 
         KASSERT(fd_table != NULL);
 
-        spinlock_acquire(&fd_table->fdt_spinlock);
+        lock_acquire(fd_table->fdt_lock);
 
         if (valid_fd(fd_table, fd)) {
                 fd_file_release(fd_table->fdt_table[fd]);
@@ -113,6 +115,6 @@ release_fd_from_fd_table(struct fd_table *fd_table, int fd)
                 result = EBADF;
         }
 
-        spinlock_release(&fd_table->fdt_spinlock);
+        lock_release(fd_table->fdt_lock);
         return result;
 }

@@ -72,7 +72,7 @@ struct proc {
         unsigned p_numthreads;          /* Number of threads in this process. If num_threads
                                            is 0, either a thread never ran in the process or
                                            the process has completed, so the proc can be reaped */
-        struct spinlock p_spinlock;     /* Lock for this structure */
+        struct lock *p_lock;         /* Lock for this structure */
         struct semaphore *p_wait_sem;   /* Call V() when exited so parent can P() on it */
         struct array *p_children;       /* Array for keeping track of children pids
                                            -1 indicates an open slot in the array */

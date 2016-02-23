@@ -5,7 +5,7 @@
 
 struct fd_table {
         struct fd_file *fdt_table[FD_MAX];
-        struct spinlock fdt_spinlock;
+        struct lock *fdt_lock;
 };
 
 struct fd_table *fd_table_create(void);

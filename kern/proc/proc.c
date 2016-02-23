@@ -33,10 +33,6 @@
  * There is (intentionally) not much here; you will need to add stuff
  * and maybe change around what's already present.
  *
- * p_spinlock is intended to be held when manipulating the pointers in the
- * proc structure, not while doing any significant work with the
- * things they point to. Rearrange this (and/or change it to be a
- * regular lock) as needed.
  *
  * Unless you're implementing multithreaded user processes, the only
  * process that will have more than one thread is the kernel process.
@@ -53,6 +49,7 @@
 #include <addrspace.h>
 #include <vnode.h>
 #include <vfs.h>
+#include <current.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -67,6 +64,7 @@ struct proc *
 proc_create(const char *name, int *err) {
 	struct proc *proc;
 	pid_t pid;
+
 
 	proc = kmalloc(sizeof(*proc));
 	if (proc == NULL) {
@@ -106,7 +104,7 @@ proc_create(const char *name, int *err) {
 		goto err6;
 	}
 
-	spinlock_init(&proc->p_spinlock);
+	proc->p_lock = lock_create("proc lock");
 
 	proc->p_parent_pid = -1; // To be set by caller
 	proc->p_numthreads = 0;
@@ -157,11 +155,6 @@ proc_cleanup(struct proc *proc)
 	KASSERT(proc->p_numthreads == 1);
 	KASSERT(!proc_has_children(proc));
 
-	/*
-	 * We don't take p_spinlock in here because we must have the only
-	 * reference to this structure. (Otherwise it would be
-	 * incorrect to destroy it.)
-	 */
 
 	/* VFS fields */
 	if (proc->p_cwd) {
@@ -217,7 +210,7 @@ proc_cleanup(struct proc *proc)
 		as_destroy(as);
 	}
 
-	spinlock_cleanup(&proc->p_spinlock);
+	lock_destroy(proc->p_lock);
 	sem_destroy(proc->p_wait_sem);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
@@ -253,13 +246,13 @@ proc_destroy(struct proc *proc) {
 void
 proc_exit(struct proc *proc, int exitcode)
 {
-	spinlock_acquire(&proc->p_spinlock);
+	lock_acquire(proc->p_lock);
 
 	/* kproc should adopt all the children *before* we call proc_destroy */
 	kproc_adopt_children(proc);
 	proc->p_exit_status = exitcode;
 
-	spinlock_release(&proc->p_spinlock);
+	lock_release(proc->p_lock);
 
 	/* Cleanup everything except the proc struct itself, which contains
 	   the exit status */
@@ -352,12 +345,12 @@ proc_create_runprogram(const char *name)
 	 * (We don't need to lock the new process, though, as we have
 	 * the only reference to it.)
 	 */
-	spinlock_acquire(&curproc->p_spinlock);
+	lock_acquire(curproc->p_lock);
 	if (curproc->p_cwd != NULL) {
 		VOP_INCREF(curproc->p_cwd);
 		newproc->p_cwd = curproc->p_cwd;
 	}
-	spinlock_release(&curproc->p_spinlock);
+	lock_release(curproc->p_lock);
 
 	return newproc;
 }
@@ -378,9 +371,9 @@ proc_addthread(struct proc *proc, struct thread *t)
 
 	KASSERT(t->t_proc == NULL);
 
-	spinlock_acquire(&proc->p_spinlock);
+	lock_acquire(proc->p_lock);
 	proc->p_numthreads++;
-	spinlock_release(&proc->p_spinlock);
+	lock_release(proc->p_lock);
 
 	spl = splhigh();
 	t->t_proc = proc;
@@ -407,10 +400,10 @@ proc_remthread(struct thread *t)
 	proc = t->t_proc;
 	KASSERT(proc != NULL);
 
-	spinlock_acquire(&proc->p_spinlock);
+	lock_acquire(proc->p_lock);
 	KASSERT(proc->p_numthreads > 0);
 	proc->p_numthreads--;
-	spinlock_release(&proc->p_spinlock);
+	lock_release(proc->p_lock);
 
 	spl = splhigh();
 	t->t_proc = NULL;
@@ -435,9 +428,9 @@ proc_getas(void)
 		return NULL;
 	}
 
-	spinlock_acquire(&proc->p_spinlock);
+	lock_acquire(proc->p_lock);
 	as = proc->p_addrspace;
-	spinlock_release(&proc->p_spinlock);
+	lock_release(proc->p_lock);
 	return as;
 }
 
@@ -453,10 +446,10 @@ proc_setas(struct addrspace *newas)
 
 	KASSERT(proc != NULL);
 
-	spinlock_acquire(&proc->p_spinlock);
+	lock_acquire(proc->p_lock);
 	oldas = proc->p_addrspace;
 	proc->p_addrspace = newas;
-	spinlock_release(&proc->p_spinlock);
+	lock_release(proc->p_lock);
 	return oldas;
 }
 
@@ -499,12 +492,12 @@ static
 void
 kproc_adopt_process(struct proc *proc)
 {
-	spinlock_acquire(&proc->p_spinlock);
+	lock_acquire(proc->p_lock);
 
 	proc->p_parent_pid = kproc->p_pid;
 	array_add(kproc->p_children, (void*)proc->p_pid, NULL);
 
-	spinlock_release(&proc->p_spinlock);
+	lock_release(proc->p_lock);
 }
 
 // Expects caller to hold the process lock, but not the kproc lock
@@ -516,7 +509,7 @@ kproc_adopt_children(struct proc *proc)
 	struct proc *child_proc;
 
 	spinlock_acquire(&proc_table.pt_spinlock);
-	spinlock_acquire(&kproc->p_spinlock);
+	lock_acquire(proc->p_lock);
 
 	for (i = 0; i < proc->p_children->num; i++) {
 		pid = (pid_t)array_get(proc->p_children, i);
@@ -533,7 +526,7 @@ kproc_adopt_children(struct proc *proc)
 		}
 	}
 
-	spinlock_release(&kproc->p_spinlock);
+	lock_release(proc->p_lock);
 	spinlock_release(&proc_table.pt_spinlock);
 }
 

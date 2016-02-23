@@ -37,7 +37,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	struct addrspace *child_as;
 	struct trapframe *child_tf;
 
-	spinlock_acquire(&curproc->p_spinlock);
+	lock_acquire(curproc->p_lock);
 
 	child_proc = proc_create(curproc->p_name, &err);
 	if (child_proc == NULL) {
@@ -80,7 +80,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 		goto err5;
 	}
 
-	spinlock_release(&curproc->p_spinlock);
+	lock_release(curproc->p_lock);
 
 	*retval = child_proc->p_pid;
 	return 0;
@@ -95,6 +95,6 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	err2:
 		proc_destroy(child_proc);
 	err1:
-		spinlock_release(&curproc->p_spinlock);
+		lock_release(curproc->p_lock);
 		return err;
 }
