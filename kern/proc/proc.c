@@ -133,16 +133,16 @@ proc_create(const char *name, int *err) {
 }
 
 /*
- * Destroy a proc structure.
+ * Prepare a proc struct to be reaped
  *
- * There are two cases in which this is called:
- * 	1) A process that wants to become a zobmie calls destroy on itself. In
- *	   this case, kproc_adopt_children should also be called beforehand
- *	2) A process tries to create another process (during fork), but fails
- * 	   somewhere down the line and so needs to perform cleanup
+ * A process that wants to be reaped calls proc_cleanup on itself. In
+ * this case, kproc_adopt_children should also be called beforehand.
+ *
+ * We do not yet release the pid, in case the parent calls waitpid
+ * after the child has exited.
  */
 void
-proc_destroy(struct proc *proc)
+proc_cleanup(struct proc *proc)
 {
 	/*
 	 * You probably want to destroy and null out much of the
@@ -154,6 +154,8 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
+	KASSERT(proc->p_numthreads == 1);
+	KASSERT(!proc_has_children(proc));
 
 	/*
 	 * We don't take p_spinlock in here because we must have the only
@@ -215,15 +217,36 @@ proc_destroy(struct proc *proc)
 		as_destroy(as);
 	}
 
-	KASSERT(proc->p_numthreads == 0);
-	KASSERT(!proc_has_children(proc));
-
 	spinlock_cleanup(&proc->p_spinlock);
 	sem_destroy(proc->p_wait_sem);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
-	release_pid(proc->p_pid);
 	kfree(proc->p_name);
+}
+
+void
+proc_reap(struct proc *proc)
+{
+	KASSERT(proc->p_numthreads == 0);
+
+	release_pid(proc->p_pid);
+	kfree(proc);
+}
+
+/*
+ * Destroy a proc structure.
+ *
+ * This should be called when we have tried to create a new process (for example,
+ * during the sys_fork function), but our caller fails somewhere down the line and
+ * so needs to perform cleanup
+ *
+ */
+void
+proc_destroy(struct proc *proc) {
+	KASSERT(proc->p_numthreads == 0);
+
+	proc_cleanup(proc);
+	release_pid(proc->p_pid);
 	kfree(proc);
 }
 
@@ -477,11 +500,11 @@ kproc_adopt_children(struct proc *proc)
 		if (pid != (pid_t)-1) {
 			child_proc = proc_table.pt_table[pid];
 
-			// TODO: if (child_proc.status == ZOMBIE) {
-			// 	kfree(child_proc);
-			// } else {
+			if (child_proc->p_numthreads == 0) {
+				proc_reap(child_proc);
+			} else {
 				kproc_adopt_process(child_proc);
-			// }
+			}
 
 			array_set(proc->p_children, i, (void *)-1);
 		}

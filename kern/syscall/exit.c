@@ -21,11 +21,12 @@ sys__exit(int exitcode)
 
 	spinlock_release(&curproc->p_spinlock);
 
-	/* Destory/free everything except the proc struct itself, which contains
+	/* Cleanup everything except the proc struct itself, which contains
 	   the exit status */
-	proc_destroy(curproc);
+	proc_cleanup(curproc);
 
 	// V() on wait_sem called in thread_exit
 	// TODO: consult w/ TF about when to reap
+	// This will set threads on the process to 0, so it can be reaped
 	thread_exit();
 }

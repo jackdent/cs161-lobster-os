@@ -69,7 +69,9 @@ struct proc {
         pid_t p_parent_pid;             /* Parent's pid */
         char *p_name;                   /* Name of this process */
         int p_exit_status;              /* exit status */
-        unsigned p_numthreads;          /* Number of threads in this process */
+        unsigned p_numthreads;          /* Number of threads in this process. If num_threads
+                                           is 0, either a thread never ran in the process or
+                                           the process has completed, so the proc can be reaped */
         struct spinlock p_spinlock;     /* Lock for this structure */
         struct fd_table *p_fd_table;    /* File descriptor table */
         struct semaphore *p_wait_sem;   /* Call V() when exited so parent can P() on it */
@@ -96,8 +98,14 @@ void kproc_stdio_bootstrap(void);
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
 
-/* Create a process */
+/* Create a process. */
 struct proc *proc_create(const char *name, int *err);
+
+/* Cleanup a process for reaping. */
+void proc_cleanup(struct proc *proc);
+
+/* Reap a process at some point in the future, after calling after cleanup. */
+void proc_reap(struct proc *proc);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);
