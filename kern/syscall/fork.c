@@ -51,11 +51,6 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	struct trapframe *child_tf;
 	struct setup_data* sd;
 
-	int j = 4;
-	for (int i = 0; i < 32000000; i++) {
-		j++;
-	}
-
 	lock_acquire(curproc->p_lock);
 
 	child_proc = proc_create(curproc->p_name, &err);

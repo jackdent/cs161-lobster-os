@@ -44,7 +44,7 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 		}
 		else {
 			copied = strlen(args_p[arg]) + 1;
-			if (rem > copied) {
+			if (rem < copied) {
 				return E2BIG;
 			}
 		}
