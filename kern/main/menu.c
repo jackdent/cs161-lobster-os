@@ -133,10 +133,9 @@ common_prog(int nargs, char **args)
 		return result;
 	}
 
-	/*
-	 * The new process will be destroyed when the program exits...
-	 * once you write the code for handling that.
-	 */
+	/* Wait for launched process to finish reading from STDIO before
+	   continuing as the kernel */
+	P(proc->p_wait_sem);
 
 	return 0;
 }
