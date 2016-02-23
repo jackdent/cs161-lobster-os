@@ -38,27 +38,35 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
         case UIO_READ:
                 if (!fd_file_check_flag(file, O_RDONLY)) {
                         err = EBADF;
-                } else {
-
-                        err = VOP_READ(file->fdf_vnode, &uio);
+                        goto err3;
                 }
+
+                err = VOP_READ(file->fdf_vnode, &uio);
+                if (err) {
+                        goto err3;
+                }
+
+                err = copyout(ker_buf, buf, len);
+
                 break;
         case UIO_WRITE:
                 if (!fd_file_check_flag(file, O_WRONLY)) {
                         err = EBADF;
-                } else {
-                        err = VOP_WRITE(file->fdf_vnode, &uio);
+                        goto err3;
                 }
+
+                err = copyin(buf, ker_buf, len);
+                if (err) {
+                        goto err3;
+                }
+
+                err = VOP_WRITE(file->fdf_vnode, &uio);
+
                 break;
         default:
                 panic("Invalid rw option");
         }
 
-        if (err) {
-                goto err3;
-        }
-
-        err = copyoutstr(ker_buf, buf, len, NULL);
         if (err) {
                 goto err3;
         }
