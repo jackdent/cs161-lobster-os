@@ -16,16 +16,29 @@
 #include <limits.h>
 #include <proc.h>
 
+
+// Child V()'s on signal_to_parent to let parent know it is
+// safe to free the setup_data struct
+
+struct setup_data {
+	struct trapframe* child_tf;
+	struct semaphore* signal_to_parent;
+};
+
 static
 void
-child_finish_setup(void *child_tf, unsigned long n)
+child_finish_setup(void *ptr, unsigned long n)
 {
 	(void)n;
 
+	struct setup_data *sd;
 	struct trapframe copied_child_tf;
 
-	copied_child_tf = *((struct trapframe *)child_tf);
-	kfree(child_tf);
+	sd = (struct setup_data*) ptr;
+	copied_child_tf = *sd->child_tf;
+
+	as_activate();
+	V(sd->signal_to_parent);
 
 	mips_usermode(&copied_child_tf);
 }
@@ -36,6 +49,9 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	struct proc *child_proc;
 	struct addrspace *child_as;
 	struct trapframe *child_tf;
+	struct setup_data* sd;
+
+	child_proc = curproc;
 
 	lock_acquire(curproc->p_lock);
 
@@ -51,12 +67,26 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 		goto err2;
 	}
 
-	child_tf = kmalloc(sizeof(*child_tf));
-	child_tf = parent_tf;
-	if (child_tf == NULL) {
+	sd = kmalloc(sizeof(*sd));
+	if (sd == NULL) {
 		err = ENOMEM;
 		goto err3;
 	}
+
+	sd->signal_to_parent = sem_create("signal_to_parent", 0);
+	if (sd->signal_to_parent == NULL) {
+		err = ENOMEM;
+		goto err4;
+	}
+
+	child_tf = kmalloc(sizeof(*child_tf));
+	if (child_tf == NULL) {
+		err = ENOMEM;
+		goto err5;
+	}
+
+	*child_tf = *parent_tf;
+	sd->child_tf = child_tf;
 
 	child_tf->tf_v0 = 0; // fork should return 0 to child
 	child_tf->tf_a3 = 0; // No error has occured
@@ -67,7 +97,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	err = as_copy(curproc->p_addrspace, &child_as);
 	if (err) {
 		err = ENOMEM;
-		goto err4;
+		goto err6;
 	}
 
 	child_proc->p_addrspace = child_as;
@@ -75,21 +105,30 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	child_proc->p_cwd = curproc->p_cwd;
 	VOP_INCREF(child_proc->p_cwd);
 
-	err = thread_fork("child", child_proc, child_finish_setup, child_tf, 0);
+	err = thread_fork("child", child_proc, child_finish_setup, sd, 0);
 	if (err) {
-		goto err5;
+		goto err7;
 	}
+
+	P(sd->signal_to_parent);
+	sem_destroy(sd->signal_to_parent);
+	kfree(child_tf);
+	kfree(sd);
+
 
 	lock_release(curproc->p_lock);
 
 	*retval = child_proc->p_pid;
 	return 0;
 
-
-	err5:
+	err7:
 		as_destroy(child_as);
-	err4:
+	err6:
 		kfree(child_tf);
+	err5:
+		sem_destroy(sd->signal_to_parent);
+	err4:
+		kfree(sd);
 	err3:
 		remove_child_pid_from_parent(curproc, child_proc->p_pid);
 	err2:
