@@ -52,7 +52,7 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 		       vaddr_t stackptr, vaddr_t entrypoint);
 
 /* Gets called when the kernel first starts up */
-int runprogram(char *);
+int runprogram(char *progname, char **args, int argc);
 /* Should not be called directly by the user; gets called by runprogram */
 int _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point);
 

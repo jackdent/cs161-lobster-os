@@ -37,6 +37,8 @@
 #include <lib.h>
 #include <syscall.h>
 #include <proc.h>
+#include <kern/errno.h>
+#include <copyinout.h>
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -45,17 +47,76 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname, char **args, int argc)
 {
-        vaddr_t stack_ptr, entry_point;
+	vaddr_t stack_ptr, entry_point;
 
-        KASSERT(proc_getas() == NULL);
-        _launch_program(progname, &stack_ptr, &entry_point);
+	int i, padding, result;
+	int length;
+	size_t offset;
+	userptr_t user_dest;
+	userptr_t *user_argv;
 
-        enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-                          NULL /*userspace addr of environment*/,
-                          stack_ptr, entry_point);
+	KASSERT(proc_getas() == NULL);
+	_launch_program(progname, &stack_ptr, &entry_point);
 
-	panic("runprogram should never return");
-	return -1;
+	// Need to copy arguments in
+	if (argc > 1) {
+		user_argv = kmalloc(sizeof(userptr_t) * argc);
+		if (user_argv == NULL) {
+			result = ENOMEM;
+			goto err1;
+		}
+
+		// Copy arg strings in
+		offset = 0;
+		for (i = argc - 1; i >= 0; i--) {
+			length = strlen(args[i]) + 1;
+			padding = length % 4 == 0 ? 0 : 4 - (length % 4);
+			offset += length + padding;
+			user_argv[i] = (userptr_t)(stack_ptr - offset);
+
+			result = copyoutstr((const char*)args[i], user_argv[i], length, NULL);
+			if (result){
+				goto err2;
+			}
+		}
+
+		// Copy pointers to arguments in
+		user_dest = user_argv[0] - 4 * (argc + 1);
+		stack_ptr = (vaddr_t)user_dest;
+		for (i = 0; i < argc; i++) {
+			result = copyout((const void *)&user_argv[i], user_dest, 4);
+			if (result) {
+				goto err2;
+			}
+			user_dest += 4;
+		}
+
+		kfree(user_argv);
+
+		enter_new_process(0 /*argc*/, (userptr_t)stack_ptr
+			/*userspace addr of argv*/,
+			  NULL /*userspace addr of environment*/,
+			  (vaddr_t)stack_ptr, entry_point);
+
+		panic("runprogram should never return");
+		return -1;
+	}
+	else {
+		enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
+			  NULL /*userspace addr of environment*/,
+			  (vaddr_t)stack_ptr, entry_point);
+
+		panic("runprogram should never return");
+		return -1;
+	}
+
+	// TODO: Thread destroy should take care of cleaning up
+	// the result of _launch_program, right?
+
+	err2:
+		kfree(user_argv);
+	err1:
+		return result;
 }
