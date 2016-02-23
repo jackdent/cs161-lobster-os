@@ -226,6 +226,3 @@ sys_execv(userptr_t progname, userptr_t args)
 	err1:
 		return result;
 }
-
-
-// stach_ptr/entry_point

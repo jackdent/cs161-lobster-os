@@ -22,8 +22,12 @@ child_finish_setup(void *child_tf, unsigned long n)
 {
 	(void)n;
 
-	// TODO: when does child_tf get freed?
-	mips_usermode((struct trapframe *)child_tf);
+	struct trapframe copied_child_tf;
+
+	copied_child_tf = *((struct trapframe *)child_tf);
+	kfree(child_tf);
+
+	mips_usermode(&copied_child_tf);
 }
 
 int sys_fork(struct trapframe *parent_tf, pid_t *retval)
@@ -48,7 +52,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	}
 
 	child_tf = kmalloc(sizeof(*child_tf));
-	memcpy(child_tf, parent_tf, sizeof(*child_tf));
+	child_tf = parent_tf;
 	if (child_tf == NULL) {
 		err = ENOMEM;
 		goto err3;
