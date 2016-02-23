@@ -65,6 +65,7 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 			}
 			pos += copied;
 		}
+		arg++;
 	}
 
 	return 0;
