@@ -779,8 +779,10 @@ void
 thread_exit(void)
 {
 	struct thread *cur;
+	struct semaphore *wait_sem;
 
 	cur = curthread;
+	wait_sem = curproc->p_wait_sem;
 
 	KASSERT(cur->t_did_reserve_buffers == false);
 
@@ -800,7 +802,7 @@ thread_exit(void)
         splhigh();
 
         // Signal in case parent is/will be P()ing
-        V(curproc->p_wait_sem);
+        V(wait_sem);
 
 	thread_switch(S_ZOMBIE, NULL, NULL);
 	panic("braaaaaaaiiiiiiiiiiinssssss\n");
