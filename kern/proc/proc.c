@@ -105,6 +105,11 @@ proc_create(const char *name, int *err) {
 	}
 
 	proc->p_lock = lock_create("proc lock");
+	if (proc->p_lock == NULL) {
+		*err = ENOMEM;
+		goto err7;
+	}
+	spinlock_init(&proc->p_addrspace_spinlock);
 
 	proc->p_parent_pid = -1; // To be set by caller
 	proc->p_numthreads = 0;
@@ -115,7 +120,8 @@ proc_create(const char *name, int *err) {
 	*err = 0;
 	return proc;
 
-
+	err7:
+		sem_destroy(proc->p_wait_sem);
 	err6:
 		array_destroy(proc->p_children);
 	err5:
@@ -214,6 +220,7 @@ proc_cleanup(struct proc *proc)
 	sem_destroy(proc->p_wait_sem);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
+	spinlock_cleanup(&proc->p_addrspace_spinlock);
 	kfree(proc->p_name);
 }
 
@@ -428,9 +435,9 @@ proc_getas(void)
 		return NULL;
 	}
 
-	lock_acquire(proc->p_lock);
+	spinlock_acquire(&proc->p_addrspace_spinlock);
 	as = proc->p_addrspace;
-	lock_release(proc->p_lock);
+	spinlock_release(&proc->p_addrspace_spinlock);
 	return as;
 }
 
@@ -446,10 +453,10 @@ proc_setas(struct addrspace *newas)
 
 	KASSERT(proc != NULL);
 
-	lock_acquire(proc->p_lock);
+	spinlock_acquire(&proc->p_addrspace_spinlock);
 	oldas = proc->p_addrspace;
 	proc->p_addrspace = newas;
-	lock_release(proc->p_lock);
+	spinlock_release(&proc->p_addrspace_spinlock);
 	return oldas;
 }
 

@@ -112,12 +112,9 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	struct vnode *v;
 	int result;
 
-	/* Save the old address space, if it exists */
-	if (proc_getas() != NULL) {
-		old_as = curproc->p_addrspace;
-	} else {
-		old_as = NULL;
-	}
+	/* Save the old address space */
+	old_as = proc_getas();
+
 
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);

@@ -64,25 +64,26 @@ struct vnode;
  * without sleeping.
  */
 struct proc {
-        /* These fields are all initialised by proc_create */
-        pid_t p_pid;                    /* This process's pid */
-        pid_t p_parent_pid;             /* Parent's pid */
-        char *p_name;                   /* Name of this process */
-        int p_exit_status;              /* exit status */
-        unsigned p_numthreads;          /* Number of threads in this process. If num_threads
-                                           is 0, either a thread never ran in the process or
-                                           the process has completed, so the proc can be reaped */
-        struct lock *p_lock;         /* Lock for this structure */
-        struct semaphore *p_wait_sem;   /* Call V() when exited so parent can P() on it */
-        struct array *p_children;       /* Array for keeping track of children pids
-                                           -1 indicates an open slot in the array */
+	/* These fields are all initialised by proc_create */
+	pid_t p_pid;                    /* This process's pid */
+	pid_t p_parent_pid;             /* Parent's pid */
+	char *p_name;                   /* Name of this process */
+	int p_exit_status;              /* exit status */
+	unsigned p_numthreads;          /* Number of threads in this process. If num_threads
+					   is 0, either a thread never ran in the process or
+					   the process has completed, so the proc can be reaped */
+	struct lock *p_lock;            /* Lock for this structure */
+	struct spinlock p_addrspace_spinlock; /* special spinlock for p_addrspace */
+	struct semaphore *p_wait_sem;   /* Call V() when exited so parent can P() on it */
+	struct array *p_children;       /* Array for keeping track of children pids
+					   -1 indicates an open slot in the array */
 
-        /* This is initialised by proc_create, but does not bind STDIN, STDOUT or STDERR */
-        struct fd_table *p_fd_table;    /* File descriptor table */
+	/* This is initialised by proc_create, but does not bind STDIN, STDOUT or STDERR */
+	struct fd_table *p_fd_table;    /* File descriptor table */
 
-        /* These fields are NOT initialised by proc_create */
-        struct addrspace *p_addrspace;  /* virtual address space */
-        struct vnode *p_cwd;            /* current working directory */
+	/* These fields are NOT initialised by proc_create */
+	struct addrspace *p_addrspace;  /* virtual address space */
+	struct vnode *p_cwd;            /* current working directory */
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
