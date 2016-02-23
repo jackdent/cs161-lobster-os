@@ -1,3 +1,4 @@
+#include <kern/errno.h>
 #include <proctable.h>
 #include <lib.h>
 
@@ -5,6 +6,27 @@ void
 proc_table_init()
 {
         spinlock_init(&proc_table.pt_spinlock);
+}
+
+int is_valid_pid(pid_t pid)
+{
+        int err;
+
+        if (pid < PID_MIN || pid >= PID_MAX) {
+                return ESRCH;
+        }
+
+        spinlock_acquire(&proc_table.pt_spinlock);
+
+        if (!proc_table.pt_table[pid]) {
+                err = ESRCH;
+        } else {
+                err = 0;
+        }
+
+        spinlock_release(&proc_table.pt_spinlock);
+
+        return err;
 }
 
 pid_t

@@ -31,6 +31,7 @@ fd_in_range(int fd)
         return fd >= 0 && fd < FD_MAX;
 }
 
+// Expects caller to hold fd_table lock
 bool
 valid_fd(struct fd_table *fd_table, int fd)
 {

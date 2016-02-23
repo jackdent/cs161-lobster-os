@@ -135,8 +135,11 @@ proc_create(const char *name, int *err) {
 /*
  * Destroy a proc structure.
  *
- * Note: nothing currently calls this. Your wait/exit code will
- * probably want to do so.
+ * There are two cases in which this is called:
+ * 	1) A process that wants to become a zobmie calls destroy on itself. In
+ *	   this case, kproc_adopt_children should also be called beforehand
+ *	2) A process tries to create another process (during fork), but fails
+ * 	   somewhere down the line and so needs to perform cleanup
  */
 void
 proc_destroy(struct proc *proc)
@@ -213,6 +216,7 @@ proc_destroy(struct proc *proc)
 	}
 
 	KASSERT(proc->p_numthreads == 0);
+	KASSERT(!proc_has_children(proc));
 
 	spinlock_cleanup(&proc->p_spinlock);
 	sem_destroy(proc->p_wait_sem);
@@ -410,86 +414,108 @@ proc_setas(struct addrspace *newas)
 	return oldas;
 }
 
-
-
-int is_valid_pid(pid_t pid)
-{
-	int err;
-
-	if (!(pid >= PID_MIN && pid < PID_MAX)) {
-		return ESRCH;
-	}
-
-	spinlock_acquire(&proc_table.pt_spinlock);
-	if (!proc_table.pt_table[pid]) {
-		err = ESRCH;
-	}
-	else {
-		err = 0;
-	}
-	spinlock_release(&proc_table.pt_spinlock);
-	return err;
-}
-
-// Assumes curproc is already locked
+// Expects caller to hold the process lock
 // Return 0 on success, ENOMEM on error
 int
-add_child_pid_to_parent(pid_t child_pid)
+add_child_pid_to_parent(struct proc *parent, pid_t child_pid)
 {
 	unsigned i;
 	pid_t tmp;
 
-	for (i = 0; i < curproc->p_children->num; i++) {
-		tmp = (pid_t) array_get(curproc->p_children, i);
+	for (i = 0; i < parent->p_children->num; i++) {
+		tmp = (pid_t)array_get(parent->p_children, i);
 		if (tmp == -1) {
-			array_set(curproc->p_children, i, (void*)child_pid);
+			array_set(parent->p_children, i, (void*)child_pid);
 			return 0;
 		}
 	}
-	return array_add(curproc->p_children, (void*)child_pid, NULL);
+
+	return array_add(parent->p_children, (void *)child_pid, NULL);
 }
 
-// Assumes curproc is already locked, and the child_pid
-// is actually in the children array
+/* Expects caller to hold the process lock, and assumes that the
+   child_pid is actually in the children array */
 void
-remove_child_pid_from_parent(pid_t child_pid)
+remove_child_pid_from_parent(struct proc *parent, pid_t child_pid)
 {
 	unsigned i;
 
-	for (i = 0; i < curproc->p_children->num; i++) {
-		if ((pid_t)array_get(curproc->p_children, i) == child_pid) {
-			array_set(curproc->p_children, i, (void*)-1);
+	for (i = 0; i < parent->p_children->num; i++) {
+		if ((pid_t)array_get(parent->p_children, i) == child_pid) {
+			array_set(parent->p_children, i, (void *)-1);
 			break;
 		}
 	}
 }
 
-// Assumes curproc is already locked
+// Expects caller to hold the process lock
+static
 void
-make_all_children_orphans(void)
+kproc_adopt_process(struct proc *proc)
+{
+	spinlock_acquire(&proc->p_spinlock);
+
+	proc->p_parent_pid = kproc->p_pid;
+	array_add(kproc->p_children, (void*)proc->p_pid, NULL);
+
+	spinlock_release(&proc->p_spinlock);
+}
+
+// Expects caller to hold the process lock, but not the kproc lock
+void
+kproc_adopt_children(struct proc *proc)
+{
+	unsigned i;
+	pid_t pid;
+	struct proc *child_proc;
+
+	spinlock_acquire(&proc_table.pt_spinlock);
+	spinlock_acquire(&kproc->p_spinlock);
+
+	for (i = 0; i < proc->p_children->num; i++) {
+		pid = (pid_t)array_get(proc->p_children, i);
+		if (pid != (pid_t)-1) {
+			child_proc = proc_table.pt_table[pid];
+
+			// TODO: if (child_proc.status == ZOMBIE) {
+			// 	kfree(child_proc);
+			// } else {
+				kproc_adopt_process(child_proc);
+			// }
+
+			array_set(proc->p_children, i, (void *)-1);
+		}
+	}
+
+	spinlock_release(&kproc->p_spinlock);
+	spinlock_release(&proc_table.pt_spinlock);
+}
+
+// Expects caller to hold the process lock
+bool
+proc_has_children(struct proc *proc)
 {
 	unsigned i;
 	pid_t pid;
 
-	for (i = 0; i < curproc->p_children->num; i++) {
-		pid = (pid_t) array_get(curproc->p_children, i);
+	for (i = 0; i < proc->p_children->num; i++) {
+		pid = (pid_t)array_get(proc->p_children, i);
 		if (pid != (pid_t)-1) {
-			spinlock_acquire(&proc_table.pt_table[pid]->p_spinlock);
-			proc_table.pt_table[pid]->p_parent_pid = 0;
-			spinlock_release(&proc_table.pt_table[pid]->p_spinlock);
+			return true;
 		}
 	}
-}
 
-// Assumes curproc is already locked
-// Check if pid is a child of curproc
+	return false;
+};
+
+// Expects caller to hold the process lock
 bool
-is_child(pid_t pid)
+proc_has_child(struct proc *proc, pid_t pid)
 {
 	unsigned i;
 
-	for (i = 0; i < curproc->p_children->num; i++) {
-		if ((pid_t) array_get(curproc->p_children, i) == pid) {
+	for (i = 0; i < proc->p_children->num; i++) {
+		if ((pid_t) array_get(proc->p_children, i) == pid) {
 			return true;
 		}
 	}

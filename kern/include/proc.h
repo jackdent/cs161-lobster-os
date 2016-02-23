@@ -77,8 +77,8 @@ struct proc {
                                            -1 indicates an open slot in the array */
 
         /* These fields are NOT initialised by proc_create */
-	struct addrspace *p_addrspace;	/* virtual address space */
-	struct vnode *p_cwd;		/* current working directory */
+        struct addrspace *p_addrspace;  /* virtual address space */
+        struct vnode *p_cwd;            /* current working directory */
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -114,19 +114,19 @@ struct addrspace *proc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
 
-/* Check if in range and actual process */
-int is_valid_pid(pid_t pid);
-
 /* Add a child pid to a parent's children array */
-int add_child_pid_to_parent(pid_t child_pid);
+int add_child_pid_to_parent(struct proc *parent, pid_t child_pid);
 
 /* Remove a child pid from a parent's children array */
-void remove_child_pid_from_parent(pid_t child_pid);
+void remove_child_pid_from_parent(struct proc *parent, pid_t child_pid);
 
-/* Mark all children of curproc as orphans */
-void make_all_children_orphans(void);
+/* Assign all nonzombie children to kproc, and kfree all zombies */
+void kproc_adopt_children(struct proc *proc);
 
-/* Check if pid is a child of curproc */
-bool is_child(pid_t pid);
+/* Check if proc has any children */
+bool proc_has_children(struct proc *proc);
+
+/* Check if pid is a child of proc */
+bool proc_has_child(struct proc *proc, pid_t pid);
 
 #endif /* _PROC_H_ */

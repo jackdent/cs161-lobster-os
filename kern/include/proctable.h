@@ -13,6 +13,9 @@ struct proc_table {
 struct proc_table proc_table;
 void proc_table_init(void);
 
+/* Check if in range and actual process */
+int is_valid_pid(pid_t pid);
+
 /* Find a free pid in the global process table and assign it to proc. Return the
    pid if found; otherwise, return -1 */
 pid_t assign_proc_to_pid(struct proc *);

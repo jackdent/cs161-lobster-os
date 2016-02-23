@@ -43,7 +43,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	}
 
 	child_proc->p_parent_pid = curproc->p_pid;
-	err = add_child_pid_to_parent(child_proc->p_pid);
+	err = add_child_pid_to_parent(curproc, child_proc->p_pid);
 	if (err) {
 		goto err2;
 	}
@@ -61,7 +61,6 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 
 	clone_fd_table(curproc->p_fd_table, child_proc->p_fd_table);
 
-	// TODO: implement as_copy, make sure child_as is malloc'ed
 	err = as_copy(curproc->p_addrspace, &child_as);
 	if (err) {
 		err = ENOMEM;
@@ -69,7 +68,9 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	}
 
 	child_proc->p_addrspace = child_as;
+
 	child_proc->p_cwd = curproc->p_cwd;
+	VOP_INCREF(child_proc->p_cwd);
 
 	err = thread_fork("child", child_proc, child_finish_setup, child_tf, 0);
 	if (err) {
@@ -87,7 +88,7 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	err4:
 		kfree(child_tf);
 	err3:
-		remove_child_pid_from_parent(child_proc->p_pid);
+		remove_child_pid_from_parent(curproc, child_proc->p_pid);
 	err2:
 		proc_destroy(child_proc);
 	err1:

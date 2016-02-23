@@ -32,7 +32,7 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 		err = ESRCH;
 	}
 
-	if (!is_child(pid)) {
+	if (!proc_has_child(curproc, pid)) {
 		goto err1;
 		err = ECHILD;
 	}
@@ -60,7 +60,7 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 	proc_table.pt_table[pid] = NULL;
 
 	// Remove pid from array of children
-	remove_child_pid_from_parent(pid);
+	remove_child_pid_from_parent(curproc, pid);
 
 	spinlock_release(&curproc->p_spinlock);
 
