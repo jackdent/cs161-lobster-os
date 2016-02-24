@@ -24,6 +24,10 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
                 goto err1;
         }
 
+        if (buf == NULL) {
+                err = 3;
+        }
+
         lock_acquire(file->fdf_lock);
 
         ker_buf = kmalloc(len);
@@ -36,7 +40,8 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
 
         switch (rw) {
         case UIO_READ:
-                if (!fd_file_check_flag(file, O_RDONLY)) {
+                if (!(fd_file_check_flag(file, O_RDONLY) ||
+                        fd_file_check_flag(file, O_RDWR))) {
                         err = EBADF;
                         goto err3;
                 }
@@ -50,7 +55,8 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
 
                 break;
         case UIO_WRITE:
-                if (!fd_file_check_flag(file, O_WRONLY)) {
+                if (!(fd_file_check_flag(file, O_WRONLY) ||
+                        fd_file_check_flag(file, O_RDWR))) {
                         err = EBADF;
                         goto err3;
                 }
