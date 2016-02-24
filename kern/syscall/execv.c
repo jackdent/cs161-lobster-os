@@ -18,13 +18,14 @@
    otherwise, returns error code. argv will contain pointers to the starts
    of each argument, and argv_lens will contain the lengths
 
-   If copy is set to false, in the case of runprogram, extract_args will
+   If copy is set to false, as in the case of runprogram, extract_args will
    simply save the addresses and lengths and verify that we don'y exceed
    ARG_MAX, since the arguments already exist in the kernel space */
 int
 extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens, bool copy_args)
 {
-	int arg, result;
+	void* test_ptr;
+	int arg, i, result;
 	size_t pos, copied, rem;
 	char **args_p;
 
@@ -32,9 +33,29 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 		return 0;
 	}
 
-	// Cast args back into an array of (char *)s, so we can index into it
 	args_p = (char **)args;
 
+	// Verify args if if they live in userland
+	if (copy_args) {
+		i = 0;
+		test_ptr = NULL;
+		do {
+			result = copyin((const_userptr_t)args_p, &test_ptr, 4);
+			if (result) {
+				return result;
+			}
+			else if (i > ARG_MAX) {
+				return E2BIG;
+			}
+			else {
+				args_p += sizeof(userptr_t);
+			}
+			i++;
+		} while (test_ptr != NULL);
+
+		args_p = (char **)args;
+
+	}
 	pos = 0;
 	arg = 0;
 	while (args_p[arg] != NULL) {
@@ -125,10 +146,16 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	/* Save the old address space */
 	old_as = proc_getas();
 
+	// vfs_open doesn't detect this
+	if (strlen(progname) == 0) {
+		result = EINVAL;
+		goto err1;
+	}
+
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {
-		result = ENOENT;
+		result = EINVAL;
 		goto err1;
 	}
 
@@ -179,7 +206,9 @@ sys_execv(userptr_t progname, userptr_t args)
 	struct array *argv, *argv_lens;
 	vaddr_t entry_point, stack_ptr;
 
-	KASSERT(progname != NULL);
+	if (progname == NULL || args == NULL) {
+		return EFAULT;
+	}
 
 	arg_buf = kmalloc(ARG_MAX);
 	if (!arg_buf) {
@@ -201,7 +230,6 @@ sys_execv(userptr_t progname, userptr_t args)
 
 	result = extract_args(args, arg_buf, argv, argv_lens, true);
 	if (result != 0) {
-		result = ENOMEM;
 		goto err4;
 	}
 	argc = argv->num;
@@ -215,7 +243,7 @@ sys_execv(userptr_t progname, userptr_t args)
 
 	result = copyinstr(progname, progname_buf, PATH_MAX, NULL);
 	if (result) {
-		result = ENOMEM;
+		result = EFAULT;
 		goto err5;
 	}
 
