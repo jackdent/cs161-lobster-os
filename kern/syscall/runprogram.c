@@ -80,6 +80,11 @@ runprogram(char *progname, char **args, int argc)
 
 		copy_args_to_stack(&stack_ptr, argv, argv_lens);
 
+		array_zero_out(argv, false);
+		array_destroy(argv);
+		array_zero_out(argv_lens, false);
+		array_destroy(argv_lens);
+
 		enter_new_process(0 /*argc*/, (userptr_t)stack_ptr
 			/*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
@@ -101,8 +106,10 @@ runprogram(char *progname, char **args, int argc)
 	// the result of _launch_program, right?
 
 	err2:
+		array_zero_out(argv, false);
 		array_destroy(argv);
 	err1:
+		array_zero_out(argv_lens, false);
 		array_destroy(argv_lens);
 		return result;
 }

@@ -68,7 +68,8 @@ array_cleanup(struct array *a)
 	 * we don't/can't free anything any contents may be pointing
 	 * to.
 	 */
-	ARRAYASSERT(a->num == 0);
+
+	a->num = 0;
 	kfree(a->v);
 #ifdef ARRAYS_CHECKED
 	a->v = NULL;
@@ -132,4 +133,17 @@ array_remove(struct array *a, unsigned index)
         num_to_move = a->num - (index + 1);
         memmove(a->v + index, a->v + index+1, num_to_move*sizeof(void *));
         a->num--;
+}
+
+void
+array_zero_out(struct array *a, bool free_entries)
+{
+	unsigned i;
+
+	if (free_entries) {
+		for (i = 0; i < a->num; i++) {
+			kfree(a->v[i]);
+		}
+	}
+	a->num = 0;
 }

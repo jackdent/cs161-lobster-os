@@ -83,6 +83,7 @@ int array_preallocate(struct array *, unsigned num);
 int array_setsize(struct array *, unsigned num);
 ARRAYINLINE int array_add(struct array *, void *val, unsigned *index_ret);
 void array_remove(struct array *, unsigned index);
+void array_zero_out(struct array *a, bool free_entries);
 
 /*
  * Inlining for base operations

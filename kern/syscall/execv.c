@@ -220,7 +220,9 @@ sys_execv(userptr_t progname, userptr_t args)
 
 	// Cleanup
 	kfree(arg_buf);
+	array_zero_out(argv, false);
 	array_destroy(argv);
+	array_zero_out(argv_lens, false);
 	array_destroy(argv_lens);
 	kfree(progname_buf);
 
@@ -235,8 +237,10 @@ sys_execv(userptr_t progname, userptr_t args)
 	err5:
 		kfree(progname_buf);
 	err4:
+		array_zero_out(argv_lens, false);
 		array_destroy(argv_lens);
 	err3:
+		array_zero_out(argv, false);
 		array_destroy(argv);
 	err2:
 		kfree(arg_buf);
