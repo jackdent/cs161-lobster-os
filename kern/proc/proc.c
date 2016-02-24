@@ -218,7 +218,6 @@ proc_cleanup(struct proc *proc)
 
 	spinlock_cleanup(&proc->p_addrspace_spinlock);
 	lock_destroy(proc->p_lock);
-	sem_destroy(proc->p_wait_sem);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
 	kfree(proc->p_name);
@@ -229,6 +228,7 @@ proc_reap(struct proc *proc)
 {
 	KASSERT(proc->p_numthreads == 0);
 
+	sem_destroy(proc->p_wait_sem);
 	release_pid(proc->p_pid);
 	kfree(proc);
 }
@@ -494,20 +494,24 @@ remove_child_pid_from_parent(struct proc *parent, pid_t child_pid)
 	}
 }
 
-// Expects caller to hold the process lock
 static
 void
 kproc_adopt_process(struct proc *proc)
 {
 	lock_acquire(proc->p_lock);
+	lock_acquire(kproc->p_lock);
 
 	proc->p_parent_pid = kproc->p_pid;
 	array_add(kproc->p_children, (void*)proc->p_pid, NULL);
 
+	lock_release(kproc->p_lock);
 	lock_release(proc->p_lock);
 }
 
-// Expects caller to hold the process lock, but not the kproc lock
+/*
+ * Expects caller to hold the process lock, but not the kproc lock,
+ * the proc_table spinlock, or the child locks
+ */
 void
 kproc_adopt_children(struct proc *proc)
 {
@@ -516,7 +520,6 @@ kproc_adopt_children(struct proc *proc)
 	struct proc *child_proc;
 
 	spinlock_acquire(&proc_table.pt_spinlock);
-	lock_acquire(proc->p_lock);
 
 	for (i = 0; i < proc->p_children->num; i++) {
 		pid = (pid_t)array_get(proc->p_children, i);
@@ -533,7 +536,6 @@ kproc_adopt_children(struct proc *proc)
 		}
 	}
 
-	lock_release(proc->p_lock);
 	spinlock_release(&proc_table.pt_spinlock);
 }
 

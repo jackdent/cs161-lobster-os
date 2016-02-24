@@ -123,7 +123,6 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	/* Save the old address space */
 	old_as = proc_getas();
 
-
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {
@@ -174,7 +173,7 @@ int
 sys_execv(userptr_t progname, userptr_t args)
 {
 	int argc, result;
-	char *arg_buf, *progname_buf;
+	char *arg_buf, *progname_buf, *old_progname;
 	struct array *argv, *argv_lens;
 	vaddr_t entry_point, stack_ptr;
 
@@ -218,9 +217,12 @@ sys_execv(userptr_t progname, userptr_t args)
 		goto err5;
 	}
 
+	old_progname = curproc->p_name;
+	curproc->p_name = progname_buf;
+
 	result = _launch_program(progname_buf, &stack_ptr, &entry_point);
 	if (result) {
-		goto err5;
+		goto err6;
 	}
 
 	copy_args_to_stack(&stack_ptr, argv, argv_lens);
@@ -231,7 +233,7 @@ sys_execv(userptr_t progname, userptr_t args)
 	array_destroy(argv);
 	array_zero_out(argv_lens, false);
 	array_destroy(argv_lens);
-	kfree(progname_buf);
+	kfree(old_progname);
 
 	/* Warp to user mode. */
 	enter_new_process(argc, (userptr_t) stack_ptr, NULL, stack_ptr, entry_point);
@@ -241,6 +243,8 @@ sys_execv(userptr_t progname, userptr_t args)
 	return -1;
 
 
+	err6:
+		curproc->p_name = old_progname;
 	err5:
 		kfree(progname_buf);
 	err4:
