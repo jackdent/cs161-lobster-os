@@ -109,7 +109,7 @@ copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_le
 	for (i = argc - 1; i >= 0; --i) {
 		*stack_ptr -= 4;
 		arg_ptr = (userptr_t) array_get(argv_lens, i);
-		copyout((const void*) arg_ptr, (userptr_t) *stack_ptr, 4);
+		copyout((const void*) &arg_ptr, (userptr_t) *stack_ptr, 4);
 	}
 }
 
