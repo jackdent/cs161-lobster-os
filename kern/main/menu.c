@@ -655,7 +655,7 @@ int
 cmd_dispatch(char *cmd)
 {
 	struct timespec before, after, duration;
-	char *args[MAXMENUARGS];
+	char *args[MAXMENUARGS + 1];
 	int nargs=0;
 	char *word;
 	char *context;
@@ -671,6 +671,7 @@ cmd_dispatch(char *cmd)
 		}
 		args[nargs++] = word;
 	}
+	args[nargs] = NULL;
 
 	if (nargs==0) {
 		return 0;

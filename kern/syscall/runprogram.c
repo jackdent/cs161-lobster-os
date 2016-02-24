@@ -84,7 +84,7 @@ runprogram(char *progname, char **args, int argc)
 	array_zero_out(argv_lens, false);
 	array_destroy(argv_lens);
 
-	enter_new_process(0 /*argc*/, (userptr_t)stack_ptr /*userspace addr of argv*/,
+	enter_new_process(argc /*argc*/, (userptr_t)stack_ptr /*userspace addr of argv*/,
 		  NULL /*userspace addr of environment*/, stack_ptr, entry_point);
 
 	panic("runprogram should never return");
