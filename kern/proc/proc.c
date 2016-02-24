@@ -398,6 +398,7 @@ proc_addthread(struct proc *proc, struct thread *t)
  * the timer interrupt context switch, and any other implicit uses
  * of "curproc".
  */
+ // Assume proc is already locked by caller
 void
 proc_remthread(struct thread *t)
 {
@@ -407,10 +408,8 @@ proc_remthread(struct thread *t)
 	proc = t->t_proc;
 	KASSERT(proc != NULL);
 
-	lock_acquire(proc->p_lock);
 	KASSERT(proc->p_numthreads > 0);
 	proc->p_numthreads--;
-	lock_release(proc->p_lock);
 
 	spl = splhigh();
 	t->t_proc = NULL;
