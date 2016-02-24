@@ -22,19 +22,19 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 
 	// Don't support any options
 	if (options != 0) {
-		goto err1;
 		err = EINVAL;
+		goto err1;
 	}
 
 	// Validate passed in pid
 	if (!(is_valid_pid(pid))) {
-		goto err1;
 		err = ESRCH;
+		goto err1;
 	}
 
 	if (!proc_has_child(curproc, pid)) {
-		goto err1;
 		err = ECHILD;
+		goto err1;
 	}
 
 	P(proc_table.pt_table[pid]->p_wait_sem);
@@ -44,7 +44,7 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 		err = copyout(&(proc_table.pt_table[pid]->p_exit_status),
 			(userptr_t)status, sizeof(int));
 		if (err) {
-			goto err1;
+			goto err2;
 		}
 
 	}
@@ -67,6 +67,10 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 	*retval = pid;
 	return err;
 
+
+	err2:
+		// Undo our P() call
+		V(proc_table.pt_table[pid]->p_wait_sem);
 	err1:
 		lock_release(curproc->p_lock);
 		return err;

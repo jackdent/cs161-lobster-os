@@ -206,7 +206,7 @@ proc_cleanup(struct proc *proc)
 		struct addrspace *as;
 
 		if (proc == curproc) {
-			as = proc_setas(NULL);
+			as = proc_getas();
 			as_deactivate();
 		}
 		else {
