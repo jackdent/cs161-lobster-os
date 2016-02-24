@@ -60,7 +60,6 @@ runprogram(char *progname, char **args, int argc)
 
 	// Need to copy arguments in
 	if (argc > 1) {
-
 		argv = array_create();
 		if (!argv) {
 			result = ENOMEM;
@@ -80,8 +79,7 @@ runprogram(char *progname, char **args, int argc)
 
 		copy_args_to_stack(&stack_ptr, argv, argv_lens);
 
-		enter_new_process(0 /*argc*/, (userptr_t)stack_ptr
-			/*userspace addr of argv*/,
+		enter_new_process(0 /*argc*/, (userptr_t)stack_ptr /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
 			  (vaddr_t)stack_ptr, entry_point);
 

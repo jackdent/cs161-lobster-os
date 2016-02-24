@@ -113,7 +113,6 @@ int sys_fork(struct trapframe *parent_tf, pid_t *retval)
 	kfree(child_tf);
 	kfree(sd);
 
-
 	lock_release(curproc->p_lock);
 
 	*retval = child_proc->p_pid;

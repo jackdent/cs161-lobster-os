@@ -136,7 +136,7 @@ syscall(struct trapframe *tf)
 
 	case SYS_lseek:
 		whence = (int *)tf->tf_sp + 16;
-		join32to64(tf->tf_a2, tf->tf_a3, &pos); // TODO: are these in the right order?
+		join32to64(tf->tf_a2, tf->tf_a3, &pos);
 		err = sys_lseek((int)tf->tf_a0, (off_t)pos, *whence, (off_t *)&new_pos);
 		split64to32(new_pos, (uint32_t *)&retval, (uint32_t *)&retval_extra);
 		break;

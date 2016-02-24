@@ -216,11 +216,11 @@ proc_cleanup(struct proc *proc)
 		as_destroy(as);
 	}
 
+	spinlock_cleanup(&proc->p_addrspace_spinlock);
 	lock_destroy(proc->p_lock);
 	sem_destroy(proc->p_wait_sem);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
-	spinlock_cleanup(&proc->p_addrspace_spinlock);
 	kfree(proc->p_name);
 }
 

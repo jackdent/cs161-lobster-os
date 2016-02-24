@@ -41,30 +41,37 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 		rem = ARG_MAX - pos;
 		if (copy_args) {
 			result = copyinstr((const_userptr_t) args_p[arg], &buf[pos], rem, &copied);
+
+			switch (result) {
+			case EFAULT:
+				return EFAULT;
+			case ENAMETOOLONG:
+				return E2BIG;
+			default:
+				if (result != 0) {
+					panic("Unexpected error from copyinstr in extract_args\n");
+				}
+			};
 		}
 		else {
 			copied = strlen(args_p[arg]) + 1;
+
 			if (rem < copied) {
 				return E2BIG;
 			}
 		}
 
-		switch (result) {
-		case EFAULT:
-			return EFAULT;
-		case ENAMETOOLONG:
-			return E2BIG;
-		default:
-			result = array_add(argv, &buf[pos], NULL);
-			if (result) {
-				return result;
-			}
-			result = array_add(argv_lens, (void*) copied, NULL);
-			if (result) {
-				return result;
-			}
-			pos += copied;
+		result = array_add(argv, &buf[pos], NULL);
+		if (result) {
+			return result;
 		}
+
+		result = array_add(argv_lens, (void*)copied, NULL);
+		if (result) {
+			return result;
+		}
+
+		pos += copied;
 		arg++;
 	}
 
