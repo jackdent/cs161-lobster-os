@@ -155,7 +155,6 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {
-		result = EINVAL;
 		goto err1;
 	}
 
@@ -172,7 +171,6 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	/* Load the executable. */
 	result = load_elf(v, entry_point);
 	if (result) {
-		result = ENOEXEC;
 		goto err3;
 	}
 
