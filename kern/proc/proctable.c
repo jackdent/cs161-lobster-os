@@ -13,15 +13,15 @@ int is_valid_pid(pid_t pid)
         int err;
 
         if (pid < PID_MIN || pid >= PID_MAX) {
-                return ESRCH;
+                return 0;
         }
 
         spinlock_acquire(&proc_table.pt_spinlock);
 
         if (!proc_table.pt_table[pid]) {
-                err = ESRCH;
-        } else {
                 err = 0;
+        } else {
+                err = 1;
         }
 
         spinlock_release(&proc_table.pt_spinlock);
