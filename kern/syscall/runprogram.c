@@ -60,7 +60,6 @@ runprogram(char *progname, char **args, int argc)
 
 	// Need to copy arguments in
 	if (argc > 1) {
-
 		argv = array_create();
 		if (!argv) {
 			result = ENOMEM;
