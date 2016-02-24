@@ -13,9 +13,12 @@ fd_table_create()
                 return NULL;
         }
 
-        fd_table->fdt_lock = lock_create("fd_table lock");
+	// Set all pointers to NULL initially
+	memset(fd_table->fdt_table, 0, sizeof(fd_table->fdt_table));
 
-        return fd_table;
+	fd_table->fdt_lock = lock_create("fd_table lock");
+
+	return fd_table;
 };
 
 void
