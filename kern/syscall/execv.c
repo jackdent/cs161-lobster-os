@@ -52,6 +52,7 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 					panic("Unexpected error from copyinstr in extract_args\n");
 				}
 			};
+			result = array_add(argv, &buf[pos], NULL);
 		}
 		else {
 			copied = strlen(args_p[arg]) + 1;
@@ -59,9 +60,10 @@ extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_l
 			if (rem < copied) {
 				return E2BIG;
 			}
+			result = array_add(argv, args_p[arg], NULL);
+
 		}
 
-		result = array_add(argv, &buf[pos], NULL);
 		if (result) {
 			return result;
 		}

@@ -49,6 +49,8 @@
 int
 runprogram(char *progname, char **args, int argc)
 {
+	(void) argc;
+
 	vaddr_t stack_ptr, entry_point;
 	int result;
 
@@ -58,45 +60,35 @@ runprogram(char *progname, char **args, int argc)
 	KASSERT(proc_getas() == NULL);
 	_launch_program(progname, &stack_ptr, &entry_point);
 
-	// Need to copy arguments in
-	if (argc > 1) {
-		argv = array_create();
-		if (!argv) {
-			result = ENOMEM;
-			goto err1;
-		}
-
-		argv_lens = array_create();
-		if (!argv_lens) {
-			result = ENOMEM;
-			goto err2;
-		}
-
-		result = extract_args((userptr_t) args, NULL, argv, argv_lens, false);
-		if (result) {
-			goto err2;
-		}
-
-		copy_args_to_stack(&stack_ptr, argv, argv_lens);
-
-		array_zero_out(argv, false);
-		array_destroy(argv);
-		array_zero_out(argv_lens, false);
-		array_destroy(argv_lens);
-
-		enter_new_process(0 /*argc*/, (userptr_t)stack_ptr /*userspace addr of argv*/,
-			  NULL /*userspace addr of environment*/, stack_ptr, entry_point);
-
-		panic("runprogram should never return");
-		return -1;
+	argv = array_create();
+	if (!argv) {
+		result = ENOMEM;
+		goto err1;
 	}
-	else {
-		enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-			  NULL /*userspace addr of environment*/, stack_ptr, entry_point);
 
-		panic("runprogram should never return");
-		return -1;
+	argv_lens = array_create();
+	if (!argv_lens) {
+		result = ENOMEM;
+		goto err2;
 	}
+
+	result = extract_args((userptr_t) args, NULL, argv, argv_lens, false);
+	if (result) {
+		goto err2;
+	}
+
+	copy_args_to_stack(&stack_ptr, argv, argv_lens);
+
+	array_zero_out(argv, false);
+	array_destroy(argv);
+	array_zero_out(argv_lens, false);
+	array_destroy(argv_lens);
+
+	enter_new_process(0 /*argc*/, (userptr_t)stack_ptr /*userspace addr of argv*/,
+		  NULL /*userspace addr of environment*/, stack_ptr, entry_point);
+
+	panic("runprogram should never return");
+	return -1;
 
 	// TODO: Thread destroy should take care of cleaning up
 	// the result of _launch_program, right?
