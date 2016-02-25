@@ -54,7 +54,7 @@ fd_file_reference(struct fd_file *file)
 bool
 fd_file_check_flag(struct fd_file *file, int flag)
 {
-        return (file->fdf_flags & RD_FLAG_MASK) == flag;
+        return (file->fdf_flags & RW_FLAG_MASK) == flag;
 }
 
 void
