@@ -140,9 +140,6 @@ syscall(struct trapframe *tf)
 		copyin((const_userptr_t)(tf->tf_sp+16), &whence, sizeof(uint32_t));
 		err = sys_lseek((int)tf->tf_a0, (off_t)pos, whence, (off_t *)&new_pos);
 		split64to32(new_pos, (uint32_t *)&retval, (uint32_t *)&retval_extra);
-		if (!err) {
-			tf->tf_v1 = retval_extra;
-		}
 		break;
 
 	case SYS_dup2:
