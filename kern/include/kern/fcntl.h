@@ -43,6 +43,7 @@
 #define O_RDONLY      0      /* Open for read */
 #define O_WRONLY      1      /* Open for write */
 #define O_RDWR        2      /* Open for read and write */
+#define RD_FLAG_MASK  3      /* Mask for checking RW flags */
 /* then or in any of these: */
 #define O_CREAT       4      /* Create file if it doesn't exist */
 #define O_EXCL        8      /* With O_CREAT, fail if file already exists */

@@ -24,10 +24,6 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
                 goto err1;
         }
 
-        if (buf == NULL) {
-                err = 3;
-        }
-
         lock_acquire(file->fdf_lock);
 
         ker_buf = kmalloc(len);
