@@ -106,6 +106,7 @@ syscall(struct trapframe *tf)
 
 	retval = 0;
 	retval_extra = 0;
+	err = 0;
 
 	switch (callno) {
 	case SYS_reboot:
@@ -195,14 +196,8 @@ syscall(struct trapframe *tf)
 	}
 	else {
 		/* Success. */
-		if (retval_extra != 0) {
-			tf->tf_v0 = retval;
-			tf->tf_v1 = retval_extra;
-		}
-		else {
-			tf->tf_v0 = retval;
-		}
-
+		tf->tf_v0 = retval; /* 0 by default */
+		tf->tf_v1 = retval_extra; /* 0 by default */
 		tf->tf_a3 = 0;      /* signal no error */
 	}
 

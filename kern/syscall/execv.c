@@ -24,7 +24,7 @@
 int
 extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens, bool copy_args)
 {
-	void* test_ptr;
+	void *test_ptr;
 	int arg, i, result;
 	size_t pos, copied, rem;
 	char **args_p;
