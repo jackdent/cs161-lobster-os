@@ -139,9 +139,6 @@ proc_create(const char *name, int *err) {
 /*
  * Prepare a proc struct to be reaped
  *
- * A process that wants to be reaped calls proc_cleanup on itself. In
- * this case, kproc_adopt_children should also be called beforehand.
- *
  * We do not yet release the pid, in case the parent calls waitpid
  * after the child has exited.
  */
@@ -158,9 +155,7 @@ proc_cleanup(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
-	KASSERT(proc->p_numthreads == 1);
 	KASSERT(!proc_has_children(proc));
-
 
 	/* VFS fields */
 	if (proc->p_cwd) {
@@ -223,6 +218,10 @@ proc_cleanup(struct proc *proc)
 	kfree(proc->p_name);
 }
 
+/*
+ * This should only be called after, but not necessarily immediately after,
+ * proc_cleanup has been invoked on the proc struct
+ */
 void
 proc_reap(struct proc *proc)
 {
@@ -242,17 +241,23 @@ proc_reap(struct proc *proc)
  *
  */
 void
-proc_destroy(struct proc *proc) {
-	KASSERT(proc->p_numthreads == 0);
-
+proc_destroy(struct proc *proc)
+{
 	proc_cleanup(proc);
-	release_pid(proc->p_pid);
-	kfree(proc);
+	proc_reap(proc);
 }
 
+/*
+ * Exit a proc structure.
+ *
+ * A process that wants to exit prepared itself to be reaped and then calls thread_exit.
+ *
+ */
 void
 proc_exit(struct proc *proc, int exitcode)
 {
+	KASSERT(proc->p_numthreads == 1);
+
 	lock_acquire(proc->p_lock);
 
 	/* kproc should adopt all the children *before* we call proc_destroy */
