@@ -36,6 +36,7 @@
 #include <current.h>
 #include <syscall.h>
 #include <endian.h>
+#include <copyinout.h>
 
 /*
  * System call dispatcher.
@@ -86,7 +87,7 @@ syscall(struct trapframe *tf)
 	/* Used by SYS_lseek */
 	uint64_t pos;
 	uint64_t new_pos;
-	int *whence;
+	uint32_t whence;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -135,10 +136,13 @@ syscall(struct trapframe *tf)
 		break;
 
 	case SYS_lseek:
-		whence = (int *)tf->tf_sp + 16;
 		join32to64(tf->tf_a2, tf->tf_a3, &pos);
-		err = sys_lseek((int)tf->tf_a0, (off_t)pos, *whence, (off_t *)&new_pos);
+		copyin((const_userptr_t)(tf->tf_sp+16), &whence, sizeof(uint32_t));
+		err = sys_lseek((int)tf->tf_a0, (off_t)pos, whence, (off_t *)&new_pos);
 		split64to32(new_pos, (uint32_t *)&retval, (uint32_t *)&retval_extra);
+		if (!err) {
+			tf->tf_v1 = retval_extra;
+		}
 		break;
 
 	case SYS_dup2:

@@ -48,7 +48,6 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
                 }
 
                 err = copyout(ker_buf, buf, len);
-
                 break;
         case UIO_WRITE:
                 if (!(fd_file_check_flag(file, O_WRONLY) ||
@@ -63,7 +62,6 @@ sys_rw(int fd, userptr_t buf, size_t len, size_t *copied, enum uio_rw rw)
                 }
 
                 err = VOP_WRITE(file->fdf_vnode, &uio);
-
                 break;
         default:
                 panic("Invalid rw option");
