@@ -58,7 +58,10 @@ runprogram(char *progname, char **args, int argc)
 	struct array *argv_lens;
 
 	KASSERT(proc_getas() == NULL);
-	_launch_program(progname, &stack_ptr, &entry_point);
+	result = _launch_program(progname, &stack_ptr, &entry_point);
+	if (result) {
+		goto err1;
+	}
 
 	argv = array_create();
 	if (!argv) {
@@ -74,7 +77,7 @@ runprogram(char *progname, char **args, int argc)
 
 	result = extract_args((userptr_t) args, NULL, argv, argv_lens, false);
 	if (result) {
-		goto err2;
+		goto err3;
 	}
 
 	copy_args_to_stack(&stack_ptr, argv, argv_lens);
@@ -93,11 +96,12 @@ runprogram(char *progname, char **args, int argc)
 	// TODO: Thread destroy should take care of cleaning up
 	// the result of _launch_program, right?
 
-	err2:
+	err3:
 		array_zero_out(argv, false);
 		array_destroy(argv);
-	err1:
+	err2:
 		array_zero_out(argv_lens, false);
 		array_destroy(argv_lens);
+	err1:
 		return result;
 }
