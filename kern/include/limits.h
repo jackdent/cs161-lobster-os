@@ -40,6 +40,12 @@
 /* Provide the real names */
 #define NAME_MAX        __NAME_MAX
 #define PATH_MAX        __PATH_MAX
+
+/* On Lobster-OS, ARG_MAX is defined to be the total number of
+bytes in the sum of all argument strings, including null-terminators.
+For example, the user could pass in ARG_MAX empty strings, or a single
+string of length ARG_MAX - 1, plus a null-terminator */
+
 #define ARG_MAX         __ARG_MAX
 #define PID_MIN         __PID_MIN
 #define PID_MAX         __PID_MAX
