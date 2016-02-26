@@ -93,9 +93,6 @@ runprogram(char *progname, char **args, int argc)
 	panic("runprogram should never return");
 	return -1;
 
-	// TODO: Thread destroy should take care of cleaning up
-	// the result of _launch_program, right?
-
 	err3:
 		array_zero_out(argv, false);
 		array_destroy(argv);

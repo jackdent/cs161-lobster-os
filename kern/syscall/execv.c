@@ -116,8 +116,6 @@ copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_le
 		padding = len % 4 == 0 ? 0 : 4 - (len % 4);
 		*stack_ptr -= len + padding;
 		copyoutstr((const char*) start_ptr, (userptr_t) *stack_ptr, len, NULL);
-		// TODO: we should always have enough space, but still
-		// check the return value just in case
 
 		// Rather than allocating an new array, we reuse the argv_lens array to store pointers
 		// to the start of each argument on the stack
