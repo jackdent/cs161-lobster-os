@@ -144,7 +144,8 @@ thread_create(const char *name)
 	/* VFS fields */
 	thread->t_did_reserve_buffers = false;
 
-	/* If you add to struct thread, be sure to initialize here */
+	/* Scheduling */
+	thread->t_priority = COUNTER_INIT;
 
 	return thread;
 }
