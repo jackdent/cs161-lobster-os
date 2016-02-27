@@ -1,0 +1,47 @@
+Script started on Fri Feb 26 20:53:18 2016
+ubuntu@appliance:~/cs161/lobster-os/submit/asst2$ cd sys161 kernelcd [Ksys161 kernelcd ~/cs161/root/
+ubuntu@appliance:~/cs161/root$ cd ~/cs161/root/[3Psys161 kernelcd ~/cs161/root/[3Psys161 kernel
+sys161: System/161 release 2.0.6, compiled Jan 22 2016 16:55:36
+
+OS/161 base system version 2.0.2
+Copyright (c) 2000, 2001-2005, 2008-2011, 2013, 2014
+   President and Fellows of Harvard College.  All rights reserved.
+
+Lobster's system version 0 (ASST2 #91)
+
+15924k physical memory available
+Device probe...
+lamebus0 (system main bus)
+emu0 at lamebus0
+ltrace0 at lamebus0
+ltimer0 at lamebus0
+beep0 at ltimer0
+rtclock0 at ltimer0
+lrandom0 at lamebus0
+random0 at lrandom0
+lhd0 at lamebus0
+lhd1 at lamebus0
+lser0 at lamebus0
+con0 at lser0
+
+cpu0: MIPS/161 (System/161 2.x) features 0x0
+cpu1: MIPS/161 (System/161 2.x) features 0x0
+buffers: max count 8192; max size 4096k
+OS/161 kernel [? for menu]: s
+/bin/sh: Timing enabled.
+OS/161$ pwd
+emu0:
+/bin/sh: subprocess time: 0.139691850 seconds
+OS/161$ sbin/poweroff
+Shutting down.
+The system is halted.
+cpu1: offline.
+sys161: 332843594 cycles (45875574 run, 286968020 global-idle)
+sys161:   cpu0: 12071855 kern, 10890 user, 87536 idle; 10656 ll, 10656/0 sc, 39697 sync
+sys161:   cpu1: 1446636 kern, 0 user, 10723645 idle; 340 ll, 340/0 sc, 1401 sync
+sys161: 901 irqs 460 exns 0r/0w disk 20r/803w console 26r/0w/7m emufs 0r/0w net
+sys161: Elapsed real time: 10.419937 seconds (31.943 mhz)
+sys161: Elapsed virtual time: 11.969822463 seconds (25 mhz)
+ubuntu@appliance:~/cs161/root$ exit
+
+Script done on Fri Feb 26 20:53:36 2016
