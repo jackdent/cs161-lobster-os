@@ -106,6 +106,14 @@ boot(void)
 		GROUP_VERSION, buildconfig, buildversion);
 	kprintf("\n");
 
+	if (USING_SCHEDULER) {
+		kprintf("Using O(n) priority scheduler\n\n");
+	}
+	else {
+		kprintf("Using default round robin scheduler\n\n");
+
+	}
+
 	/* Early initialization. */
 	ram_bootstrap();
 	proc_bootstrap();

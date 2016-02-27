@@ -57,9 +57,13 @@ struct cpu;
 
 /* Scheduling */
 #define USING_SCHEDULER 1
-#define PRIORITY_MIN -20
-#define PRIORITY_MAX 19
-#define COUNTER_INIT 100
+
+#define PRIORITY_MIN -20 	// Lower bound
+#define PRIORITY_MAX 19 	// Upper bound
+#define PRIORITY_INIT 0		// What it starts out as
+#define COUNTER_BOUND 100 	// Number of schedule() calls before resetting everyone to 0
+#define S_READY_DEC 1		// How much to decrement computation threads by
+#define S_SLEEP_INC 1		// How much to increment i/o threads by
 
 
 /* Wait channel. A wchan is protected by an associated, passed-in spinlock. */

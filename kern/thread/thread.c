@@ -145,7 +145,7 @@ thread_create(const char *name)
 	thread->t_did_reserve_buffers = false;
 
 	/* Scheduling */
-	thread->t_priority = COUNTER_INIT;
+	thread->t_priority = PRIORITY_INIT;
 
 	return thread;
 }
@@ -579,12 +579,12 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 	switch (newstate) {
 		case S_READY:
 			if (cur->t_priority >= PRIORITY_MIN) {
-				cur->t_priority--;
+				cur->t_priority -= S_READY_DEC;
 			}
 			break;
 		case S_SLEEP:
 			if (cur->t_priority <= PRIORITY_MAX) {
-				cur->t_priority++;
+				cur->t_priority += S_SLEEP_INC;
 			}
 			break;
 		default:
@@ -859,9 +859,9 @@ schedule(void)
 
 	// Reset the priorities if end of cycle and return
 	reset_counter++;
-	if (reset_counter == COUNTER_INIT) {
+	if (reset_counter == COUNTER_BOUND) {
 		while (cur->tln_next) {
-			cur->tln_self->t_priority = 0;
+			cur->tln_self->t_priority = PRIORITY_INIT;
 			cur = cur->tln_next;
 		}
 		reset_counter = 0;
