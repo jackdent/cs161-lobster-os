@@ -144,7 +144,8 @@ thread_create(const char *name)
 	/* VFS fields */
 	thread->t_did_reserve_buffers = false;
 
-	/* If you add to struct thread, be sure to initialize here */
+	/* Scheduling */
+	thread->t_priority = COUNTER_INIT;
 
 	return thread;
 }
@@ -572,6 +573,25 @@ thread_switch(threadstate_t newstate, struct wchan *wc, struct spinlock *lk)
 
 	cur = curthread;
 
+
+	// Update statistics for scheduling if using MLFQ
+#if USING_SCHEDULER
+	switch (newstate) {
+		case S_READY:
+			if (cur->t_priority >= PRIORITY_MIN) {
+				cur->t_priority--;
+			}
+			break;
+		case S_SLEEP:
+			if (cur->t_priority <= PRIORITY_MAX) {
+				cur->t_priority++;
+			}
+			break;
+		default:
+			break;
+	}
+#endif
+
 	/*
 	 * If we're idle, return without doing anything. This happens
 	 * when the timer interrupt interrupts the idle loop.
@@ -829,10 +849,43 @@ thread_yield(void)
 void
 schedule(void)
 {
-	/*
-	 * You can write this. If we do nothing, threads will run in
-	 * round-robin fashion.
-	 */
+#if USING_SCHEDULER
+
+	int max_seen, cur_priority;
+	struct threadlistnode *cur = curcpu->c_runqueue.tl_head.tln_next;
+	struct thread *move_to_head;
+
+	static int reset_counter = 0;
+
+	// Reset the priorities if end of cycle and return
+	reset_counter++;
+	if (reset_counter == COUNTER_INIT) {
+		while (cur->tln_next) {
+			cur->tln_self->t_priority = 0;
+			cur = cur->tln_next;
+		}
+		reset_counter = 0;
+		return;
+	}
+
+	// Need to schedule otherwise
+	move_to_head = NULL;
+	cur = curcpu->c_runqueue.tl_head.tln_next;
+	max_seen = PRIORITY_MIN;
+	while (cur->tln_next)
+	{
+		cur_priority =  cur->tln_self->t_priority;
+		if (cur_priority > max_seen) {
+			max_seen = cur_priority;
+			move_to_head = cur->tln_self;
+		}
+		cur = cur->tln_next;
+	}
+	if (move_to_head) {
+		threadlist_remove(&(curcpu->c_runqueue), move_to_head);
+		threadlist_addhead(&(curcpu->c_runqueue), move_to_head);
+	}
+#endif
 }
 
 /*

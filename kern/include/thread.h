@@ -55,6 +55,12 @@ struct cpu;
 /* Macro to test if two addresses are on the same kernel stack */
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
 
+/* Scheduling */
+#define USING_SCHEDULER 1
+#define PRIORITY_MIN -20
+#define PRIORITY_MAX 19
+#define COUNTER_INIT 100
+
 
 /* Wait channel. A wchan is protected by an associated, passed-in spinlock. */
 struct wchan {
@@ -115,7 +121,10 @@ struct thread {
 	/* VFS */
 	bool t_did_reserve_buffers;	/* reserve_buffers() in effect */
 
-	/* add more here as needed */
+	/* Scheduling */
+#if USING_SCHEDULER
+	int t_priority;
+#endif
 };
 
 /*
