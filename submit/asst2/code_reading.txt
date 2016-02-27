@@ -1,0 +1,66 @@
+Part A
+
+1) What are the ELF magic numbers?
+
+ELFMAG0 is 0x7f; ELFMAG1 is 'E' (69); ELFMAG2 is 'L' (76); ELFMAG3 is 'F' (70), which tells the kernel that the current file is in ELF format, so that it can continue to look for the rest of the metadata.
+
+2) What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
+
+UIO_USERISPACE denotes executable process code, while UIO_USERSPACE denotes process data.
+
+UIO_SYSSPACE should be used for the kernel, since it doesn't need a buffer to pass data within itself.
+
+3) Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
+
+The struct contains an iovec struct, which contains a buffer for the memory read (supplied by the user) that shouldn’t be declared on the stack, as well as the virtual address from the thread's perspective. Thus, the memory read goes into a buffer in the user's address space.
+
+4) In runprogram(), why is it important to call vfs_close() before going to usermode?
+
+Since we then enter the new process, this is our last chance to close the ELF file, otherwise, there would be a dangling ref count on the file.
+
+5) What function forces the processor to switch into usermode? Is this function machine dependent?
+
+mips_usermode, which is machine dependent
+
+6) In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
+
+copyin and copyout are defined in kern/vm/copyinout.c, and memmove is defined in common/libc/string/memmove.c. copyin and copyout check to make sure the provided address falls within the user's address space, a security check memmove does not make.
+
+7) What (briefly) is the purpose of userptr_t?
+
+userptr_t is used to differentiate at the C-code level between kernel pointers and
+pointers the user passes in. This prevents dumb kernel-programmer mistakes.
+
+Part B
+
+1) What is the numerical value of the exception code for a MIPS system call?
+
+EX_SYS is 8
+
+2) How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
+
+4 bytes
+
+3) Why do you "probably want to change" the implementation of kill_curthread()?
+
+The kernel will panic, thus killing all other threads/processes running as well, which probably should only happen in the most extreme cases.
+
+4) What would be required to implement a system call that took more than 4 arguments?
+
+We'd need to store how many more there are a register, and then get them starting at sp+16 from the thread's stack.
+
+Part C
+
+1) What is the purpose of the SYSCALL macro?
+
+SYSCALL gives the kernel a single function to handle system calls, done via putting the call number into v0 and then jumping to the handling code.
+
+2) What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in this directory, not looking somewhere else.)
+
+Line 84 of userland/lib/libc/arch/mips/syscalls-mips.S
+
+3) After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value. Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg3), and needs to return a 64-bit offset value. In void syscall(struct trapframe *tf) where will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
+
+Since arguments in registers must align to 64 bits if a 64 bit argument is present,
+arg0 will be in a0, a1 will be empty, arg1 will be spread between a2 and a3, and arg3 will
+be at sp+16. The return value will then be spread between v0 and v1.
