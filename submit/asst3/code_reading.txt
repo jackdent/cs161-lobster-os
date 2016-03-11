@@ -1,0 +1,24 @@
+a. TLB Questions
+
+1.
+TLB miss, page fault - user references a page that was swapped to disk
+TLB miss, no page fault - user references page not in TLB but in main memory
+TLB hit, page fault - impossible, as if it is in the TLB it is in main memory
+TLB hit, no page fault - user references a page in the TLB
+
+2. The first access will be a miss since the user has not accessed anything yet. The TLB will evict was currently executing since there’s only one spot to make room for this other memory access. When it is loaded into the TLB, the user code will need to continue executing, thus evicting the memory chunk just loaded. This cycle continues infinitely.
+
+3. 
+TLB miss - address 0x120 not in TLB or instruction itself not in memory
+Page fault - 0x120 not in page table
+Addressing error - 0x120 is invalid or not accessible (if we are not in supervisor mode, depending on where the watershed is)
+
+b. Malloc and Free
+
+1. Two calls during initialization to find the heap base and then to align the heap base if needed. Then, once per malloc call as well. So, 12 total. The LCM of the alignment (16) and MBLOCKSIZE (8) is 24, so 10 allocations * 24 bytes = 240.
+
+2. No, as free will merge the 6 freed blocks into 2 sets of 3 * 24 = 72 byte blocks, which matches the block size of the aligned malloc(60) allocation of 64+8=72 bytes. x is start + 24, a.k.a., the location of res[1].
+
+3.  The are identifiers that reserve the names for the implementation in case there are extensions in the future to C or the POSIX library.
+
+4. Via the line “size = ((size + MBLOCKSIZE - 1) & ~(size_t)(MBLOCKSIZE-1));” which will “Round size up to an integral number of blocks.”
