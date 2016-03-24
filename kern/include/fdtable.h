@@ -2,7 +2,6 @@
 #include <spinlock.h>
 #include <kern/limits.h>
 
-
 #define FD_MAX __OPEN_MAX
 
 struct fd_table {
