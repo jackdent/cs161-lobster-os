@@ -343,8 +343,9 @@ file      proc/fdtable.c
 # (you will probably want to add stuff here while doing the VM assignment)
 #
 
-file      vm/kmalloc.c
 file      vm/coremap.c
+file      vm/kmalloc.c
+file 	  vm/pagetable.c
 
 optofffile dumbvm   vm/addrspace.c
 

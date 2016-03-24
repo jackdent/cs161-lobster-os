@@ -10,25 +10,29 @@
 #define PHYS_PAGE_MASK(pa) (pa >> 12)
 
 // Will live inside the address space struct of a process
-struct pagetable {
-	struct l1_pt l1_pt;		// l1 page table
-	struct spinlock busy_bit_splk; 	// for accessing busybits
-};
-
-struct l1_pt {
-	struct *l2_pt l2_pts[PAGE_TABLE_ENTRIES];
-};
-
-struct l2_pt {
-	struct pte ptes[PAGE_TABLE_ENTRIES];
-};
 
 struct pte {
-	phys_page:20;	// upper 20 bits of physical address
-	valid:1;	// 1 if page is allocated for this process
-	present:1;	// 1 if page is in main memory
-	busy_bit:1	// 1 if some thread or kernel is operating
-			// on this entry
+	unsigned pte_phys_page:20;	// upper 20 bits of physical address
+	unsigned pte_valid:1;		// 1 if page is allocated for this process
+	unsigned pte_present:1;		// 1 if page is in main memory
+	unsigned pte_busy_bit:1;	// 1 if some thread or kernel is operating
+					// on this entry
+};
+
+
+struct l2 {
+	struct pte l2_ptes[PAGE_TABLE_ENTRIES];
+};
+
+
+struct l1 {
+	struct l2 *l2s[PAGE_TABLE_ENTRIES];
+};
+
+
+struct pagetable {
+	struct l1 pt_l1;			// l1 page table
+	struct spinlock pt_busy_bit_splk; 	// for accessing busybits
 };
 
 // Create a empty page table with no l2_pt entries
@@ -56,7 +60,7 @@ int map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt);
 // Opposite of map_pa_to_va. Returns nothing, but KASSERTS that
 // the mapping exists, as if it didn't, our pagetable is corrupted somehow
 // Should be coupled with a TLB shootdown of some sort
-void unmap_pa_from_va(vaddr_t va, struct pagetable *pt);
+void unmap_va(vaddr_t va, struct pagetable *pt);
 
 void acquire_busy_bit(struct pte *pte, struct pagetable *pt);
 void release_busy_bit(struct pte *pte, struct pagetable *pt);
