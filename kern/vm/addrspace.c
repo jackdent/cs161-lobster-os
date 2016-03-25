@@ -33,6 +33,7 @@
 #include <addrspace.h>
 #include <vm.h>
 #include <proc.h>
+#include <pagetable.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -47,14 +48,25 @@ as_create(void)
 
 	as = kmalloc(sizeof(struct addrspace));
 	if (as == NULL) {
-		return NULL;
+		goto err1;
 	}
 
-	/*
-	 * Initialize as needed.
-	 */
+	as->as_pt = create_pagetable();
+	if (as->as_pt == NULL) {
+		goto err2;
+	}
+
+	as->heap_start = HEAP_START;
+	as->heap_end = HEAP_END;
+	as->stack_end = STACK_END;
 
 	return as;
+
+
+	err2:
+		kfree(as);
+	err1:
+		return NULL;
 }
 
 int
@@ -101,9 +113,7 @@ as_activate(void)
 		return;
 	}
 
-	/*
-	 * Write this.
-	 */
+	curproc->p_addrspace = as;
 }
 
 void
@@ -130,17 +140,20 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		 int readable, int writeable, int executable)
 {
-	/*
-	 * Write this.
-	 */
+	// Enforce that a region starts at the beginning of a page
+	// and uses up the remainder of its last page
+	memsize += vaddr & (~(vaddr_t)PAGE_FRAME);
+	vaddr &= PAGE_FRAME;
 
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
-	(void)readable;
-	(void)writeable;
-	(void)executable;
-	return ENOSYS;
+	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
+
+	// Update heap bounds
+	if (as->heap_start < (vaddr + memsize)) {
+		as->heap_start = vaddr + memsize;
+		as->heap_end = as->heap_start;
+	}
+
+	return 0;
 }
 
 int
