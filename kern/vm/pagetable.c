@@ -49,6 +49,22 @@ destroy_pagetable(struct pagetable *pt)
 	kfree(pt);
 }
 
+struct pte
+get_pte(struct pagetable *pt, vaddr_t va)
+{
+        struct l2_pt *l2_pt;
+
+	KASSERT(pt != NULL);
+
+        l2_pt = pt.l1_pt->l2_pts[faultaddress & L1_PAGE_FRAME];
+
+        if (l2_pt == NULL) {
+        	// TODO
+        }
+
+        return l2_pt->ptes[faultaddress & L2_PAGE_FRAME];
+}
+
 int
 map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 {
@@ -127,4 +143,3 @@ release_busy_bit(struct pte *pte, struct pagetable *pt)
 	pte->pte_busy_bit = 0;
 	spinlock_release(&pt->pt_busy_bit_splk);
 }
-

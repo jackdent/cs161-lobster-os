@@ -12,10 +12,11 @@
 // Will live inside the address space struct of a process
 
 struct pte {
-	unsigned pte_phys_page:20;	// upper 20 bits of physical address
-	unsigned pte_valid:1;		// 1 if page is allocated for this process
-	unsigned pte_present:1;		// 1 if page is in main memory
-	unsigned pte_busy_bit:1;	// 1 if some thread or kernel is operating
+	unsigned int pte_phys_page:20;	// upper 20 bits of physical address
+        unsigned int pte_valid:1;       // 1 if page is allocated for this process
+	unsigned int pte_lazy:1;        // 1 if page is acquired but not allocated
+	unsigned int pte_present:1;     // 1 if page is in main memory
+	unsigned int pte_busy_bit:1;	// 1 if some thread or kernel is operating
 					// on this entry
 };
 
@@ -42,6 +43,8 @@ struct pagetable *create_pagetable(void);
 // pagetable itself
 void destroy_pagetable(struct pagetable *pt);
 
+struct pte get_pte(struct pagetable *pt, vaddr_t va);
+
 // Map a physical address pa to a virtual address va in the given
 // pagetable. Returns 0 on success, error value on failure
 // Failure can occur if a new l2_pt cannot be allocated (ENOMEM),
@@ -64,5 +67,3 @@ void unmap_va(vaddr_t va, struct pagetable *pt);
 
 void acquire_busy_bit(struct pte *pte, struct pagetable *pt);
 void release_busy_bit(struct pte *pte, struct pagetable *pt);
-
-
