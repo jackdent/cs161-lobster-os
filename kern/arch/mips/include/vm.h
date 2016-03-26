@@ -84,6 +84,9 @@
  * grows downwards.
  */
 #define USERSTACK     USERSPACETOP
+#define STACK_END	0 // TODO Decide this
+#define INIT_HEAP_BASE	0
+#define INIT_HEAP_END 	0
 
 /*
  * Interface to the low-level module that looks after the amount of

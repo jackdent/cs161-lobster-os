@@ -31,9 +31,9 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <addrspace.h>
+#include <current.h>
 #include <vm.h>
 #include <proc.h>
-#include <pagetable.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -56,9 +56,9 @@ as_create(void)
 		goto err2;
 	}
 
-	as->heap_start = HEAP_START;
-	as->heap_end = HEAP_END;
-	as->stack_end = STACK_END;
+	as->as_heap_base = INIT_HEAP_BASE;
+	as->as_heap_end = INIT_HEAP_END;
+	as->as_stack_end = STACK_END;
 
 	return as;
 
@@ -72,31 +72,31 @@ as_create(void)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-	struct addrspace *newas;
-	struct l1 *old_l1, new_l1;
-	struct l2 *old_l2, new_l2;
-	struct pte *old_pte, new_pte;
+	struct addrspace *new;
+	struct l1 *old_l1, *new_l1;
+	struct l2 *old_l2, *new_l2;
+	struct pte *old_pte, *new_pte;
 	paddr_t old_pa, new_pa;
-	void *src, dest;
+	void *src, *dest;
 	unsigned int offset;
 	int i, j, err;
 
 
 	new = as_create();
-	if (newas == NULL) {
+	if (new == NULL) {
 		goto err1;
 	}
 
-	new->heap_start = old->heap_start;
-	new->heap_end = old->heap_end;
-	new->stack_end = old->stack_end
+	new->as_heap_base = old->as_heap_base;
+	new->as_heap_end = old->as_heap_end;
+	new->as_stack_end = old->as_stack_end;
 
-	old_l1 = old->as_pt->pt_l1;
-	new_l1 = new->as_pt->pt_l1;
+	old_l1 = &old->as_pt->pt_l1;
+	new_l1 = &new->as_pt->pt_l1;
 
 	// Copy over the pages
 	for (i = 0; i < PAGE_TABLE_ENTRIES; i++) {
-		if (old_pt->l2s[i] == NULL) {
+		if (old_l1->l2s[i] == NULL) {
 			continue;
 		}
 
@@ -107,19 +107,20 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		old_l2 = old_l1->l2s[i];
 		new_l2 = new_l1->l2s[i];
 		for (j = 0; j < PAGE_TABLE_ENTRIES; j++) {
-			if (old_l2->l2_ptes[j].valid == 0) {
+			if (old_l2->l2_ptes[j].pte_valid == 0) {
 				continue;
 			}
 			old_pte = &old_l2->l2_ptes[j];
 			new_pte = &new_l2->l2_ptes[j];
 			acquire_busy_bit(old_pte, old->as_pt);
 			// new_pa = get_free_page();
-			if (new_pa == NULL) {
+			new_pa = 0;
+			if (new_pa == 0) {
 				goto err2;
 			}
 			// TODO Lazy Case
 			// In memory
-			if (old_pte->present) {
+			if (old_pte->pte_present) {
 				old_pa = PHYS_PAGE_TO_PA(old_pte->pte_phys_page);
 				src = (void *)PADDR_TO_KVADDR(old_pa);
 				dest = (void *)PADDR_TO_KVADDR(new_pa);
@@ -128,7 +129,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			// On disk
 			else {
 				offset = get_swap_offset_from_pte(old_pte);
+				(void) offset;
 				//err = read_page(dest, offset);
+				err = 0;
 				if (err) {
 					goto err2;
 				}
@@ -144,9 +147,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		}
 	}
 
+	*ret = new;
 
 	err2:
-		as_destroy(new_as);
+		as_destroy(new);
 	err1:
 		return ENOMEM;
 }
@@ -200,6 +204,9 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		 int readable, int writeable, int executable)
 {
+	(void) readable;
+	(void) writeable;
+	(void) executable;
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
 	memsize += vaddr & (~(vaddr_t)PAGE_FRAME);
@@ -208,9 +215,9 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
 
 	// Update heap bounds
-	if (as->heap_start < (vaddr + memsize)) {
-		as->heap_start = vaddr + memsize;
-		as->heap_end = as->heap_start;
+	if (as->as_heap_base < (vaddr + memsize)) {
+		as->as_heap_base = vaddr + memsize;
+		as->as_heap_end = as->as_heap_base;
 	}
 
 	return 0;

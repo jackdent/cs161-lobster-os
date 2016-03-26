@@ -21,7 +21,7 @@ struct pte {
 	unsigned int pte_present:1;     // 1 if page is in main memory
 	unsigned int pte_busy_bit:1;	// 1 if some thread or kernel is operating
 					// on this entry
-	unsigned int pte_swap_bits:5	// Lower 5 bits of swap offset
+	unsigned int pte_swap_bits:5;	// Lower 5 bits of swap offset
 					// (pte_phys_page) is the upper 20
 };
 
@@ -47,8 +47,6 @@ struct pagetable *create_pagetable(void);
 // Free all pages mapped from the pagetable and the
 // pagetable itself
 void destroy_pagetable(struct pagetable *pt);
-
-struct pte get_pte(struct pagetable *pt, vaddr_t va);
 
 // Map a physical address pa to a virtual address va in the given
 // pagetable. Returns 0 on success, error value on failure

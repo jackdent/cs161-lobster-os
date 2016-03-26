@@ -9,7 +9,6 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
-#include <pagetable.h>
 #include <coremap.h>
 
 void
@@ -47,6 +46,7 @@ static
 void
 add_pte_to_tlb(struct pte pte)
 {
+        (void) pte;
         // TODO
 }
 
