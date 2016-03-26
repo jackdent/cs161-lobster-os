@@ -118,20 +118,18 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			if (new_pa == 0) {
 				goto err2;
 			}
+			dest = (void *)PADDR_TO_KVADDR(new_pa);
 			// TODO Lazy Case
 			// In memory
 			if (old_pte->pte_present) {
 				old_pa = PHYS_PAGE_TO_PA(old_pte->pte_phys_page);
 				src = (void *)PADDR_TO_KVADDR(old_pa);
-				dest = (void *)PADDR_TO_KVADDR(new_pa);
 				memcpy(dest, src, PAGE_SIZE);
 			}
 			// On disk
 			else {
 				offset = get_swap_offset_from_pte(old_pte);
-				(void) offset;
-				//err = read_page(dest, offset);
-				err = 0;
+				err = read_page_from_disk(dest, offset);
 				if (err) {
 					goto err2;
 				}
@@ -148,6 +146,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	}
 
 	*ret = new;
+
 
 	err2:
 		as_destroy(new);
