@@ -82,10 +82,11 @@ map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 		l2 = pt->pt_l1.l2s[l1_index];
 		// Cannot be already taken
 		KASSERT(l2->l2_ptes[l2_index].pte_valid == 0);
-		l2->l2_ptes[l2_index].pte_phys_page = PHYS_PAGE_MASK(pa);
+		l2->l2_ptes[l2_index].pte_phys_page = PA_TO_PHYS_PAGE(pa);
 		l2->l2_ptes[l2_index].pte_valid = 1;
 		l2->l2_ptes[l2_index].pte_present = 1;
 		l2->l2_ptes[l2_index].pte_busy_bit = 0;
+		l2->l2_ptes[l2_index].pte_swap_bits = 0;
 	}
 	// Need to make an l2 pagetable
 	else {
@@ -93,10 +94,11 @@ map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 		if (l2 == NULL)
 			return ENOMEM;
 		pt->pt_l1.l2s[l1_index] = l2;
-		l2->l2_ptes[l2_index].pte_phys_page = PHYS_PAGE_MASK(pa);
+		l2->l2_ptes[l2_index].pte_phys_page = PA_TO_PHYS_PAGE(pa);
 		l2->l2_ptes[l2_index].pte_valid = 1;
 		l2->l2_ptes[l2_index].pte_present = 1;
 		l2->l2_ptes[l2_index].pte_busy_bit = 0;
+		l2->l2_ptes[l2_index].pte_swap_bits = 0;
 	}
 	return 0;
 }
@@ -122,6 +124,17 @@ unmap_va(vaddr_t va, struct pagetable *pt)
 	spinlock_acquire(&pt->pt_busy_bit_splk);
 	l2->l2_ptes[l2_index].pte_valid = 0;
 	spinlock_release(&pt->pt_busy_bit_splk);
+}
+
+unsigned int
+get_swap_offset_from_pte(struct pte *pte)
+{
+	unsigned int upper, lower;
+	KASSERT(pte);
+	upper = pte->pte_phys_page;
+	lower = pte->pte_swap_bits;
+	return (upper << LOWER_SWAP_BITS) | lower;
+
 }
 
 

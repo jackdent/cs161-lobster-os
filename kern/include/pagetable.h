@@ -7,7 +7,10 @@
 #define L2_PT_MASK(va) ((va >> 12) & 0x3FF)
 #define OFFSET_MASK(va) (va & 0xFFF)
 
-#define PHYS_PAGE_MASK(pa) (pa >> 12)
+#define PA_TO_PHYS_PAGE(pa) (pa >> 12)
+#define PHYS_PAGE_TO_PA(page) (page << 12)
+
+#define LOWER_SWAP_BITS 5
 
 // Will live inside the address space struct of a process
 
@@ -18,6 +21,8 @@ struct pte {
 	unsigned int pte_present:1;     // 1 if page is in main memory
 	unsigned int pte_busy_bit:1;	// 1 if some thread or kernel is operating
 					// on this entry
+	unsigned int pte_swap_bits:5	// Lower 5 bits of swap offset
+					// (pte_phys_page) is the upper 20
 };
 
 
@@ -64,6 +69,9 @@ int map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt);
 // the mapping exists, as if it didn't, our pagetable is corrupted somehow
 // Should be coupled with a TLB shootdown of some sort
 void unmap_va(vaddr_t va, struct pagetable *pt);
+
+// Extra swap offset from the seperate bit fields in a pte
+unsigned int get_swap_offset_from_pte(struct pte *pte);
 
 void acquire_busy_bit(struct pte *pte, struct pagetable *pt);
 void release_busy_bit(struct pte *pte, struct pagetable *pt);

@@ -76,7 +76,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	struct l1 *old_l1, new_l1;
 	struct l2 *old_l2, new_l2;
 	struct pte *old_pte, new_pte;
-	int i, j;
+	paddr_t old_pa, new_pa;
+	void *src, dest;
+	unsigned int offset;
+	int i, j, err;
 
 
 	new = as_create();
@@ -107,20 +110,45 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			if (old_l2->l2_ptes[j].valid == 0) {
 				continue;
 			}
-			old_pte = old_l2->l2_ptes[j];
-			new_pte = new_l2->l2_ptes[j];
-			acquire_busy_bit(&old_pte, old->as_pt);
+			old_pte = &old_l2->l2_ptes[j];
+			new_pte = &new_l2->l2_ptes[j];
+			acquire_busy_bit(old_pte, old->as_pt);
+			// new_pa = get_free_page();
+			if (new_pa == NULL) {
+				goto err2;
+			}
+			// TODO Lazy Case
 			// In memory
-			if (old_pte.present)
-			release_busy_bit(&old_pte, old->as_pt);
+			if (old_pte->present) {
+				old_pa = PHYS_PAGE_TO_PA(old_pte->pte_phys_page);
+				src = (void *)PADDR_TO_KVADDR(old_pa);
+				dest = (void *)PADDR_TO_KVADDR(new_pa);
+				memcpy(dest, src, PAGE_SIZE);
+			}
+			// On disk
+			else {
+				offset = get_swap_offset_from_pte(old_pte);
+				//err = read_page(dest, offset);
+				if (err) {
+					goto err2;
+				}
+			}
+			new_pte->pte_phys_page = PA_TO_PHYS_PAGE(new_pa);
+			new_pte->pte_valid = 1;
+			new_pte->pte_lazy = 0; //?
+			new_pte->pte_present = 1;
+			new_pte->pte_busy_bit = 0;
+			new_pte->pte_swap_bits = 0;
+
+			release_busy_bit(old_pte, old->as_pt);
 		}
 	}
+
 
 	err2:
 		as_destroy(new_as);
 	err1:
 		return ENOMEM;
-
 }
 
 void
