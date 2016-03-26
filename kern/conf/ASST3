@@ -1,15 +1,11 @@
-<<<<<<< HEAD
 # Kernel config file for an ordinary, generic kernel.
 # This config file should be used once you start working on
 # your own VM system.
-=======
-# Kernel config file using dumbvm.
-# This should be used until you have your own VM system.
->>>>>>> 70656a901e25c0186d86bec7cc92a32cb431f2e9
 
 include conf/conf.kern		# get definitions of available options
 
 debug				# Compile with debug info.
+#options hangman 		# Deadlock detection. (off by default)
 
 #
 # Device drivers for hardware.
@@ -36,4 +32,3 @@ options sfs			# Always use the file system
 #options netfs			# You might write this as a project.
 
 #options dumbvm			# Use your own VM system now.
-

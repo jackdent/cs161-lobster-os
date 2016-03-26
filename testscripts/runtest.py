@@ -154,7 +154,7 @@ def run(testcommands, outputfile,
 				ignore_sighup=False)
 	proc.logfile_read = outputfile
 
-	commands = testcommands.split(";")
+	commands = [s.strip() for s in testcommands.split(";")]
 	commands = [macros[c] if c in macros else [c] for c in commands]
 	# Apparently list flatten() is unpythonic...
 	commands = [c for sublist in commands for c in sublist]
