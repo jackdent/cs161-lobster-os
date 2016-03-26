@@ -73,29 +73,61 @@ int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
 	struct addrspace *newas;
+	struct l1 *old_l1, new_l1;
+	struct l2 *old_l2, new_l2;
+	struct pte *old_pte, new_pte;
+	int i, j;
 
-	newas = as_create();
-	if (newas==NULL) {
-		return ENOMEM;
+
+	new = as_create();
+	if (newas == NULL) {
+		goto err1;
 	}
 
-	/*
-	 * Write this.
-	 */
+	new->heap_start = old->heap_start;
+	new->heap_end = old->heap_end;
+	new->stack_end = old->stack_end
 
-	(void)old;
+	old_l1 = old->as_pt->pt_l1;
+	new_l1 = new->as_pt->pt_l1;
 
-	*ret = newas;
-	return 0;
+	// Copy over the pages
+	for (i = 0; i < PAGE_TABLE_ENTRIES; i++) {
+		if (old_pt->l2s[i] == NULL) {
+			continue;
+		}
+
+		new_l1->l2s[i] = kmalloc(sizeof(struct l2));
+		if (new_l1->l2s[i] == NULL) {
+			goto err2;
+		}
+		old_l2 = old_l1->l2s[i];
+		new_l2 = new_l1->l2s[i];
+		for (j = 0; j < PAGE_TABLE_ENTRIES; j++) {
+			if (old_l2->l2_ptes[j].valid == 0) {
+				continue;
+			}
+			old_pte = old_l2->l2_ptes[j];
+			new_pte = new_l2->l2_ptes[j];
+			acquire_busy_bit(&old_pte, old->as_pt);
+			// In memory
+			if (old_pte.present)
+			release_busy_bit(&old_pte, old->as_pt);
+		}
+	}
+
+	err2:
+		as_destroy(new_as);
+	err1:
+		return ENOMEM;
+
 }
 
 void
 as_destroy(struct addrspace *as)
 {
-	/*
-	 * Clean up as needed.
-	 */
-
+	// This handles freeing the actual pages
+	destroy_pagetable(as->as_pt);
 	kfree(as);
 }
 
