@@ -17,7 +17,6 @@
 #include <uio.h>
 #include <swap.h>
 
-
 void
 swap_init(void)
 {
@@ -25,43 +24,49 @@ swap_init(void)
 	char *swap_disk_path;
 
 	swap_disk_path = kstrdup("lhd0raw:");
-	if (swap_disk_path == NULL)
+	if (swap_disk_path == NULL) {
 		panic("swap_init: could not open swap disk");
+	}
 
 	err = vfs_open(swap_disk_path, O_RDWR, 0, &swap_file);
-	if (err)
+	if (err) {
 		panic("swap_init: could not open swap disk");
+	}
 
 	swap_map = bitmap_create(SWAP_DISK_PAGES);
-	if (swap_map == NULL)
+	if (swap_map == NULL) {
 		panic("swap_init: could not create swap disk map");
+	}
 
 	swap_map_lock = lock_create("swap map lock");
-	if (swap_map_lock == NULL)
+	if (swap_map_lock == NULL) {
 		panic("swap_init: could not create disk map lock");
+	}
 
 	kfree(swap_disk_path);
 }
 
-int
+swap_id_t
 get_swap_index(void)
 {
-	unsigned index;
+	swap_id_t index;
 	int result;
 
 	lock_acquire(swap_map_lock);
 	result = bitmap_alloc(swap_map, &index);
 	lock_release(swap_map_lock);
-	if (result)
-		return -1;
-	else
+
+	if (result) {
+		panic("Ran out of swap space!");
+	} else {
 		return index;
+	}
 }
 
 
 // Free the given swap index.
 void
-free_swap_index(unsigned index)
+free_swap_index(swap_id_t index)
 {
 	lock_acquire(swap_map_lock);
 
@@ -73,7 +78,7 @@ free_swap_index(unsigned index)
 
 // Write the page at swap_index on disk to the physical page pp
 int
-swap_out(unsigned swap_index, paddr_t src)
+swap_out(swap_id_t swap_index, paddr_t src)
 {
 	int ret;
 
@@ -86,7 +91,7 @@ swap_out(unsigned swap_index, paddr_t src)
 
 // Read a page from swap_index into the page at dest
 int
-swap_in(unsigned swap_index, paddr_t dest)
+swap_in(swap_id_t swap_index, paddr_t dest)
 {
 	int ret;
 
@@ -100,7 +105,7 @@ swap_in(unsigned swap_index, paddr_t dest)
 
 // Helpers
 int
-write_page_to_disk(void *page, unsigned disk_offset)
+write_page_to_disk(void *page, swap_id_t disk_offset)
 {
 	struct iovec iov;
 	struct uio u;
@@ -110,7 +115,7 @@ write_page_to_disk(void *page, unsigned disk_offset)
 }
 
 int
-read_page_from_disk(void *page, unsigned disk_offset)
+read_page_from_disk(void *page, swap_id_t disk_offset)
 {
 	struct iovec iov;
 	struct uio u;

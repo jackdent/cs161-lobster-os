@@ -9,6 +9,7 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <pagetable.h>
 #include <coremap.h>
 
 void
@@ -44,10 +45,13 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 
 static
 void
-add_pte_to_tlb(struct pte pte)
+add_pte_to_tlb(struct pte *pte)
 {
-        (void) pte;
-        // TODO
+        (void)pte;
+
+        /* TODO */
+        // paddr_t pa;
+        // pa = va_to_pa(faultaddress, pte);
 }
 
 static
@@ -65,9 +69,7 @@ int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
         struct addrspace *as;
-        struct pte pte;
-        uint32_t ehi, elo;
-        vaddr_t stack_start, heap_end;
+        struct pte *pte;
 
         if (curproc == NULL) {
                 /*
@@ -87,39 +89,29 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 return EFAULT;
         }
 
-        heap_end = as->as_heap_base + as->as_heap_size;
-        stack_start = stacfaultaddress < USERSTACK - as->as_stack_size
-        if (faultaddress > heap_end && faultaddress < stack_start) {
-                return EFAULT;
+        if (!va_in_bounds(as, faultaddress)) {
+            return EFAULT;
         }
 
-        pte = get_pte(faultaddress);
-        ehi = faultaddress & TLBHI_VPAGE;
-        elo = tlb_probe(ehi, 0);
-        if (elo < 0) {
-                //
-        } else {
-
+        if (!va_in_pagetable(faultaddress, as->as_pt, &pte)) {
+            return EFAULT;
         }
+
+        ensure_in_memory(as, faultaddress, pte);
 
         switch (faulttype) {
         case VM_FAULT_READ:
-                if (pte.pte_valid == 0) {
-                        // allocate physical memory for the page
-                        // add it to the page table
-                        add_pte_to_tlb(pte);
-                } else if (pte.pte_present == 0) {
-                        // swap from disk into RAM
-                } else {
-                        panic("What?!\n");
-                }
-
+                add_pte_to_tlb(pte);
                 break;
         case VM_FAULT_WRITE:
-                mark_tlb_entry_dirty(faultaddress);
+                panic("Tried to write to a non-existent TLB entry");
                 break;
         case VM_FAULT_READONLY:
-                return EFAULT;
+                make_va_writeable(as, va);
+                break;
+        default:
+                panic("Unknown TLB fault type\n");
+                break;
         }
 
         return 0;

@@ -1,42 +1,63 @@
 #include <coremap.h>
 #include <lib.h>
 
-bool cm_entry_attempt_lock(unsigned int i)
+struct cme
+cme_create(pid_t pid, vaddr_t va)
+{
+        struct cme cme;
+
+        cme.pid = pid;
+        cme.cme_l1_offset = L1_PT_MASK(va);
+        cme.cme_l2_offset = L2_PT_MASK(va);
+        cme.cme_swap_id = 0;
+        cme.cme_free = 0;
+        cme.cme_dirty = 0;
+        cme.cme_busy = 0;
+        cme.cme_recent = 1;
+
+        return cme;
+}
+
+bool
+cme_attempt_lock(cme_id_t i)
 {
         bool acquired;
 
         KASSERT(i < CM_SIZE);
 
-        spinlock_acquire(&coremap.cm_entry_spinlock);
-        acquired = (coremap.cm_entries[i].cme_busy == 0);
-        coremap.cm_entries[i].cme_busy = 1;
-        spinlock_release(&coremap.cm_entry_spinlock);
+        spinlock_acquire(&coremap.cme_spinlock);
+        acquired = (coremap.cmes[i].cme_busy == 0);
+        coremap.cmes[i].cme_busy = 1;
+        spinlock_release(&coremap.cme_spinlock);
 
         return acquired;
 }
 
-void cm_entry_acquire_lock(unsigned int i)
+void
+cme_acquire_lock(cme_id_t i)
 {
         while (1) {
-                if (cm_entry_attempt_lock(i)) {
+                if (cme_attempt_lock(i)) {
                         break;
                 }
         }
 }
 
-void cm_entry_release_lock(unsigned int i)
+void
+cme_release_lock(cme_id_t i)
 {
         KASSERT(i < CM_SIZE);
 
-        spinlock_acquire(&coremap.cm_entry_spinlock);
-        KASSERT(coremap.cm_entries[i].cme_busy == 1);
-        coremap.cm_entries[i].cme_busy = 0;
-        spinlock_release(&coremap.cm_entry_spinlock);
+        spinlock_acquire(&coremap.cme_spinlock);
+        KASSERT(coremap.cmes[i].cme_busy == 1);
+        coremap.cmes[i].cme_busy = 0;
+        spinlock_release(&coremap.cme_spinlock);
 }
 
-void cm_init()
+void
+cm_init()
 {
-        spinlock_init(&coremap.cm_entry_spinlock);
+        spinlock_init(&coremap.cme_spinlock);
         spinlock_init(&coremap.cm_clock_spinlock);
         coremap.cm_clock_hand = 0;
 }
@@ -48,58 +69,43 @@ cm_advance_clock_hand()
         coremap.cm_clock_hand = (coremap.cm_clock_hand + 1) % CM_SIZE;
 }
 
-bool cm_add_entry(struct cm_entry new_entry, struct cm_entry *evicted_entry)
+cme_id_t
+cm_capture_slot()
 {
         unsigned int i;
-        struct cm_entry current;
-        bool insert, evicted;
+        cme_id_t slot;
+        struct cme entry;
 
         spinlock_acquire(&coremap.cm_clock_spinlock);
 
         for (i = 0; i < CM_SIZE; ++i) {
-                current = coremap.cm_entries[coremap.cm_clock_hand];
+                slot = coremap.cm_clock_hand;
+                entry = coremap.cmes[slot];
 
-                if (!cm_entry_attempt_lock(coremap.cm_clock_hand)) {
+                cm_advance_clock_hand();
+
+                if (!cme_attempt_lock(slot)) {
                         continue;
                 }
 
-                if (current.cme_free == 1) {
-                        evicted = false;
-                        insert = true;
-                } else if (current.cme_recent == 0) {
-                        evicted = true;
-                        insert = true;
-                        *evicted_entry = current;
-                } else {
-                        insert = false;
+                coremap.cmes[slot].cme_recent = 0;
+
+                if (entry.cme_free == 1 || entry.cme_recent == 0) {
+                        spinlock_release(&coremap.cm_clock_spinlock);
+                        return slot;
                 }
 
-                if (insert) {
-                        coremap.cm_entries[coremap.cm_clock_hand] = new_entry;
-                        cm_entry_release_lock(coremap.cm_clock_hand);
-
-                        cm_advance_clock_hand();
-                        break;
-                }
-
-                coremap.cm_entries[coremap.cm_clock_hand].cme_recent = 0;
-                cm_entry_release_lock(coremap.cm_clock_hand);
-
-                cm_advance_clock_hand();
+                cme_release_lock(slot);
         }
 
-        // Evict the entry the clock hand first pointed to
-        if (i == CM_SIZE) {
-                cm_entry_acquire_lock(coremap.cm_clock_hand);
-                evicted = true;
-                *evicted_entry = coremap.cm_entries[coremap.cm_clock_hand];
-                coremap.cm_entries[coremap.cm_clock_hand] = new_entry;
-                cm_entry_release_lock(coremap.cm_clock_hand);
+        // If we reach the end of the loop without returning, we
+        // should evict the entry the clock hand first pointed to
+        slot = coremap.cm_clock_hand;
 
-                cm_advance_clock_hand();
-        }
+        cme_acquire_lock(slot);
+        coremap.cmes[slot].cme_recent = 0;
+        cm_advance_clock_hand();
 
         spinlock_release(&coremap.cm_clock_spinlock);
-
-        return evicted;
+        return slot;
 }

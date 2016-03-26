@@ -128,7 +128,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			}
 			// On disk
 			else {
-				offset = get_swap_offset_from_pte(old_pte);
+				offset = get_swap_id_from_pte(old_pte);
 				err = read_page_from_disk(dest, offset);
 				if (err) {
 					goto err2;
@@ -136,7 +136,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			}
 			new_pte->pte_phys_page = PA_TO_PHYS_PAGE(new_pa);
 			new_pte->pte_valid = 1;
-			new_pte->pte_lazy = 0; //?
+			new_pte->pte_lazy = 0; // TODO
 			new_pte->pte_present = 1;
 			new_pte->pte_busy_bit = 0;
 			new_pte->pte_swap_bits = 0;
@@ -199,13 +199,14 @@ as_deactivate(void)
  * moment, these are ignored. When you write the VM system, you may
  * want to implement them.
  */
+
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		 int readable, int writeable, int executable)
 {
-	(void) readable;
-	(void) writeable;
-	(void) executable;
+	(void)readable;
+	(void)writeable;
+	(void)executable;
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
 	memsize += vaddr & (~(vaddr_t)PAGE_FRAME);
@@ -259,3 +260,8 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	return 0;
 }
 
+bool
+va_in_as_bounds(struct addrspace *as, vaddr_t va)
+{
+	return va < as->as_heap_end || va > as->as_stack_end;
+}
