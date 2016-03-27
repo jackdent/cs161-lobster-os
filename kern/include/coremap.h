@@ -6,7 +6,7 @@
  */
 
 /* An index for pages that is *not* stable over their lifetime */
-typedef cme_id_t unsigned uint32_t;
+typedef uint32_t cme_id_t;
 
 #define CME_ID_TO_PA(cme_id) (cme_id * PAGE_SIZE)
 
@@ -14,6 +14,7 @@ typedef cme_id_t unsigned uint32_t;
  * We use an enumerated type, since these states are mutually
  * exclusive
  */
+
 enum cme_state {
         // The page is not owned by a user process
         // or the kernel

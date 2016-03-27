@@ -178,6 +178,13 @@ syscall(struct trapframe *tf)
 		err = sys_waitpid((pid_t)tf->tf_a0, (int*)tf->tf_a1, (int)tf->tf_a2, (pid_t *)&retval);
 		break;
 
+	/* Memory management system calls */
+
+	case SYS_sbrk:
+		// TODO: work for 64 bit values
+		err = sys_sbrk(tf->tf_a0, &retval);
+		break;
+
 	default:
 		kprintf("Unknown syscall %d\n", callno);
 		err = ENOSYS;

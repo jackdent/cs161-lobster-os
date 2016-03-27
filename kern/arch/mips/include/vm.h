@@ -27,6 +27,8 @@
  * SUCH DAMAGE.
  */
 
+#include <coremap.h>
+
 #ifndef _MIPS_VM_H_
 #define _MIPS_VM_H_
 

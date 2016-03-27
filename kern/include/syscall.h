@@ -77,6 +77,7 @@ int sys_waitpid(pid_t pid, int *status, int options, pid_t *retval);
 /*
  * Prototypes for file system calls
  */
+
 int sys_open(userptr_t filename, int flags, int *fd);
 int sys_close(int fd);
 int sys_read(int fd, userptr_t buf, size_t len, size_t *read);
@@ -85,5 +86,11 @@ int sys_lseek(int fd, off_t pos, int whence, off_t *new_pos);
 int sys_dup2(int old_fd, int new_fd);
 int sys_chdir(userptr_t path);
 int sys___getcwd(userptr_t buf, size_t len, size_t *copied);
+
+/*
+ * Prototypes for memory management system calls
+ */
+
+int sys_sbrk(int32_t pid, int32_t *retval);
 
 #endif /* _SYSCALL_H_ */

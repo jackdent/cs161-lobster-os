@@ -15,7 +15,7 @@
 
 /* An index for pages that is stable over their lifetime, assigned the first
    time they are evicted from main memory to disk */
-typedef swap_id_t unsigned uint32_t;
+typedef uint32_t swap_id_t;
 
 struct vnode *swap_file;
 struct bitmap *swap_map;

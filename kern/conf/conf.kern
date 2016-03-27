@@ -405,6 +405,9 @@ file      syscall/dup2.c
 file      syscall/chdir.c
 file      syscall/__getcwd.c
 
+# Memory management calls
+file      syscall/sbrk.c
+
 #
 # Startup and initialization
 #

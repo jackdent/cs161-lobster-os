@@ -35,7 +35,6 @@
 #include <threadlist.h>
 #include <machine/vm.h>  /* for TLBSHOOTDOWN_MAX */
 
-
 /*
  * Per-cpu structure
  *
