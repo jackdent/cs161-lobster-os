@@ -101,14 +101,3 @@ ensure_in_memory(struct addrspace *as, vaddr_t va, struct pte *pte)
         coremap.cmes[slot] = cme;
         cme_release_lock(slot);
 }
-
-void
-make_va_writeable(struct addrspace *as, vaddr_t va)
-{
-        // struct cme cme;
-
-        /* TODO */
-
-        // - set cme to dirty
-        // - set to read/write in TLB
-}

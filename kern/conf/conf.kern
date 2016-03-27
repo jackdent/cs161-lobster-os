@@ -346,7 +346,8 @@ file      proc/fdtable.c
 file      vm/coremap.c
 file      vm/kmalloc.c
 file 	  vm/pagetable.c
-file 	  vm/swap.c
+file      vm/swap.c
+file      vm/vm.c
 
 optofffile dumbvm   vm/addrspace.c
 

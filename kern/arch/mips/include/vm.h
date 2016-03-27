@@ -120,10 +120,7 @@ paddr_t ram_getfirstfree(void);
  */
 
 struct tlbshootdown {
-	/*
-	 * Change this to what you need for your VM design.
-	 */
-	int ts_placeholder;
+        cme_id_t ts_flushed_page;
 };
 
 #define TLBSHOOTDOWN_MAX 16

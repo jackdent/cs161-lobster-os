@@ -207,12 +207,15 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	(void)readable;
 	(void)writeable;
 	(void)executable;
+
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
 	memsize += vaddr & (~(vaddr_t)PAGE_FRAME);
 	vaddr &= PAGE_FRAME;
 
 	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
+
+	// TODO: free k pages
 
 	// Update heap bounds
 	if (as->as_heap_base < (vaddr + memsize)) {

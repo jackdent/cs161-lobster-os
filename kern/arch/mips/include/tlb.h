@@ -101,5 +101,9 @@ int tlb_probe(uint32_t entryhi, uint32_t entrylo);
 
 #define NUM_TLB  64
 
+#define VA_TO_VPAGE(va) (va & TLBHI_VPAGE)
+#define OFFSETS_TO_VPAGE(l1, l2) ((l1 << 10 & l2) << 12)
+#define CME_ID_TO_PPAGE(cme_id) ((cme_id << 12) & TLBLO_VALID)
+#define CME_ID_TO_WRITEABLE_PPAGE(cme_id) (CME_ID_TO_PPAGE(cme_id) & TLB_DIRTY)
 
 #endif /* _MIPS_TLB_H_ */
