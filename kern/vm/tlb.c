@@ -32,11 +32,11 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
                 return;
         }
 
-        if (cme.cme_free == 1) {
+        if (cme.cme_state == S_FREE) {
                 panic("Kernel daemon sent a TLB shootdown for an invalid page\n");
         }
 
-        if (cme.cme_dirty == 1) {
+        if (cme.cme_state == S_DIRTY) {
                 panic("Page still dirty after attempted flush\n");
         }
 
@@ -48,27 +48,52 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
                 return;
         }
 
-        // Ensure the TLB entry is clean
+        // Ensure that the TLB entry is clean
         entrylo = CME_ID_TO_PPAGE(ts->ts_flushed_page);
         tlb_write(entryhi, entrylo, (uint32_t)index);
 }
 
-// TODO: better eviction policy
+/*
+ * Implements the Least Recently Added (LRA) algorithm
+ * to evict TLB entries. The entries in the TLB are
+ * ordered by index according to when they were added.
+ * The tlb_lra field on the current cpu marks the index
+ * after the most recently added entry, which is the
+ * least recently added.
+ */
 static
 void
 add_va_to_tlb(struct pte *pte, vaddr_t va)
 {
-        uint32_t entryhi, entrylo;
+        KASSERT(curthread != NULL);
+
+        uint32_t entryhi, entrylo, lra;
+        cme_id_t cme_id;
+        struct cme cme;
         int index;
 
         cme_id = (cme_id_t)pte->pte_phys_page;
 
-        // TODO: do we need to block on busy bits?
+        cme_acquire_lock(cme_id);
+        cme = coremap.cmes[cme_id];
+
+        if (cme.cme_state == S_FREE) {
+                panic("Tried to add a free page to the TLB\n");
+        }
 
         entryhi = VA_TO_VPAGE(va);
-        entrylo = CME_ID_TO_PPAGE(cme_id);
 
-        tlb_random(entryhi, entrylo);
+        if (cme.cme_dirty == 1) {
+                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+        } else {
+                entrylo = CME_ID_TO_PPAGE(cme_id);
+        }
+
+        lra = curthread->t_cpu->c_tlb_lra;
+        tlb_write(entryhi, entrylo, lra);
+        curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
+
+        cme_release_lock(cme_id);
 }
 
 static
@@ -82,8 +107,7 @@ make_va_writeable(struct pte *pte, vaddr_t va)
         cme_id = (cme_id_t)pte->pte_phys_page;
 
         cme_acquire_lock(cme_id);
-        coremap[cme_id].cme_dirty = 1;
-        cme_release_lock(cme_id);
+        coremap.cmes[cme_id].cme_dirty = 1;
 
         entryhi = VA_TO_VPAGE(va);
         index = tlb_probe(entryhi, 0);
@@ -95,6 +119,8 @@ make_va_writeable(struct pte *pte, vaddr_t va)
 
         entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
         tlb_write(entryhi, entrylo, (uint32_t)index);
+
+        cme_release_lock(cme_id);
 }
 
 /*

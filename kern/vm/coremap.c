@@ -10,8 +10,7 @@ cme_create(pid_t pid, vaddr_t va)
         cme.cme_l1_offset = L1_PT_MASK(va);
         cme.cme_l2_offset = L2_PT_MASK(va);
         cme.cme_swap_id = 0;
-        cme.cme_free = 0;
-        cme.cme_dirty = 0;
+        cme.cme_state = S_FREE;
         cme.cme_busy = 0;
         cme.cme_recent = 1;
 
@@ -90,7 +89,7 @@ cm_capture_slot()
 
                 coremap.cmes[slot].cme_recent = 0;
 
-                if (entry.cme_free == 1 || entry.cme_recent == 0) {
+                if (entry.cme_state == S_FREE || entry.cme_recent == 0) {
                         spinlock_release(&coremap.cm_clock_spinlock);
                         return slot;
                 }

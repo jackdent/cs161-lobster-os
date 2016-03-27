@@ -47,12 +47,14 @@ add_page_to_coremap(struct addrspace *as, struct pte *pte)
                 // lifetime.
 
                 // A page that hasn't been written to disk can never be
-                // dirty.
-                KASSERT(cme.cme_dirty == 0);
+                // dirty, free, or owned by the kernel
+
+                // TODO: is this right?
+                KASSERT(cme.cme_state == S_CLEAN);
 
                 swap = get_free_swap_index();
                 pte_set_swap_id(pte, swap);
-        } else if (cme.cme_dirty == 1) {
+        } else if (cme.cme_state == S_DIRTY) {
                 swap = cme.cme_swap_id;
         } else {
                 // The page isn't dirty, so we NOOP.
