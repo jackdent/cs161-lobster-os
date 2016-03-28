@@ -78,8 +78,8 @@ unmap_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
         unsigned int i;
         vaddr_t va;
         struct pte *pte;
+        struct cme cme;
         cme_id_t cme_id;
-
 
         // TODO: synchronisation
         for (i = 0; i < npages; ++i) {
@@ -91,6 +91,9 @@ unmap_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
                 tlb_remove(va);
 
                 cme_id = (cme_id_t)pte->pte_phys_page;
+                cme = coremap.cmes[cme_id];
+
+                KASSERT(cme.cme_state != S_KERNEL);
                 coremap.cmes[cme_id].cme_state = S_FREE;
         }
 }

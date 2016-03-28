@@ -113,3 +113,11 @@ swap_in(swap_id_t swap_index, paddr_t dest)
 	}
 	return ret;
 }
+
+void
+swap_copy(swap_id_t from, swap_id_t to)
+{
+	(void)from; (void)to;
+
+	// TODO: copy memory on disk
+}

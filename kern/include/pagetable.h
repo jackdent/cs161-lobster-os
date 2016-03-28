@@ -48,3 +48,10 @@ struct pte * pagetable_get_pte_from_va(struct pagetable *pt, vaddr_t va);
  * return NULL if no entry was found.
  */
 struct pte * pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme);
+
+/*
+ * Clone every entry in the page table. If the entry is in the state
+ * S_PRESENT or S_SWAPPED, we create a new slot in the swap space and
+ * copy the page over.
+ */
+void pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt);

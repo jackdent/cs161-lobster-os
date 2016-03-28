@@ -35,6 +35,7 @@
 #include <vm.h>
 #include <proc.h>
 #include <tlb.h>
+#include <pagetable.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -73,90 +74,32 @@ as_create(void)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-	(void)old, (void)ret;
+	int err;
+	struct addrspace *new;
 
-	// struct addrspace *new;
-	// struct l1 *old_l1, *new_l1;
-	// struct l2 *old_l2, *new_l2;
-	// struct pte *old_pte, *new_pte;
-	// paddr_t old_pa, new_pa;
-	// void *src, *dest;
-	// unsigned int offset;
-	// int i, j, err;
+	new = as_create();
+	if (new == NULL) {
+		err = ENOMEM;
+		goto err1;
+	}
 
+	new->as_heap_base = old->as_heap_base;
+	new->as_heap_end = old->as_heap_end;
+	new->as_stack_end = old->as_stack_end;
 
-	// new = as_create();
-	// if (new == NULL) {
-	// 	goto err1;
-	// }
+	err = clone_page_table(old->as_pt, new->as_pt);
+	if (new == NULL) {
+		goto err2;
+	}
 
-	// new->as_heap_base = old->as_heap_base;
-	// new->as_heap_end = old->as_heap_end;
-	// new->as_stack_end = old->as_stack_end;
-
-	// old_l1 = &old->as_pt->pt_l1;
-	// new_l1 = &new->as_pt->pt_l1;
-
-	// // Copy over the pages
-	// for (i = 0; i < PAGE_TABLE_SIZE; i++) {
-	// 	if (old_l1->l2s[i] == NULL) {
-	// 		continue;
-	// 	}
-
-	// 	new_l1->l2s[i] = kmalloc(sizeof(struct l2));
-	// 	if (new_l1->l2s[i] == NULL) {
-	// 		goto err2;
-	// 	}
-	// 	old_l2 = old_l1->l2s[i];
-	// 	new_l2 = new_l1->l2s[i];
-	// 	for (j = 0; j < PAGE_TABLE_SIZE; j++) {
-	// 		if (old_l2->l2_ptes[j].pte_state == S_VALID) {
-	// 			continue;
-	// 		}
-	// 		old_pte = &old_l2->l2_ptes[j];
-	// 		new_pte = &new_l2->l2_ptes[j];
-	// 		acquire_busy_bit(old_pte, old->as_pt);
-	// 		// new_pa = get_free_page();
-	// 		new_pa = 0;
-	// 		if (new_pa == 0) {
-	// 			goto err2;
-	// 		}
-	// 		dest = (void *)PADDR_TO_KVADDR(new_pa);
-	// 		// TODO Lazy Case
-	// 		// In memory
-	// 		if (old_pte->pte_present) {
-	// 			old_pa = PHYS_PAGE_TO_PA(old_pte->pte_phys_page);
-	// 			src = (void *)PADDR_TO_KVADDR(old_pa);
-	// 			memcpy(dest, src, PAGE_SIZE);
-	// 		}
-	// 		// On disk
-	// 		else {
-	// 			offset = pte_get_swap_id(old_pte);
-	// 			err = read_page_from_disk(dest, offset);
-	// 			if (err) {
-	// 				goto err2;
-	// 			}
-	// 		}
-	// 		new_pte->pte_phys_page = PA_TO_PHYS_PAGE(new_pa);
-	// 		new_pte->pte_valid = 1;
-	// 		new_pte->pte_lazy = 0; // TODO
-	// 		new_pte->pte_present = 1;
-	// 		new_pte->pte_busy_bit = 0;
-	// 		new_pte->pte_swap_tail = 0;
-
-	// 		release_busy_bit(old_pte, old->as_pt);
-	// 	}
-	// }
-
-	// *ret = new;
-
-
-	// err2:
-	// 	as_destroy(new);
-	// err1:
-	// 	return ENOMEM;
+	*ret = new;
 
 	return 0;
+
+	err2:
+		as_destroy(new);
+	err1:
+		return err;
 }
 
 void
@@ -206,11 +149,11 @@ as_deactivate(void)
  * moment, these are ignored. When you write the VM system, you may
  * want to implement them.
  */
-
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		 int readable, int writeable, int executable)
 {
+	// Ignore permissions
 	(void)readable;
 	(void)writeable;
 	(void)executable;
@@ -222,17 +165,16 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 
 	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
 
-	// TODO: free k pages
-	// Add lazy entries to our pagetable, so that we allocate
-	// stack pages as they are needed.
-	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
-	map_upages(as->as_pt, as->as_stack_end, stack_pages);
-
 	// Update heap bounds
 	if (as->as_heap_base < (vaddr + memsize)) {
 		as->as_heap_base = vaddr + memsize;
 		as->as_heap_end = as->as_heap_base;
 	}
+
+	// Add lazy entries to our pagetable, so that we allocate
+	// stack pages as they are needed.
+	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
+	map_upages(as->as_pt, as->as_stack_end, stack_pages);
 
 	return 0;
 }
