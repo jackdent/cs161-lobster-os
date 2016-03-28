@@ -1,9 +1,18 @@
 #include <coremap.h>
+#include <cme.h>
 #include <lib.h>
 
 void
 cm_init()
 {
+        paddr_t ram_size;
+
+        // TODO: is this right? Do we need to steal memory
+        // for the coremap struct itself
+        ram_size = ram_getsize();
+        coremap.cm_size = (ram_size / PAGE_SIZE);
+        coremap.cmes = ram_stealmem(coremap.cmes_size);
+
         spinlock_init(&coremap.cme_spinlock);
         spinlock_init(&coremap.cm_clock_spinlock);
         coremap.cm_clock_hand = 0;
@@ -13,7 +22,7 @@ static
 void
 cm_advance_clock_hand()
 {
-        coremap.cm_clock_hand = (coremap.cm_clock_hand + 1) % CM_SIZE;
+        coremap.cm_clock_hand = (coremap.cm_clock_hand + 1) % coremap.cm_size;
 }
 
 cme_id_t
@@ -25,13 +34,13 @@ cm_capture_slot()
 
         spinlock_acquire(&coremap.cm_clock_spinlock);
 
-        for (i = 0; i < CM_SIZE; ++i) {
+        for (i = 0; i < coremap.cm_size; ++i) {
                 slot = coremap.cm_clock_hand;
                 entry = coremap.cmes[slot];
 
                 cm_advance_clock_hand();
 
-                if (!cme_attempt_lock(slot)) {
+                if (!cm_attempt_lock(slot)) {
                         continue;
                 }
 
@@ -42,14 +51,14 @@ cm_capture_slot()
                         return slot;
                 }
 
-                cme_release_lock(slot);
+                cm_release_lock(slot);
         }
 
         // If we reach the end of the loop without returning, we
         // should evict the entry the clock hand first pointed to
         slot = coremap.cm_clock_hand;
 
-        cme_acquire_lock(slot);
+        cm_acquire_lock(slot);
         coremap.cmes[slot].cme_recent = 0;
         cm_advance_clock_hand();
 
@@ -66,7 +75,7 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 
         i = MIPS_KSEG0 / PAGE_SIZE;
 
-        while (i < CM_SIZE - nslots) {
+        while (i < coremap.cm_size - nslots) {
                 for (j = 0; j < nslots; ++j) {
                         if (coremap.cmes[i+j].cme_state == S_KERNEL) {
                                 break;
@@ -74,7 +83,7 @@ cm_capture_slots_for_kernel(unsigned int nslots)
                 }
 
                 if (j == nslots) {
-                        cme_acquire_locks(i, i + nslots);
+                        cm_acquire_locks(i, i + nslots);
                         spinlock_release(&coremap.cm_clock_spinlock);
                         return i;
                 } else {
@@ -148,4 +157,62 @@ evict_page(cme_id_t cme_id)
         }
 
         swap_out(swap, CME_ID_TO_PA(slot));
+}
+
+bool
+cm_attempt_lock(cme_id_t i)
+{
+        KASSERT(i < coremap.cm_size);
+
+        bool acquired;
+
+        spinlock_acquire(&coremap.cme_spinlock);
+        acquired = (coremap.cmes[i].cme_busy == 0);
+        coremap.cmes[i].cme_busy = 1;
+        spinlock_release(&coremap.cme_spinlock);
+
+        return acquired;
+}
+
+void
+cm_acquire_lock(cme_id_t i)
+{
+        while (1) {
+                if (cm_attempt_lock(i)) {
+                        break;
+                }
+        }
+}
+
+void
+cm_release_lock(cme_id_t i)
+{
+        KASSERT(i < coremap.cm_size);
+
+        spinlock_acquire(&coremap.cme_spinlock);
+        KASSERT(coremap.cmes[i].cme_busy == 1);
+        coremap.cmes[i].cme_busy = 0;
+        spinlock_release(&coremap.cme_spinlock);
+}
+
+void
+cm_acquire_locks(cme_id_t start, cme_id_t end) {
+        KASSERT(start < end);
+        KASSERT(start < coremap.cm_size);
+
+        while (start < end) {
+                cm_acquire_lock(start);
+                start++;
+        }
+}
+
+void
+cm_release_locks(cme_id_t start, cme_id_t end) {
+        KASSERT(start < end);
+        KASSERT(end < coremap.cm_size);
+
+        while (start < end) {
+                cm_release_lock(start);
+                start++;
+        }
 }

@@ -16,6 +16,7 @@ swap_init(void)
 		panic("swap_init: could not open swap disk");
 	}
 
+	// TODO: use vfs_swapon
 	err = vfs_open(swap_disk_path, O_RDWR, 0, &swap_file);
 	if (err) {
 		panic("swap_init: could not open swap disk");

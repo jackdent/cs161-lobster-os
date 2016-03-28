@@ -24,7 +24,7 @@ tlb_add(vaddr_t va, struct pte *pte)
 
         cme_id = (cme_id_t)pte->pte_phys_page;
 
-        cme_acquire_lock(cme_id);
+        cm_acquire_lock(cme_id);
         cme = coremap.cmes[cme_id];
 
         if (cme.cme_state == S_FREE) {
@@ -43,7 +43,7 @@ tlb_add(vaddr_t va, struct pte *pte)
         tlb_write(entryhi, entrylo, lra);
         curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
 
-        cme_release_lock(cme_id);
+        cm_release_lock(cme_id);
 }
 
 void
@@ -55,7 +55,7 @@ tlb_make_writeable(vaddr_t va, struct pte *pte)
 
         cme_id = (cme_id_t)pte->pte_phys_page;
 
-        cme_acquire_lock(cme_id);
+        cm_acquire_lock(cme_id);
         coremap.cmes[cme_id].cme_dirty = 1;
 
         entryhi = VA_TO_VPAGE(va);
@@ -69,7 +69,7 @@ tlb_make_writeable(vaddr_t va, struct pte *pte)
         entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
         tlb_write(entryhi, entrylo, (uint32_t)index);
 
-        cme_release_lock(cme_id);
+        cm_release_lock(cme_id);
 }
 
 void()
@@ -131,9 +131,9 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
         // Acquire then immediately release the lock on the cme so
         // that we block until the kernel daemon has finished
         // flushing memory out to disk, to avoid race conditions.
-        cme_acquire_lock(ts->ts_flushed_page);
+        cm_acquire_lock(ts->ts_flushed_page);
         cme = coremap.cme[ts->ts_flushed_page];
-        cme_release_lock(ts->ts_flushed_page);
+        cm_release_lock(ts->ts_flushed_page);
 
         if (cme.cme_pid != curproc->p_pid) {
                 // The page isn't in the address space for the
@@ -205,7 +205,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
 
         pte->pte_state = S_PRESENT;
         coremap.cmes[slot] = cme;
-        cme_release_lock(slot);
+        cm_release_lock(slot);
 }
 
 /*

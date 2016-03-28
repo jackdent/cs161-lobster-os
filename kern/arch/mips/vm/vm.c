@@ -43,7 +43,7 @@ alloc_kpages(unsigned npages)
                 coremap.cmes[curr] = cme;
         }
 
-        cme_release_locks(start, start + nslots);
+        cm_release_locks(start, start + nslots);
 
         return CME_ID_TO_PA(start);
 }

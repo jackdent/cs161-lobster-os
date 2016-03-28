@@ -36,18 +36,3 @@ struct cme {
 };
 
 struct cme cme_create(pid_t pid, vaddr_t va, enum cme_state state);
-
-/*
- * Returns true iff the attempt to acquire the lock on
- * the specified core map entry was successful.
- */
-bool cme_attempt_lock(cme_id_t i);
-void cme_acquire_lock(cme_id_t i);
-void cme_release_lock(cme_id_t i);
-
-/*
- * Acquire/release all locks between start (inclusive)
- * and end (exclusive).
- */
-void cme_acquire_locks(cme_id_t start, cme_id_t end);
-void cme_release_locks(cme_id_t start, cme_id_t end);
