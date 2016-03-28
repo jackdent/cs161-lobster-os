@@ -1,8 +1,11 @@
-#include <tlb.h>
+#include <cme.h>
 #include <coremap.h>
+#include <tlb.h>
 #include <current.h>
 #include <spl.h>
 #include <cpu.h>
+
+// TODO: when do we want to disable interrupts?
 
 /*
  * Implements the Least Recently Added (LRA) algorithm
@@ -146,7 +149,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
                 panic("Kernel daemon sent a TLB shootdown for an invalid page\n");
         }
 
-        entryhi = OFFSETS_TO_VPAGE(cme.cme_l1_offset, cme.cme_l2_offset);
+        entryhi = VA_TO_VPAGE(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
         index = tlb_probe(entryhi, 0);
 
         if (index < 0) {
@@ -240,7 +243,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
             return EFAULT;
         }
 
-        if (!pagetable_contains_va(faultaddress, as->as_pt, &pte)) {
+        if (!pagetable_contains_va(as->as_pt, faultaddress, &pte)) {
             return EFAULT;
         }
 

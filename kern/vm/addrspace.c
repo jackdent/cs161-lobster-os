@@ -223,6 +223,10 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
 
 	// TODO: free k pages
+	// Add lazy entries to our pagetable, so that we allocate
+	// stack pages as they are needed.
+	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
+	map_upages(as->as_pt, as->as_stack_end, stack_pages);
 
 	// Update heap bounds
 	if (as->as_heap_base < (vaddr + memsize)) {
@@ -258,12 +262,15 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	(void)as, (void)stackptr;
+	unsigned int stack_pages;
 
-	/* Initial user-level stack pointer */
+	// Initial user-level stack pointer
 	*stackptr = USERSTACK;
 
-	// TODO: add unmapped entries to coremap, up to stack size
+	// Add lazy entries to our pagetable, so that we allocate
+	// stack pages as they are needed.
+	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
+	map_upages(as->as_pt, as->as_stack_end, stack_pages);
 
 	return 0;
 }

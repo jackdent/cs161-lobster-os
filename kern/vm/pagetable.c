@@ -52,96 +52,33 @@ pagetable_destroy(struct pagetable *pt)
 	kfree(pt);
 }
 
-bool
-pagetable_contains_va(vaddr_t va, struct pagetable *pt, struct pte **pte)
+struct pte *
+pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, unsigned l2_offset)
 {
-	unsigned int l1_index, l2_index;
 	struct l2 *l2;
+	struct pte *pte;
 
-	l1_index = L1_PT_MASK(va);
-	l2_index = L2_PT_MASK(va);
-
-	l2 = pt->pt_l1.l2s[l1_index];
+	l2 = pt->pt_l1.l2s[l1_offset];
 	if (l2 == NULL) {
-		return false;
+		return NULL;
 	}
 
-	*pte = l2->l2_ptes[l2_index];
-	if (pte.pte_valid == 0) {
-		return false;
+	pte = &l2->l2_ptes[l2_offset];
+	if (pte->pte_valid == 0) {
+		return NULL;
 	}
 
-	return true;
+	return pte;
+}
+
+struct pte *
+pagetable_get_pte_from_va(struct pagetable *pt, vaddr_t va)
+{
+	return pagetable_get_pte_from_offsets(pt, L1_PT_MASK(va), L2_PT_MASK(va));
 }
 
 struct pte *
 pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme)
 {
-	struct l2 *l2;
-
-	l2 = pt->pt_l1.l2s[cme->cme_l1_offset];
-	if (l2 == NULL) {
-		return NULL;
-	}
-
-	return l2->l2_ptes[cme->cme_l2_offset];
-}
-
-int
-map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
-{
-	KASSERT(pt != NULL);
-
-	unsigned l1_index, l2_index;
-	struct l2 *l2;
-
-	l1_index = L1_PT_MASK(va);
-	l2_index = L2_PT_MASK(va);
-
-	// Already have an l2 pagetable
-	if (pt->pt_l1.l2s[l1_index] != NULL) {
-		l2 = pt->pt_l1.l2s[l1_index];
-		// Cannot be already taken
-		KASSERT(l2->l2_ptes[l2_index].pte_valid == 0);
-		l2->l2_ptes[l2_index].pte_phys_page = PA_TO_PHYS_PAGE(pa);
-		l2->l2_ptes[l2_index].pte_valid = 1;
-		l2->l2_ptes[l2_index].pte_present = 1;
-		l2->l2_ptes[l2_index].pte_busy = 0;
-		l2->l2_ptes[l2_index].pte_swap_tail = 0;
-	}
-	// Need to make an l2 pagetable
-	else {
-		l2 = kmalloc(sizeof(l2));
-		if (l2 == NULL)
-			return ENOMEM;
-		pt->pt_l1.l2s[l1_index] = l2;
-		l2->l2_ptes[l2_index].pte_phys_page = PA_TO_PHYS_PAGE(pa);
-		l2->l2_ptes[l2_index].pte_valid = 1;
-		l2->l2_ptes[l2_index].pte_present = 1;
-		l2->l2_ptes[l2_index].pte_busy = 0;
-		l2->l2_ptes[l2_index].pte_swap_tail = 0;
-	}
-
-	return 0;
-}
-
-void
-unmap_va(vaddr_t va, struct pagetable *pt)
-{
-	KASSERT(pt != NULL);
-
-	unsigned int l1_index, l2_index;
-	struct l2 *l2;
-
-	l1_index = L1_PT_MASK(va);
-	l2_index = L2_PT_MASK(va);
-
-	KASSERT(pt->pt_l1.l2s[l1_index] != NULL);
-	l2 = pt->pt_l1.l2s[l1_index];
-	KASSERT(l2->l2_ptes[l2_index].pte_valid != 0);
-
-	// 0 out entire entry
-	spinlock_acquire(&pt->pt_busy_bit_splk);
-	l2->l2_ptes[l2_index].pte_valid = 0;
-	spinlock_release(&pt->pt_busy_bit_splk);
+	return pagetable_get_pte_from_offsets(pt, cme->cme_l1_offset, cme->cme_l2_offset);
 }

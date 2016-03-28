@@ -1,6 +1,7 @@
+#include <lib.h>
 #include <coremap.h>
 #include <cme.h>
-#include <lib.h>
+#include <tlb.h>
 
 void
 cm_init()
@@ -117,12 +118,14 @@ evict_page(cme_id_t cme_id)
                 return;
         }
 
+        tlb_remove(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
+
         as = proc_table[cme.cme_pid].p_addrspace;
 
         // TODO: do we need the pte lock??
         pte = pagetable_get_pte_from_cme(as->as_pt, cme);
 
-        if (pte == NULL) {
+        if (pte.pte_state == S_INVALID) {
                 // TODO: panic?
         }
 

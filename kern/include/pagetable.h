@@ -32,37 +32,19 @@ struct pagetable *pagetable_create(void);
 void pagetable_destroy(struct pagetable *pt);
 
 /*
- * Returns true if and only if the virtual address is in the pagetable,
- * and assigns the pte argument to a pointer to the discovered pte.
+ * Lookup a pagetable entry based on the supplied l2 and l2 offsets, and
+ * return NULL if no entry was found.
  */
-bool pagetable_contains_va(vaddr_t va, struct pagetable *pt, struct pte **pte);
+struct pte * pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, unsigned l2_offset);
+
+/*
+ * Lookup a pagetable entry based on the supplied virtual address, and
+ * return NULL if no entry was found.
+ */
+struct pte * pagetable_get_pte_from_va(struct pagetable *pt, vaddr_t va);
 
 /*
  * Lookup a pagetable entry based on the supplied core map entry, and
- * returns NULL if no entry was found.
+ * return NULL if no entry was found.
  */
 struct pte * pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme);
-
-/*
- * Map a physical address pa to a virtual address va in the given
- * pagetable. Returns 0 on success, error value on failure
- * Failure can occur if a new l2_pt cannot be allocated (ENOMEM),
- *
- * It KASSERTS that no mapping exists, as if one did, our pagetable is
- * corrupted somehow
- *
- * This should be done while the corresponding core map entry is locked,
- * so that an eviction cannot take place will the pagetable entry is
- * being filled in an may not have its busy bit set yet.
- *
- * The valid and present bits will be set and the busy bit will not be set
- * upon returning. TODO: is this what we want?
- */
- int map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt);
-
- /*
- * Opposite of map_pa_to_va. Returns nothing, but KASSERTS that
- * the mapping exists, as if it didn't, our pagetable is corrupted somehow
- * Should be coupled with a TLB shootdown of some sort
- */
-void unmap_va(vaddr_t va, struct pagetable *pt);

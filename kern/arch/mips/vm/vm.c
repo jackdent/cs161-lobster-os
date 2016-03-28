@@ -55,3 +55,42 @@ free_kpages(vaddr_t addr)
 
         /* TODO */
 }
+
+void
+map_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+{
+        KASSERT(start % PAGE_SIZE == 0);
+
+        unsigned int i;
+        struct pte *pte;
+
+        for (i = 0; i < npages; ++i) {
+                pte = pagetable_get_pte_from_va(start + i * PAGE_SIZE);
+                pte->pte_state = S_LAZY;
+        }
+}
+
+void
+unmap_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+{
+        KASSERT(start % PAGE_SIZE == 0);
+
+        unsigned int i;
+        vaddr_t va;
+        struct pte *pte;
+        cme_id_t cme_id;
+
+
+        // TODO: synchronisation
+        for (i = 0; i < npages; ++i) {
+                va = start + i * PAGE_SIZE;
+                pte = pagetable_get_pte_from_va(va);
+
+                pte->pte_state = S_INVALID;
+
+                tlb_remove(va);
+
+                cme_id = (cme_id_t)pte->pte_phys_page;
+                coremap.cmes[cme_id].cme_state = S_FREE;
+        }
+}

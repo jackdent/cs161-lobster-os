@@ -5,30 +5,48 @@
 #include <proc.h>
 #include <current.h>
 
+/*
+ * Amount must be a multiple of PAGE_SIZE, otherwise
+ * sbrk wil lreturn EINVAL
+ */
 int
 sys_sbrk(int32_t amount, int32_t *retval)
 {
         struct addrspace *as;
         vaddr_t old_break, new_break;
+        unsigned int npages;
 
         as = curproc->p_addrspace;
         old_break = as->as_heap_end;
         new_break = old_break + amount;
 
+        npages = amount / PAGE_SIZE;
+        *retval = old_break;
+
+        if (amount == 0) {
+                return 0;
+        }
+
+        // The new heap break must be page aligned
+        if (amount % PAGE_SIZE != 0) {
+                return EINVAL;
+        }
+
         if (new_break < as->as_heap_base) {
                 return EINVAL;
-        } else if (new_break > as->as_stack_end) {
+        }
+
+        if (new_break > as->as_stack_end) {
                 return ENOMEM;
         }
 
-        // TODO: free or add pages to pagetable.
-        // NB, we  probably want to round new_break up to
-        // the nearest page, because otherwise we could
-        // read from an invalid address in the last heap
-        // page if the break is in the middle
+        if (new_break > old_break) {
+                map_upages(as->as_pt, old_break, npages);
+        } else {
+                unmap_upages(as->as_pt, new_break, npages);
+        }
 
         as->as_heap_end = new_break;
-        *retval = old_break;
 
         return 0;
 }
