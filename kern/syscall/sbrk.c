@@ -1,5 +1,9 @@
 #include <types.h>
 #include <kern/errno.h>
+#include <syscall.h>
+#include <addrspace.h>
+#include <proc.h>
+#include <current.h>
 
 int
 sys_sbrk(int32_t amount, int32_t *retval)
@@ -11,7 +15,7 @@ sys_sbrk(int32_t amount, int32_t *retval)
         old_break = as->as_heap_end;
         new_break = old_break + amount;
 
-        if (new_break < as_heap_base) {
+        if (new_break < as->as_heap_base) {
                 return EINVAL;
         } else if (new_break > as->as_stack_end) {
                 return ENOMEM;

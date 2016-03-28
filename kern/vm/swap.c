@@ -1,16 +1,4 @@
 #include <types.h>
-#include <kern/errno.h>
-#include <lib.h>
-#include <spl.h>
-#include <spinlock.h>
-#include <thread.h>
-#include <current.h>
-#include <mips/tlb.h>
-#include <addrspace.h>
-#include <vm.h>
-#include <synch.h>
-
-#include <kern/fcntl.h>
 #include <vnode.h>
 #include <vfs.h>
 #include <bitmap.h>
@@ -47,7 +35,7 @@ swap_init(void)
 }
 
 swap_id_t
-get_swap_index(void)
+swap_capture_slot(void)
 {
 	swap_id_t index;
 	int result;
@@ -63,17 +51,39 @@ get_swap_index(void)
 	}
 }
 
-
 // Free the given swap index.
 void
-free_swap_index(swap_id_t index)
+swap_free_slot(swap_id_t slot)
 {
 	lock_acquire(swap_map_lock);
 
-	KASSERT(bitmap_isset(swap_map, index));
-	bitmap_unmark(swap_map, index);
+	KASSERT(bitmap_isset(swap_map, slot));
+	bitmap_unmark(swap_map, slot);
 
 	lock_release(swap_map_lock);
+}
+
+// Helpers
+static
+int
+write_page_to_disk(void *page, swap_id_t disk_offset)
+{
+	struct iovec iov;
+	struct uio u;
+
+	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, disk_offset, UIO_WRITE);
+	return VOP_WRITE(swap_file, &u);
+}
+
+static
+int
+read_page_from_disk(void *page, swap_id_t disk_offset)
+{
+	struct iovec iov;
+	struct uio u;
+
+	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, disk_offset, UIO_READ);
+	return VOP_READ(swap_file, &u);
 }
 
 // Write the page at swap_index on disk to the physical page pp
@@ -101,25 +111,4 @@ swap_in(swap_id_t swap_index, paddr_t dest)
 		// TODO
 	}
 	return ret;
-}
-
-// Helpers
-int
-write_page_to_disk(void *page, swap_id_t disk_offset)
-{
-	struct iovec iov;
-	struct uio u;
-
-	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, disk_offset, UIO_WRITE);
-	return VOP_WRITE(swap_file, &u);
-}
-
-int
-read_page_from_disk(void *page, swap_id_t disk_offset)
-{
-	struct iovec iov;
-	struct uio u;
-
-	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, disk_offset, UIO_READ);
-	return VOP_READ(swap_file, &u);
 }

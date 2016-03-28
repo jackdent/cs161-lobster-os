@@ -1,51 +1,6 @@
 #include <types.h>
 #include <spinlock.h>
-
-/*
- * Coremap entry
- */
-
-/* An index for pages that is *not* stable over their lifetime */
-typedef uint32_t cme_id_t;
-
-#define CME_ID_TO_PA(cme_id) (cme_id * PAGE_SIZE)
-
-/*
- * We use an enumerated type, since these states are mutually
- * exclusive
- */
-
-enum cme_state {
-        // The page is not owned by a user process
-        // or the kernel
-        S_FREE,
-
-        // The page is owned by the kernel
-        S_KERNEL,
-
-        // The page is not owned by the kernel
-        S_DIRTY,
-        S_CLEAN
-};
-
-struct cme {
-        unsigned int cme_pid:15;
-        unsigned int cme_l1_offset:10;
-        unsigned int cme_l2_offset:10;
-        unsigned int cme_swap_id:24;
-        unsigned int cme_busy:1;
-        unsigned int cme_recent:1;
-        enum cme_state cme_state:2;
-};
-
-struct cme cme_create(pid_t pid);
-bool cme_attempt_lock(cme_id_t i);
-void cme_acquire_lock(cme_id_t i);
-void cme_release_lock(cme_id_t i);
-
-/*
- * Coremap
- */
+#include <cme.h>
 
 // TODO: set to size of main memory
 #define CM_SIZE (1 << 20)
@@ -71,3 +26,21 @@ void cm_init(void);
  * Expects the caller to release the lock on the cme
  */
 cme_id_t cm_capture_slot(void);
+
+/*
+ * Finds n contiguous free slots in the kernel portion of the
+ * coremap, acquires the lock on all of those slots, and returns
+ * the index of the first slot. Panics if the kernel could not
+ * find any such memory.
+ *
+ * Expects the caller to call release every acquired lock by
+ * callign cme_release_locks.
+ */
+cme_id_t cm_capture_slots_for_kernel(unsigned int nslots);
+
+/*
+ * Evicts a page from main memory to disk, if necessary.
+ *
+ * Assumes that the caller holds the core map entry lock.
+ */
+void evict_page(cme_id_t cme_id);

@@ -1,5 +1,26 @@
 #include <tlb.h>
 #include <coremap.h>
+#include <current.h>
+#include <spl.h>
+#include <cpu.h>
+
+void
+flush_tlb()
+{
+    int i, spl;
+
+    /* Disable interrupts on this CPU while frobbing the TLB. */
+    spl = splhigh();
+
+    &curcpu->c_tlb_lra = 0;
+
+    for (i = 0; i < NUM_TLB; ++i) {
+        tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+    }
+
+    splx(spl);
+
+}
 
 /*
  * Processes will only share memory in their user segments with the
@@ -32,12 +53,8 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
                 return;
         }
 
-        if (cme.cme_state == S_FREE) {
+        if (cme.cme_state != S_CLEAN) {
                 panic("Kernel daemon sent a TLB shootdown for an invalid page\n");
-        }
-
-        if (cme.cme_state == S_DIRTY) {
-                panic("Page still dirty after attempted flush\n");
         }
 
         entryhi = OFFSETS_TO_VPAGE(cme.cme_l1_offset, cme.cme_l2_offset);
@@ -98,7 +115,7 @@ add_va_to_tlb(struct pte *pte, vaddr_t va)
 
 static
 void
-make_va_writeable(struct pte *pte, vaddr_t va)
+va_make_writeable(struct pte *pte, vaddr_t va)
 {
         uint32_t entryhi, entrylo;
         cme_id_t cme_id;
@@ -121,6 +138,56 @@ make_va_writeable(struct pte *pte, vaddr_t va)
         tlb_write(entryhi, entrylo, (uint32_t)index);
 
         cme_release_lock(cme_id);
+}
+
+
+/*
+ * If the page is already in memory, NOOP. Otherwise, find a slot
+ * in the core map and assign it to the page table entry.
+ *
+ * If the page is in the lazy state, we're done. Otherwise,
+ * the page was in the swap space on disk, so we copy
+ * it into physical memory and set its swap_id on our core map
+ * entry.
+ *
+ * Finally, we set the present bit to indicate the page
+ * is now accessible in main memory.
+ *
+ * Assumes that the caller has validated the virtual address.
+ */
+static
+void
+ensure_in_memory(struct pte *pte, vaddr_t va)
+{
+        KASSERT(curproc != NULL);
+
+        struct cme cme;
+        cme_id_t slot;
+
+        cme = cme_create(curproc->p_pid, va, S_CLEAN);
+
+        switch(pte->pte_state) {
+        case S_PRESENT:
+                return;
+        case S_INVALID:
+                panic("Cannot ensure than an invalid pte is in memory\n");
+        case S_LAZY:
+                break;
+        case S_SWAPPED:
+                slot = cm_capture_slot();
+
+                evict_page(slot);
+
+                cme.swap_id = pte_get_swap_id(pte);
+                swap_in(cme.swap_id, CME_ID_TO_PA(slot));
+
+                break;
+        }
+
+
+        pte->pte_state = S_PRESENT;
+        coremap.cmes[slot] = cme;
+        cme_release_lock(slot);
 }
 
 /*
@@ -155,11 +222,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
             return EFAULT;
         }
 
-        if (!va_in_pagetable(faultaddress, as->as_pt, &pte)) {
+        if (!pagetable_contains_va(faultaddress, as->as_pt, &pte)) {
             return EFAULT;
         }
 
-        ensure_in_memory(as, faultaddress, pte);
+        ensure_in_memory(pte, faultaddress);
 
         switch (faulttype) {
         case VM_FAULT_READ:
@@ -169,7 +236,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 panic("Tried to write to a non-existent TLB entry");
                 break;
         case VM_FAULT_READONLY:
-                make_va_writeable(faultaddress, pte);
+                va_make_writeable(faultaddress, pte);
                 break;
         default:
                 panic("Unknown TLB fault type\n");

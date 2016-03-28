@@ -27,8 +27,6 @@
  * SUCH DAMAGE.
  */
 
-#include <coremap.h>
-
 #ifndef _MIPS_VM_H_
 #define _MIPS_VM_H_
 
@@ -122,7 +120,7 @@ paddr_t ram_getfirstfree(void);
  */
 
 struct tlbshootdown {
-        cme_id_t ts_flushed_page;
+        uint32_t ts_flushed_page;
 };
 
 #define TLBSHOOTDOWN_MAX 16

@@ -34,6 +34,7 @@
 #include <current.h>
 #include <vm.h>
 #include <proc.h>
+#include <tlb.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -51,7 +52,7 @@ as_create(void)
 		goto err1;
 	}
 
-	as->as_pt = create_pagetable();
+	as->as_pt = pagetable_create();
 	if (as->as_pt == NULL) {
 		goto err2;
 	}
@@ -72,100 +73,103 @@ as_create(void)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-	struct addrspace *new;
-	struct l1 *old_l1, *new_l1;
-	struct l2 *old_l2, *new_l2;
-	struct pte *old_pte, *new_pte;
-	paddr_t old_pa, new_pa;
-	void *src, *dest;
-	unsigned int offset;
-	int i, j, err;
+	(void)old, (void)ret;
+
+	// struct addrspace *new;
+	// struct l1 *old_l1, *new_l1;
+	// struct l2 *old_l2, *new_l2;
+	// struct pte *old_pte, *new_pte;
+	// paddr_t old_pa, new_pa;
+	// void *src, *dest;
+	// unsigned int offset;
+	// int i, j, err;
 
 
-	new = as_create();
-	if (new == NULL) {
-		goto err1;
-	}
+	// new = as_create();
+	// if (new == NULL) {
+	// 	goto err1;
+	// }
 
-	new->as_heap_base = old->as_heap_base;
-	new->as_heap_end = old->as_heap_end;
-	new->as_stack_end = old->as_stack_end;
+	// new->as_heap_base = old->as_heap_base;
+	// new->as_heap_end = old->as_heap_end;
+	// new->as_stack_end = old->as_stack_end;
 
-	old_l1 = &old->as_pt->pt_l1;
-	new_l1 = &new->as_pt->pt_l1;
+	// old_l1 = &old->as_pt->pt_l1;
+	// new_l1 = &new->as_pt->pt_l1;
 
-	// Copy over the pages
-	for (i = 0; i < PAGE_TABLE_ENTRIES; i++) {
-		if (old_l1->l2s[i] == NULL) {
-			continue;
-		}
+	// // Copy over the pages
+	// for (i = 0; i < PAGE_TABLE_SIZE; i++) {
+	// 	if (old_l1->l2s[i] == NULL) {
+	// 		continue;
+	// 	}
 
-		new_l1->l2s[i] = kmalloc(sizeof(struct l2));
-		if (new_l1->l2s[i] == NULL) {
-			goto err2;
-		}
-		old_l2 = old_l1->l2s[i];
-		new_l2 = new_l1->l2s[i];
-		for (j = 0; j < PAGE_TABLE_ENTRIES; j++) {
-			if (old_l2->l2_ptes[j].pte_valid == 0) {
-				continue;
-			}
-			old_pte = &old_l2->l2_ptes[j];
-			new_pte = &new_l2->l2_ptes[j];
-			acquire_busy_bit(old_pte, old->as_pt);
-			// new_pa = get_free_page();
-			new_pa = 0;
-			if (new_pa == 0) {
-				goto err2;
-			}
-			dest = (void *)PADDR_TO_KVADDR(new_pa);
-			// TODO Lazy Case
-			// In memory
-			if (old_pte->pte_present) {
-				old_pa = PHYS_PAGE_TO_PA(old_pte->pte_phys_page);
-				src = (void *)PADDR_TO_KVADDR(old_pa);
-				memcpy(dest, src, PAGE_SIZE);
-			}
-			// On disk
-			else {
-				offset = get_swap_id_from_pte(old_pte);
-				err = read_page_from_disk(dest, offset);
-				if (err) {
-					goto err2;
-				}
-			}
-			new_pte->pte_phys_page = PA_TO_PHYS_PAGE(new_pa);
-			new_pte->pte_valid = 1;
-			new_pte->pte_lazy = 0; // TODO
-			new_pte->pte_present = 1;
-			new_pte->pte_busy_bit = 0;
-			new_pte->pte_swap_bits = 0;
+	// 	new_l1->l2s[i] = kmalloc(sizeof(struct l2));
+	// 	if (new_l1->l2s[i] == NULL) {
+	// 		goto err2;
+	// 	}
+	// 	old_l2 = old_l1->l2s[i];
+	// 	new_l2 = new_l1->l2s[i];
+	// 	for (j = 0; j < PAGE_TABLE_SIZE; j++) {
+	// 		if (old_l2->l2_ptes[j].pte_state == S_VALID) {
+	// 			continue;
+	// 		}
+	// 		old_pte = &old_l2->l2_ptes[j];
+	// 		new_pte = &new_l2->l2_ptes[j];
+	// 		acquire_busy_bit(old_pte, old->as_pt);
+	// 		// new_pa = get_free_page();
+	// 		new_pa = 0;
+	// 		if (new_pa == 0) {
+	// 			goto err2;
+	// 		}
+	// 		dest = (void *)PADDR_TO_KVADDR(new_pa);
+	// 		// TODO Lazy Case
+	// 		// In memory
+	// 		if (old_pte->pte_present) {
+	// 			old_pa = PHYS_PAGE_TO_PA(old_pte->pte_phys_page);
+	// 			src = (void *)PADDR_TO_KVADDR(old_pa);
+	// 			memcpy(dest, src, PAGE_SIZE);
+	// 		}
+	// 		// On disk
+	// 		else {
+	// 			offset = pte_get_swap_id(old_pte);
+	// 			err = read_page_from_disk(dest, offset);
+	// 			if (err) {
+	// 				goto err2;
+	// 			}
+	// 		}
+	// 		new_pte->pte_phys_page = PA_TO_PHYS_PAGE(new_pa);
+	// 		new_pte->pte_valid = 1;
+	// 		new_pte->pte_lazy = 0; // TODO
+	// 		new_pte->pte_present = 1;
+	// 		new_pte->pte_busy_bit = 0;
+	// 		new_pte->pte_swap_tail = 0;
 
-			release_busy_bit(old_pte, old->as_pt);
-		}
-	}
+	// 		release_busy_bit(old_pte, old->as_pt);
+	// 	}
+	// }
 
-	*ret = new;
+	// *ret = new;
 
 
-	err2:
-		as_destroy(new);
-	err1:
-		return ENOMEM;
+	// err2:
+	// 	as_destroy(new);
+	// err1:
+	// 	return ENOMEM;
+
+	return 0;
 }
 
 void
 as_destroy(struct addrspace *as)
 {
 	// This handles freeing the actual pages
-	destroy_pagetable(as->as_pt);
+	pagetable_destroy(as->as_pt);
 	kfree(as);
 }
 
 void
 as_activate(void)
 {
-	int i, spl;
 	struct addrspace *as;
 
 	as = proc_getas();
@@ -177,16 +181,7 @@ as_activate(void)
 		return;
 	}
 
-	/* Disable interrupts on this CPU while frobbing the TLB. */
-	spl = splhigh();
-
-        &curcpu->c_tlb_lra = 0;
-
-	for (i=0; i<NUM_TLB; i++) {
-		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
-	}
-
-	splx(spl);
+	flush_tlb();
 
 	curproc->p_addrspace = as;
 }
@@ -263,6 +258,8 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
+	(void)as, (void)stackptr;
+
 	/* Initial user-level stack pointer */
 	*stackptr = USERSTACK;
 

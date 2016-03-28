@@ -91,6 +91,6 @@ int sys___getcwd(userptr_t buf, size_t len, size_t *copied);
  * Prototypes for memory management system calls
  */
 
-int sys_sbrk(int32_t pid, int32_t *retval);
+int sys_sbrk(int32_t amount, int32_t *retval);
 
 #endif /* _SYSCALL_H_ */

@@ -61,7 +61,7 @@ struct addrspace {
 #else
         struct pagetable *as_pt;
         vaddr_t as_heap_base;
-        vaddr_t as_heap_end;  // exclusive bounds
+        vaddr_t as_heap_end;  // exclusive bounds, page aligned
         vaddr_t as_stack_end; // exclusive bounds
 #endif
 };

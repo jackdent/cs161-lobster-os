@@ -6,8 +6,8 @@
 #include <proc.h>
 #include <spinlock.h>
 
-struct pagetable*
-create_pagetable(void)
+struct pagetable *
+pagetable_create(void)
 {
 	struct pagetable *pt;
 
@@ -26,7 +26,7 @@ create_pagetable(void)
 
 
 void
-destroy_pagetable(struct pagetable *pt)
+pagetable_destroy(struct pagetable *pt)
 {
 	KASSERT(pt != NULL);
 
@@ -34,13 +34,13 @@ destroy_pagetable(struct pagetable *pt)
 	struct l2 *l2;
 
 	// walk through all entries and free them
-	for (i = 0; i < PAGE_TABLE_ENTRIES; i++) {
+	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
 		if (pt->pt_l1.l2s[i] == NULL) {
 			continue;
 		}
 
 		l2 = pt->pt_l1.l2s[i];
-		for (j = 0; j < PAGE_TABLE_ENTRIES; j++) {
+		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
 			if (l2->l2_ptes[j].pte_valid != 0) {
 				//FREE_PAGE(l2[j].phys_page) // TODO: fill in with actual function
 			}
@@ -53,7 +53,7 @@ destroy_pagetable(struct pagetable *pt)
 }
 
 bool
-va_in_pagetable(vaddr_t va, struct pagetable *pt, struct pte **pte)
+pagetable_contains_va(vaddr_t va, struct pagetable *pt, struct pte **pte)
 {
 	unsigned int l1_index, l2_index;
 	struct l2 *l2;
@@ -74,10 +74,22 @@ va_in_pagetable(vaddr_t va, struct pagetable *pt, struct pte **pte)
 	return true;
 }
 
+struct pte *
+pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme)
+{
+	struct l2 *l2;
+
+	l2 = pt->pt_l1.l2s[cme->cme_l1_offset];
+	if (l2 == NULL) {
+		return NULL;
+	}
+
+	return l2->l2_ptes[cme->cme_l2_offset];
+}
+
 int
 map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 {
-	KASSERT(va > KUSEG_START);
 	KASSERT(pt != NULL);
 
 	unsigned l1_index, l2_index;
@@ -94,8 +106,8 @@ map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 		l2->l2_ptes[l2_index].pte_phys_page = PA_TO_PHYS_PAGE(pa);
 		l2->l2_ptes[l2_index].pte_valid = 1;
 		l2->l2_ptes[l2_index].pte_present = 1;
-		l2->l2_ptes[l2_index].pte_busy_bit = 0;
-		l2->l2_ptes[l2_index].pte_swap_bits = 0;
+		l2->l2_ptes[l2_index].pte_busy = 0;
+		l2->l2_ptes[l2_index].pte_swap_tail = 0;
 	}
 	// Need to make an l2 pagetable
 	else {
@@ -106,8 +118,8 @@ map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 		l2->l2_ptes[l2_index].pte_phys_page = PA_TO_PHYS_PAGE(pa);
 		l2->l2_ptes[l2_index].pte_valid = 1;
 		l2->l2_ptes[l2_index].pte_present = 1;
-		l2->l2_ptes[l2_index].pte_busy_bit = 0;
-		l2->l2_ptes[l2_index].pte_swap_bits = 0;
+		l2->l2_ptes[l2_index].pte_busy = 0;
+		l2->l2_ptes[l2_index].pte_swap_tail = 0;
 	}
 
 	return 0;
@@ -116,7 +128,6 @@ map_pa_to_va(paddr_t pa, vaddr_t va, struct pagetable *pt)
 void
 unmap_va(vaddr_t va, struct pagetable *pt)
 {
-	KASSERT(va > KUSEG_START);
 	KASSERT(pt != NULL);
 
 	unsigned int l1_index, l2_index;
@@ -132,66 +143,5 @@ unmap_va(vaddr_t va, struct pagetable *pt)
 	// 0 out entire entry
 	spinlock_acquire(&pt->pt_busy_bit_splk);
 	l2->l2_ptes[l2_index].pte_valid = 0;
-	spinlock_release(&pt->pt_busy_bit_splk);
-}
-
-paddr_t
-va_to_pa(vaddr_t va, struct pte *pte)
-{
-        return PHYS_PAGE_TO_PI(pte->pte_phys_page) & OFFSET_MASK(va);
-}
-
-struct pte *
-get_pte_from_cme(struct pagetable *pt, struct cme cme)
-{
-	struct l2 *l2;
-
-	l2 = pt->pt_l1.l2s[cme.cme_l1_offset];
-	if (l2 == NULL) {
-		return NULL;
-	}
-
-	return l2->l2_ptes[cme.cme_l2_offset];
-}
-
-swap_id_t
-pte_get_swap_id(struct pte *pte)
-{
-	unsigned int upper, lower;
-
-	KASSERT(pte);
-	upper = pte->pte_phys_page;
-	lower = pte->pte_swap_bits;
-
-	return (upper << LOWER_SWAP_BITS) | lower;
-}
-
-void
-pte_set_swap_id(struct pte *pte, swap_id_t swap_id)
-{
-	pte->pte_phys_page = SWAP_PHYS_PAGE_MASK(swap_id);
-	pte->pte_swap_bits = SWAP_BITS_MASK(swap_id);
-}
-
-void
-acquire_busy_bit(struct pte *pte, struct pagetable *pt)
-{
-	KASSERT(pt);
-	KASSERT(pte);
-
-	spinlock_acquire(&pt->pt_busy_bit_splk);
-	KASSERT(pte->pte_busy_bit == 0);
-	pte->pte_busy_bit = 1;
-	spinlock_release(&pt->pt_busy_bit_splk);
-}
-void
-release_busy_bit(struct pte *pte, struct pagetable *pt)
-{
-	KASSERT(pt);
-	KASSERT(pte);
-
-	spinlock_acquire(&pt->pt_busy_bit_splk);
-	KASSERT(pte->pte_busy_bit == 1);
-	pte->pte_busy_bit = 0;
 	spinlock_release(&pt->pt_busy_bit_splk);
 }
