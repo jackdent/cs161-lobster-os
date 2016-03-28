@@ -181,7 +181,7 @@ as_activate(void)
 		return;
 	}
 
-	flush_tlb();
+	tlb_flush();
 
 	curproc->p_addrspace = as;
 }

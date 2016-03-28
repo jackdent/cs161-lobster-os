@@ -4,8 +4,98 @@
 #include <spl.h>
 #include <cpu.h>
 
+/*
+ * Implements the Least Recently Added (LRA) algorithm
+ * to evict TLB entries. The entries in the TLB are
+ * ordered by index according to when they were added.
+ * The tlb_lra field on the current cpu marks the index
+ * after the most recently added entry, which is the
+ * least recently added.
+ */
 void
-flush_tlb()
+tlb_add(vaddr_t va, struct pte *pte)
+{
+        KASSERT(curthread != NULL);
+
+        uint32_t entryhi, entrylo, lra;
+        cme_id_t cme_id;
+        struct cme cme;
+        int index;
+
+        cme_id = (cme_id_t)pte->pte_phys_page;
+
+        cme_acquire_lock(cme_id);
+        cme = coremap.cmes[cme_id];
+
+        if (cme.cme_state == S_FREE) {
+                panic("Tried to add a free page to the TLB\n");
+        }
+
+        entryhi = VA_TO_VPAGE(va);
+
+        if (cme.cme_dirty == 1) {
+                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+        } else {
+                entrylo = CME_ID_TO_PPAGE(cme_id);
+        }
+
+        lra = curthread->t_cpu->c_tlb_lra;
+        tlb_write(entryhi, entrylo, lra);
+        curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
+
+        cme_release_lock(cme_id);
+}
+
+void
+tlb_make_writeable(vaddr_t va, struct pte *pte)
+{
+        uint32_t entryhi, entrylo;
+        cme_id_t cme_id;
+        int index;
+
+        cme_id = (cme_id_t)pte->pte_phys_page;
+
+        cme_acquire_lock(cme_id);
+        coremap.cmes[cme_id].cme_dirty = 1;
+
+        entryhi = VA_TO_VPAGE(va);
+        index = tlb_probe(entryhi, 0);
+
+        if (index < 0) {
+                // TODO: should we tlb_add instead?
+                panic("Tried to mark a non-existent TLB entry as dirty\n");
+        }
+
+        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+        tlb_write(entryhi, entrylo, (uint32_t)index);
+
+        cme_release_lock(cme_id);
+}
+
+void()
+tlb_remove(vaddr_t va)
+{
+    int i, spl;
+    uint32_t entryhi;
+
+    /* Disable interrupts on this CPU while frobbing the TLB. */
+    spl = splhigh();
+
+    entryhi = VA_TO_VPAGE(va);
+    index = tlb_probe(entryhi, 0);
+
+    if (i < 0) {
+            // The page wasn't in the TLB, so we NOOP
+            return;
+    }
+
+    tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+
+    splx(spl);
+}
+
+void
+tlb_flush()
 {
     int i, spl;
 
@@ -19,7 +109,6 @@ flush_tlb()
     }
 
     splx(spl);
-
 }
 
 /*
@@ -69,77 +158,6 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
         entrylo = CME_ID_TO_PPAGE(ts->ts_flushed_page);
         tlb_write(entryhi, entrylo, (uint32_t)index);
 }
-
-/*
- * Implements the Least Recently Added (LRA) algorithm
- * to evict TLB entries. The entries in the TLB are
- * ordered by index according to when they were added.
- * The tlb_lra field on the current cpu marks the index
- * after the most recently added entry, which is the
- * least recently added.
- */
-static
-void
-add_va_to_tlb(struct pte *pte, vaddr_t va)
-{
-        KASSERT(curthread != NULL);
-
-        uint32_t entryhi, entrylo, lra;
-        cme_id_t cme_id;
-        struct cme cme;
-        int index;
-
-        cme_id = (cme_id_t)pte->pte_phys_page;
-
-        cme_acquire_lock(cme_id);
-        cme = coremap.cmes[cme_id];
-
-        if (cme.cme_state == S_FREE) {
-                panic("Tried to add a free page to the TLB\n");
-        }
-
-        entryhi = VA_TO_VPAGE(va);
-
-        if (cme.cme_dirty == 1) {
-                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
-        } else {
-                entrylo = CME_ID_TO_PPAGE(cme_id);
-        }
-
-        lra = curthread->t_cpu->c_tlb_lra;
-        tlb_write(entryhi, entrylo, lra);
-        curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
-
-        cme_release_lock(cme_id);
-}
-
-static
-void
-va_make_writeable(struct pte *pte, vaddr_t va)
-{
-        uint32_t entryhi, entrylo;
-        cme_id_t cme_id;
-        int index;
-
-        cme_id = (cme_id_t)pte->pte_phys_page;
-
-        cme_acquire_lock(cme_id);
-        coremap.cmes[cme_id].cme_dirty = 1;
-
-        entryhi = VA_TO_VPAGE(va);
-        index = tlb_probe(entryhi, 0);
-
-        if (index < 0) {
-                // TODO: should we add_va_to_tlb instead?
-                panic("Tried to mark a non-existent TLB entry as dirty\n");
-        }
-
-        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
-        tlb_write(entryhi, entrylo, (uint32_t)index);
-
-        cme_release_lock(cme_id);
-}
-
 
 /*
  * If the page is already in memory, NOOP. Otherwise, find a slot
@@ -230,13 +248,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
         switch (faulttype) {
         case VM_FAULT_READ:
-                add_va_to_tlb(faultaddress, pte);
+                tlb_add(faultaddress, pte);
+                break;
+        case VM_FAULT_READONLY:
+                tlb_make_writeable(faultaddress, pte);
                 break;
         case VM_FAULT_WRITE:
                 panic("Tried to write to a non-existent TLB entry");
-                break;
-        case VM_FAULT_READONLY:
-                va_make_writeable(faultaddress, pte);
                 break;
         default:
                 panic("Unknown TLB fault type\n");
