@@ -29,7 +29,8 @@
 
 #include <types.h>
 #include <lib.h>
-#include <vm.h>
+#include <machine/vm.h>
+
 #include <mainbus.h>
 
 

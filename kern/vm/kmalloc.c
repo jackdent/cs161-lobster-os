@@ -31,6 +31,8 @@
 #include <lib.h>
 #include <spinlock.h>
 #include <vm.h>
+#include <machine/vm.h>
+
 
 /*
  * Kernel malloc.
@@ -133,8 +135,6 @@ static const size_t sizes[NSIZES] = { 16, 32, 64, 128, 256, 512, 1024, 2048 };
 
 #elif PAGE_SIZE == 8192
 #error "No support for 8k pages (yet?)"
-#else
-#error "Odd page size"
 #endif
 
 ////////////////////////////////////////

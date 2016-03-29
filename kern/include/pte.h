@@ -3,6 +3,7 @@
 #define PA_TO_PHYS_PAGE(pa) (pa >> 12)
 #define PHYS_PAGE_TO_PA(page) (page << 12)
 #define OFFSET_MASK(va) (va & 0xFFF)
+#define L1_L2_TO_VA(l1, l2) (l1 << 22) & (l2 << 12)
 
 #define LOWER_SWAP_BITS 5
 #define SWAP_PHYS_PAGE_MASK(swap_id) (swap_id >> LOWER_SWAP_BITS)

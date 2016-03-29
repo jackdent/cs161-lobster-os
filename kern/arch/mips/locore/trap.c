@@ -37,10 +37,10 @@
 #include <spl.h>
 #include <thread.h>
 #include <current.h>
-#include <vm.h>
 #include <proc.h>
 #include <mainbus.h>
 #include <syscall.h>
+#include <tlb.h>
 
 
 /* in exception-*.S */

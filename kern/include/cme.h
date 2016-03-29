@@ -1,5 +1,4 @@
 #include <types.h>
-#include <proc.h>
 
 #define CME_ID_TO_PA(cme_id) (cme_id * PAGE_SIZE)
 #define OFFSETS_TO_VA(l1, l2) ((l1 << 10 & l2) << 12)
@@ -13,6 +12,10 @@ typedef uint32_t cme_id_t;
  * We use an enumerated type, since these states are mutually
  * exclusive
  */
+
+#ifndef CME_H_
+#define CME_H_
+
 enum cme_state {
         // The page is not owned by a user process
         // or the kernel
@@ -37,3 +40,5 @@ struct cme {
 };
 
 struct cme cme_create(pid_t pid, vaddr_t va, enum cme_state state);
+
+#endif

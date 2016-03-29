@@ -35,6 +35,7 @@
  * basic functions are supposed to be the same across all machines.
  */
 
+#include <types.h>
 #include <cdefs.h>
 #include <hangman.h>
 

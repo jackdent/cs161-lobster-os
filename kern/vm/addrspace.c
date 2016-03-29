@@ -32,10 +32,8 @@
 #include <lib.h>
 #include <addrspace.h>
 #include <current.h>
-#include <vm.h>
 #include <proc.h>
 #include <tlb.h>
-#include <pagetable.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -87,7 +85,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	new->as_heap_end = old->as_heap_end;
 	new->as_stack_end = old->as_stack_end;
 
-	err = clone_page_table(old->as_pt, new->as_pt);
+	err = pagetable_clone(old->as_pt, new->as_pt);
 	if (new == NULL) {
 		goto err2;
 	}
@@ -156,6 +154,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	(void)readable;
 	(void)writeable;
 	(void)executable;
+
+	int stack_pages;
 
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
@@ -230,8 +230,14 @@ va_round_down_to_page(vaddr_t va)
 }
 
 static
-vaddr_t
+__attribute__((unused)) vaddr_t
 va_round_up_to_page(vaddr_t va)
 {
-        return va_round_down(va) + PAGE_SIZE;
+	vaddr_t rounded_down;
+
+	rounded_down = va_round_down_to_page(va);
+	if (rounded_down == va) {
+		return va;
+	}
+        return rounded_down + PAGE_SIZE;
 }

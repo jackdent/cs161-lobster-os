@@ -35,7 +35,8 @@
 #include <lib.h>
 #include <thread.h>
 #include <synch.h>
-#include <vm.h> /* for PAGE_SIZE */
+ /* for PAGE_SIZE */
+#include <addrspace.h>
 #include <test.h>
 
 #include "opt-dumbvm.h"

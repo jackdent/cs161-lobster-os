@@ -4,6 +4,7 @@
 #include <addrspace.h>
 #include <proc.h>
 #include <current.h>
+#include <machine/vm.h>
 
 /*
  * Amount must be a multiple of PAGE_SIZE, otherwise
