@@ -239,7 +239,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 return EFAULT;
         }
 
-        if (!va_in_bounds(as, faultaddress)) {
+        if (!va_in_as_bounds(as, faultaddress)) {
             return EFAULT;
         }
 
