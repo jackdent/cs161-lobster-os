@@ -58,6 +58,8 @@ void alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages);
  * If the page table entry has state S_INVALID, NOOP. Otherwise, mark the
  * page table entry as invalid. If the page is in the swap space, mark its
  * slot as free. If the page is in memory memory, free the coremap entry.
+ * Should only ever be called by the process that owns the address space
+ * for those pages
  */
 void free_upage(struct pte *pte, vaddr_t va);
 

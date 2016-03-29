@@ -109,18 +109,26 @@ evict_page(cme_id_t cme_id)
 {
         struct addrspace *as,
         struct pte *pte;
+        struct proc *proc;
+        struct tlbshootdown shootdown;
         struct cme cme;
         swap_id_t swap;
 
         cme = coremap.cmes[cme_id];
 
-        if (cme.state == S_FREE) {
+        if (cme.cme_state == S_FREE) {
                 return;
         }
 
+        proc = proc_table[cme.cme_pid];
+        as = proc->p_addrspace;
+
+        // In case the address is in the current TLB
         tlb_remove(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
 
-        as = proc_table[cme.cme_pid].p_addrspace;
+        // TODO: Shootdown the process
+        shootdown.ts_flushed_page = cme_id;
+        // ipi_tlbshootdown(proc, &shootdown);
 
         // TODO: do we need the pte lock??
         pte = pagetable_get_pte_from_cme(as->as_pt, cme);
