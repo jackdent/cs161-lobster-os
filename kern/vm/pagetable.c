@@ -138,7 +138,7 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				break;
 			case S_SWAPPED:
 				new_slot = pagetable_clone_pte(old_pte, new_pte);
-				// swap_copy(old_slot, new_slot); TODO: copy into memory
+				// TODO: swap_copy(old_slot, new_slot); TODO: copy into memory
 				(void) old_slot;
 				break;
 			}

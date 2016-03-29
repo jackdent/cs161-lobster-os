@@ -1,11 +1,9 @@
 #include <spinlock.h>
 #include <cme.h>
 
-#define CM_ENTRIES 1000 // TODO: make this equal to # of pages
-
 struct cm {
         unsigned int cm_size;
-        struct cme cmes[CM_ENTRIES];
+        struct cme *cmes;
         struct spinlock cm_busy_spinlock;
         struct spinlock cm_clock_spinlock;
         cme_id_t cm_clock_hand;

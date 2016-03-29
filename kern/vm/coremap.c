@@ -12,17 +12,35 @@ void tlb_remove(vaddr_t va);
 void
 cm_init()
 {
-	paddr_t ram_size;
+	unsigned int i, ncoremap_bytes, ncoremap_pages, ncmes;
+	paddr_t ram_size, start;
 
-	// TODO: is this right? Do we need to steal memory
-	// for the coremap struct itself
 	ram_size = ram_getsize();
-	coremap.cm_size = (ram_size / PAGE_SIZE);
-	// coremap.cmes = ram_stealmem(coremap.cm_size); TODO: fix this in bootstrapping
+	ncmes = (ram_size / PAGE_SIZE);
+	ncoremap_bytes = ncmes * sizeof(struct cme);
+	ncoremap_pages = ROUNDUP(ncoremap_bytes, PAGE_SIZE);
 
+	start = ram_stealmem(ncoremap_pages);
+	if (start == 0) {
+		panic("Could not allocate coremap\n");
+	}
+
+	// the cmes are now alloc'd
+	coremap.cmes = (struct cme*)PADDR_TO_KVADDR(start);
+
+	coremap.cm_size = ncmes;
 	spinlock_init(&coremap.cm_busy_spinlock);
 	spinlock_init(&coremap.cm_clock_spinlock);
 	coremap.cm_clock_hand = 0;
+
+
+	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
+
+	// Set the coremap as owned by the kernel
+	for (i = 0; i < ncmes; i++) {
+		coremap.cmes[i].cme_pid = 0;
+	        coremap.cmes[i].cme_state = S_KERNEL;
+	}
 }
 
 static
@@ -53,7 +71,7 @@ cm_capture_slot()
 
 		coremap.cmes[slot].cme_recent = 0;
 
-		if (entry.cme_state == S_FREE || entry.cme_recent == 0) {
+		if (entry.cme_state == S_FREE || (entry.cme_recent == 0 && entry.cme_pid != 0)) {
 			spinlock_release(&coremap.cm_clock_spinlock);
 			return slot;
 		}
