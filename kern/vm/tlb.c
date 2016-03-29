@@ -205,7 +205,6 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
                 break;
         }
 
-
         pte->pte_state = S_PRESENT;
         coremap.cmes[slot] = cme;
         cm_release_lock(slot);
@@ -239,7 +238,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 return EFAULT;
         }
 
-        if (!va_in_bounds(as, faultaddress)) {
+        if (!va_in_as_bounds(as, faultaddress)) {
             return EFAULT;
         }
 

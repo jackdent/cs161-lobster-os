@@ -221,3 +221,17 @@ va_in_as_bounds(struct addrspace *as, vaddr_t va)
 {
 	return va < as->as_heap_end || va > as->as_stack_end;
 }
+
+static
+vaddr_t
+va_round_down_to_page(vaddr_t va)
+{
+        return va - va % PAGE_SIZE;
+}
+
+static
+vaddr_t
+va_round_up_to_page(vaddr_t va)
+{
+        return va_round_down(va) + PAGE_SIZE;
+}
