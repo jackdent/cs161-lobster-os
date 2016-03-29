@@ -27,6 +27,9 @@
  * SUCH DAMAGE.
  */
 
+#include <pagetable.h>
+#include <machine/vm.h>
+
 #ifndef _VM_H_
 #define _VM_H_
 

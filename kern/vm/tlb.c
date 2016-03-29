@@ -4,6 +4,8 @@
 #include <current.h>
 #include <spl.h>
 #include <cpu.h>
+#include <machine/tlb.h>
+#include <proc.h>
 
 // TODO: when do we want to disable interrupts?
 
@@ -18,100 +20,99 @@
 void
 tlb_add(vaddr_t va, struct pte *pte)
 {
-        KASSERT(curthread != NULL);
+	KASSERT(curthread != NULL);
 
-        uint32_t entryhi, entrylo, lra;
-        cme_id_t cme_id;
-        struct cme cme;
-        int index;
+	uint32_t entryhi, entrylo, lra;
+	cme_id_t cme_id;
+	struct cme cme;
 
-        cme_id = (cme_id_t)pte->pte_phys_page;
+	cme_id = (cme_id_t)pte->pte_phys_page;
 
-        cm_acquire_lock(cme_id);
-        cme = coremap.cmes[cme_id];
+	cm_acquire_lock(cme_id);
+	cme = coremap.cmes[cme_id];
 
-        if (cme.cme_state == S_FREE) {
-                panic("Tried to add a free page to the TLB\n");
-        }
+	if (cme.cme_state == S_FREE) {
+		panic("Tried to add a free page to the TLB\n");
+	}
 
-        entryhi = VA_TO_VPAGE(va);
+	entryhi = VA_TO_VPAGE(va);
 
-        if (cme.cme_dirty == 1) {
-                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
-        } else {
-                entrylo = CME_ID_TO_PPAGE(cme_id);
-        }
+	if (cme.cme_state == S_DIRTY) {
+		entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+	} else {
+		entrylo = CME_ID_TO_PPAGE(cme_id);
+	}
 
-        lra = curthread->t_cpu->c_tlb_lra;
-        tlb_write(entryhi, entrylo, lra);
-        curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
+	lra = curthread->t_cpu->c_tlb_lra;
+	tlb_write(entryhi, entrylo, lra);
+	curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
 
-        cm_release_lock(cme_id);
+	cm_release_lock(cme_id);
 }
 
 void
 tlb_make_writeable(vaddr_t va, struct pte *pte)
 {
-        uint32_t entryhi, entrylo;
-        cme_id_t cme_id;
-        int index;
+	uint32_t entryhi, entrylo;
+	cme_id_t cme_id;
+	int index;
 
-        cme_id = (cme_id_t)pte->pte_phys_page;
+	cme_id = (cme_id_t)pte->pte_phys_page;
 
-        cm_acquire_lock(cme_id);
-        coremap.cmes[cme_id].cme_dirty = 1;
+	cm_acquire_lock(cme_id);
+	coremap.cmes[cme_id].cme_state = S_DIRTY;
 
-        entryhi = VA_TO_VPAGE(va);
-        index = tlb_probe(entryhi, 0);
+	entryhi = VA_TO_VPAGE(va);
+	index = tlb_probe(entryhi, 0);
 
-        if (index < 0) {
-                // TODO: should we tlb_add instead?
-                panic("Tried to mark a non-existent TLB entry as dirty\n");
-        }
+	if (index < 0) {
+		// TODO: should we tlb_add instead?
+		panic("Tried to mark a non-existent TLB entry as dirty\n");
+	}
 
-        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
-        tlb_write(entryhi, entrylo, (uint32_t)index);
+	entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+	tlb_write(entryhi, entrylo, (uint32_t)index);
 
-        cm_release_lock(cme_id);
+	cm_release_lock(cme_id);
 }
 
-void()
+void
 tlb_remove(vaddr_t va)
 {
-    int i, spl;
-    uint32_t entryhi;
+	int i, spl;
+	uint32_t entryhi;
 
-    /* Disable interrupts on this CPU while frobbing the TLB. */
-    spl = splhigh();
+	/* Disable interrupts on this CPU while frobbing the TLB. */
+	spl = splhigh();
 
-    entryhi = VA_TO_VPAGE(va);
-    index = tlb_probe(entryhi, 0);
+	entryhi = VA_TO_VPAGE(va);
+	i = tlb_probe(entryhi, 0);
 
-    if (i < 0) {
-            // The page wasn't in the TLB, so we NOOP
-            return;
-    }
+	if (i < 0) {
+		// The page wasn't in the TLB, so we NOOP
+		return;
+	}
 
-    tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 
-    splx(spl);
+	splx(spl);
 }
 
 void
 tlb_flush()
 {
-    int i, spl;
+	int i, spl;
 
-    /* Disable interrupts on this CPU while frobbing the TLB. */
-    spl = splhigh();
+	/* Disable interrupts on this CPU while frobbing the TLB. */
+	spl = splhigh();
 
-    &curcpu->c_tlb_lra = 0;
+	curcpu->c_tlb_lra = 0;
 
-    for (i = 0; i < NUM_TLB; ++i) {
-        tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
-    }
+	for (i = 0; i < NUM_TLB; ++i) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
 
-    splx(spl);
+	splx(spl);
 }
 
 /*
@@ -125,41 +126,41 @@ tlb_flush()
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
-        KASSERT(curproc != NULL);
+	KASSERT(curproc != NULL);
 
-        uint32_t entryhi, entrylo;
-        int index;
-        struct cme cme;
+	uint32_t entryhi, entrylo;
+	int index;
+	struct cme cme;
 
-        // Acquire then immediately release the lock on the cme so
-        // that we block until the kernel daemon has finished
-        // flushing memory out to disk, to avoid race conditions.
-        cm_acquire_lock(ts->ts_flushed_page);
-        cme = coremap.cme[ts->ts_flushed_page];
-        cm_release_lock(ts->ts_flushed_page);
+	// Acquire then immediately release the lock on the cme so
+	// that we block until the kernel daemon has finished
+	// flushing memory out to disk, to avoid race conditions.
+	cm_acquire_lock(ts->ts_flushed_page);
+	cme = coremap.cmes[ts->ts_flushed_page];
+	cm_release_lock(ts->ts_flushed_page);
 
-        if (cme.cme_pid != curproc->p_pid) {
-                // The page isn't in the address space for the
-                // currently scheduled process and will not
-                // be in the TLB, so we NOOP.
-                return;
-        }
+	if (cme.cme_pid != curproc->p_pid) {
+		// The page isn't in the address space for the
+		// currently scheduled process and will not
+		// be in the TLB, so we NOOP.
+		return;
+	}
 
-        if (cme.cme_state != S_CLEAN) {
-                panic("Kernel daemon sent a TLB shootdown for an invalid page\n");
-        }
+	if (cme.cme_state != S_CLEAN) {
+		panic("Kernel daemon sent a TLB shootdown for an invalid page\n");
+	}
 
-        entryhi = VA_TO_VPAGE(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
-        index = tlb_probe(entryhi, 0);
+	entryhi = VA_TO_VPAGE(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
+	index = tlb_probe(entryhi, 0);
 
-        if (index < 0) {
-                // The page wasn't in the TLB, so we NOOP
-                return;
-        }
+	if (index < 0) {
+		// The page wasn't in the TLB, so we NOOP
+		return;
+	}
 
-        // Ensure that the TLB entry is clean
-        entrylo = CME_ID_TO_PPAGE(ts->ts_flushed_page);
-        tlb_write(entryhi, entrylo, (uint32_t)index);
+	// Ensure that the TLB entry is clean
+	entrylo = CME_ID_TO_PPAGE(ts->ts_flushed_page);
+	tlb_write(entryhi, entrylo, (uint32_t)index);
 }
 
 /*
@@ -180,35 +181,35 @@ static
 void
 ensure_in_memory(struct pte *pte, vaddr_t va)
 {
-        KASSERT(curproc != NULL);
+	KASSERT(curproc != NULL);
 
-        struct cme cme;
-        cme_id_t slot;
+	struct cme cme;
+	cme_id_t slot;
 
-        cme = cme_create(curproc->p_pid, va, S_CLEAN);
+	cme = cme_create(curproc->p_pid, va, S_CLEAN);
 
-        switch(pte->pte_state) {
-        case S_PRESENT:
-                return;
-        case S_INVALID:
-                panic("Cannot ensure than an invalid pte is in memory\n");
-        case S_LAZY:
-                break;
-        case S_SWAPPED:
-                slot = cm_capture_slot();
+	switch(pte->pte_state) {
+	case S_PRESENT:
+		return;
+	case S_INVALID:
+		panic("Cannot ensure than an invalid pte is in memory\n");
+	case S_LAZY:
+		break;
+	case S_SWAPPED:
+		slot = cm_capture_slot();
 
-                evict_page(slot);
+		evict_page(slot);
 
-                cme.swap_id = pte_get_swap_id(pte);
-                swap_in(cme.swap_id, CME_ID_TO_PA(slot));
+		cme.cme_swap_id = pte_get_swap_id(pte);
+		swap_in(cme.cme_swap_id, CME_ID_TO_PA(slot));
 
-                break;
-        }
+		break;
+	}
 
 
-        pte->pte_state = S_PRESENT;
-        coremap.cmes[slot] = cme;
-        cm_release_lock(slot);
+	pte->pte_state = S_PRESENT;
+	coremap.cmes[slot] = cme;
+	cm_release_lock(slot);
 }
 
 /*
@@ -218,51 +219,53 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-        struct addrspace *as;
-        struct pte *pte;
+	struct addrspace *as;
+	struct pte *pte;
+	int EFAULT = 1; // TODO: refine error handling
 
-        if (curproc == NULL) {
-                /*
-                 * No process. This is probably a kernel fault early
-                 * in boot. Return EFAULT so as to panic instead of
-                 * getting into an infinite faulting loop.
-                 */
-                return EFAULT;
-        }
+	if (curproc == NULL) {
+		/*
+		 * No process. This is probably a kernel fault early
+		 * in boot. Return EFAULT so as to panic instead of
+		 * getting into an infinite faulting loop.
+		 */
+		return EFAULT;
+	}
 
-        as = proc_getas();
-        if (as == NULL) {
-                /*
-                 * No address space set up. This is probably also a
-                 * kernel fault early in boot.
-                 */
-                return EFAULT;
-        }
+	as = proc_getas();
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably also a
+		 * kernel fault early in boot.
+		 */
+		return EFAULT;
+	}
 
-        if (!va_in_as_bounds(as, faultaddress)) {
-            return EFAULT;
-        }
+	if (!va_in_as_bounds(as, faultaddress)) {
+		return EFAULT;
+	}
 
-        if (!pagetable_contains_va(as->as_pt, faultaddress, &pte)) {
-            return EFAULT;
-        }
+	pte = pagetable_get_pte_from_va(as->as_pt, faultaddress);
+	if (pte == NULL) {
+		return EFAULT;
+	}
 
-        ensure_in_memory(pte, faultaddress);
+	ensure_in_memory(pte, faultaddress);
 
-        switch (faulttype) {
-        case VM_FAULT_READ:
-                tlb_add(faultaddress, pte);
-                break;
-        case VM_FAULT_READONLY:
-                tlb_make_writeable(faultaddress, pte);
-                break;
-        case VM_FAULT_WRITE:
-                panic("Tried to write to a non-existent TLB entry");
-                break;
-        default:
-                panic("Unknown TLB fault type\n");
-                break;
-        }
+	switch (faulttype) {
+	case VM_FAULT_READ:
+		tlb_add(faultaddress, pte);
+		break;
+	case VM_FAULT_READONLY:
+		tlb_make_writeable(faultaddress, pte);
+		break;
+	case VM_FAULT_WRITE:
+		panic("Tried to write to a non-existent TLB entry");
+		break;
+	default:
+		panic("Unknown TLB fault type\n");
+		break;
+	}
 
-        return 0;
+	return 0;
 }

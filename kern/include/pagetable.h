@@ -35,23 +35,23 @@ void pagetable_destroy(struct pagetable *pt);
  * Lookup a pagetable entry based on the supplied l2 and l2 offsets, and
  * return NULL if no entry was found.
  */
-struct pte * pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, unsigned l2_offset);
+struct pte *pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, unsigned l2_offset);
 
 /*
  * Lookup a pagetable entry based on the supplied virtual address, and
  * return NULL if no entry was found.
  */
-struct pte * pagetable_get_pte_from_va(struct pagetable *pt, vaddr_t va);
+struct pte *pagetable_get_pte_from_va(struct pagetable *pt, vaddr_t va);
 
 /*
  * Lookup a pagetable entry based on the supplied core map entry, and
  * return NULL if no entry was found.
  */
-struct pte * pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme);
+struct pte *pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme);
 
 /*
  * Clone every entry in the page table. If the entry is in the state
  * S_PRESENT or S_SWAPPED, we create a new slot in the swap space and
  * copy the page over.
  */
-void pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt);
+int pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt);

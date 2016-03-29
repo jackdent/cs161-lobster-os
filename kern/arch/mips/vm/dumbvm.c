@@ -37,7 +37,7 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
-#include <vm.h>
+
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely

@@ -33,8 +33,8 @@
 #include <setjmp.h>
 #include <thread.h>
 #include <current.h>
-#include <vm.h>
 #include <copyinout.h>
+#include <machine/vm.h>
 
 /*
  * User/kernel memory copying functions.

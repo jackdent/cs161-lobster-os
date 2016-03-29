@@ -8,9 +8,8 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
-#include <vm.h>
-#include <pagetable.h>
 #include <coremap.h>
+#include <tlb.h>
 
 void
 vm_bootstrap(void)
@@ -21,15 +20,15 @@ vm_bootstrap(void)
 vaddr_t
 alloc_kpages(unsigned npages)
 {
+        unsigned i;
         cme_id_t start, curr;
         vaddr_t addr;
         struct cme cme;
 
         start = cm_capture_slots_for_kernel(npages);
 
-        while (int i = 0; i < npages; ++i) {
+        for (i = 0; i < npages; i++) {
                 curr = start + i;
-
                 evict_page(curr);
 
                 // We don't really need to do this because kernel
@@ -43,7 +42,7 @@ alloc_kpages(unsigned npages)
                 coremap.cmes[curr] = cme;
         }
 
-        cm_release_locks(start, start + nslots);
+        cm_release_locks(start, start + npages);
 
         return CME_ID_TO_PA(start);
 }
@@ -65,7 +64,7 @@ alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
         struct pte *pte;
 
         for (i = 0; i < npages; ++i) {
-                pte = pagetable_get_pte_from_va(start + i * PAGE_SIZE);
+                pte = pagetable_get_pte_from_va(pt, start + (vaddr_t)(i * PAGE_SIZE));
                 pte->pte_state = S_LAZY;
         }
 }
@@ -78,7 +77,8 @@ free_upage(struct pte *pte, vaddr_t va)
         struct cme cme;
 
         switch (pte->pte_state) {
-        case S_INVALID, S_LAZY:
+        case S_INVALID:
+        case S_LAZY:
                 break;
         case S_PRESENT:
                 tlb_remove(va);
@@ -91,7 +91,7 @@ free_upage(struct pte *pte, vaddr_t va)
                 coremap.cmes[cme_id].cme_state = S_FREE;
                 break;
         case S_SWAPPED:
-                swap_id_t swap_id = pte_get_swap_id(pte);
+                swap_id = pte_get_swap_id(pte);
                 swap_free_slot(swap_id);
                 break;
         };
@@ -111,7 +111,7 @@ free_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
         // TODO: synchronisation
         for (i = 0; i < npages; ++i) {
                 va = start + i * PAGE_SIZE;
-                pte = pagetable_get_pte_from_va(va);
+                pte = pagetable_get_pte_from_va(pt, va);
 
                 free_upage(pte, va);
         }

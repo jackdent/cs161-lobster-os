@@ -4,6 +4,9 @@
 #include <bitmap.h>
 #include <uio.h>
 #include <swap.h>
+#include <kern/fcntl.h>
+#include <synch.h>
+#include <machine/vm.h>
 
 void
 swap_init(void)
