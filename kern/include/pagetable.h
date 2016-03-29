@@ -17,7 +17,7 @@ struct l1 {
 
 struct pagetable {
 	struct l1 pt_l1;                       // l1 page table
-	struct spinlock pt_busy_bit_splk;      // for accessing busybits
+	struct spinlock pt_busy_spinlock;      // for accessing busybits
 };
 
 /*

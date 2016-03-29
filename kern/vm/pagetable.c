@@ -17,9 +17,9 @@ pagetable_create(void)
 		return NULL;
 	}
 
-	spinlock_init(&pt->pt_busy_bit_splk);
+	spinlock_init(&pt->pt_busy_spinlock);
 
-	// ensure all l2_pt pointers are NULL initially
+	// Ensure all l2_pt pointers are NULL initially
 	memset(&pt->pt_l1, 0, sizeof(pt->pt_l1));
 
 	return pt;
@@ -33,7 +33,7 @@ pagetable_destroy(struct pagetable *pt)
 	int i, j;
 	struct l2 *l2;
 
-	// walk through all entries and free them
+	// Walk through all entries and free them
 	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
 		if (pt->pt_l1.l2s[i] == NULL) {
 			continue;
@@ -41,14 +41,13 @@ pagetable_destroy(struct pagetable *pt)
 
 		l2 = pt->pt_l1.l2s[i];
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
-			if (l2->l2_ptes[j].pte_valid != 0) {
-				//FREE_PAGE(l2[j].phys_page) // TODO: fill in with actual function
-			}
+			free_upage(l2->l2_ptes[j]);
 		}
+
 		kfree(l2);
 	}
 
-	spinlock_cleanup(&pt->pt_busy_bit_splk);
+	spinlock_cleanup(&pt->pt_busy_spinlock);
 	kfree(pt);
 }
 

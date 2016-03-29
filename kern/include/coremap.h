@@ -5,7 +5,7 @@
 struct cm {
         unsigned int cm_size;
         struct cme (*cmes)[];
-        struct spinlock cme_spinlock;
+        struct spinlock cm_busy_spinlock;
         struct spinlock cm_clock_spinlock;
         cme_id_t cm_clock_hand;
 };

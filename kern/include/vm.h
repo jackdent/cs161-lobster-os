@@ -52,13 +52,19 @@ void free_kpages(vaddr_t addr);
  * Maps the n pages beginning at start (which should be page aligned) into
  * the lazy state.
  */
-void map_upages(struct pagetable *pt, vaddr_t start, unsigned int npages);
+void alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages);
 
 /*
- * Maps the n pages beginning at start (which should be page aligned) into
- * the invalid state, removing them from the TLB if necessary, and freeing
- * their coremap entries.
+ * If the page table entry has state S_INVALID, NOOP. Otherwise, mark the
+ * page table entry as invalid. If the page is in the swap space, mark its
+ * slot as free. If the page is in memory memory, free the coremap entry.
  */
-void unmap_upages(struct pagetable *pt, vaddr_t start, unsigned int npages);
+void free_upage(struct pte *pte, vaddr_t va);
+
+/*
+ * Marks the the n pages beginning at start (which should be page aligned)
+ * as invalid, freeing the relevant page table entries.
+ */
+void free_upages(struct pagetable *pt, vaddr_t start, unsigned int npages);
 
 #endif /* _VM_H_ */

@@ -32,8 +32,7 @@ struct pte {
         enum pte_state pte_state:2;
 };
 
-
-paddr_t pte_va_to_pa(vaddr_t va, struct pte *pte);
+paddr_t pte_va_to_pa(struct pte *pte, vaddr_t va);
 
 /*
  * Extract swap offset from the seperate bit fields in a pte.

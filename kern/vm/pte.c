@@ -33,10 +33,10 @@ pte_attempt_lock(struct pte *pte, struct pagetable *pt)
 
         bool acquired;
 
-        spinlock_acquire(&pt->pt_busy_bit_splk);
+        spinlock_acquire(&pt->pt_busy_spinlock);
         acquired = (pte->pte_busy == 0);
         pte->pte_busy = 1;
-        spinlock_release(&pt->pt_busy_bit_splk);
+        spinlock_release(&pt->pt_busy_spinlock);
 
         return acquired;
 }
@@ -57,8 +57,8 @@ pte_release_lock(struct pte *pte, struct pagetable *pt)
         KASSERT(pt != NULL);
         KASSERT(pte != NULL);
 
-        spinlock_acquire(&pt->pt_busy_bit_splk);
+        spinlock_acquire(&pt->pt_busy_spinlock);
         KASSERT(pte->pte_busy == 1);
         pte->pte_busy = 0;
-        spinlock_release(&pt->pt_busy_bit_splk);
+        spinlock_release(&pt->pt_busy_spinlock);
 }

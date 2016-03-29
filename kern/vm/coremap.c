@@ -14,7 +14,7 @@ cm_init()
         coremap.cm_size = (ram_size / PAGE_SIZE);
         coremap.cmes = ram_stealmem(coremap.cmes_size);
 
-        spinlock_init(&coremap.cme_spinlock);
+        spinlock_init(&coremap.cm_busy_spinlock);
         spinlock_init(&coremap.cm_clock_spinlock);
         coremap.cm_clock_hand = 0;
 }
@@ -169,10 +169,10 @@ cm_attempt_lock(cme_id_t i)
 
         bool acquired;
 
-        spinlock_acquire(&coremap.cme_spinlock);
+        spinlock_acquire(&coremap.cm_busy_spinlock);
         acquired = (coremap.cmes[i].cme_busy == 0);
         coremap.cmes[i].cme_busy = 1;
-        spinlock_release(&coremap.cme_spinlock);
+        spinlock_release(&coremap.cm_busy_spinlock);
 
         return acquired;
 }
@@ -192,10 +192,10 @@ cm_release_lock(cme_id_t i)
 {
         KASSERT(i < coremap.cm_size);
 
-        spinlock_acquire(&coremap.cme_spinlock);
+        spinlock_acquire(&coremap.cm_busy_spinlock);
         KASSERT(coremap.cmes[i].cme_busy == 1);
         coremap.cmes[i].cme_busy = 0;
-        spinlock_release(&coremap.cme_spinlock);
+        spinlock_release(&coremap.cm_busy_spinlock);
 }
 
 void

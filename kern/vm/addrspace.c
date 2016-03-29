@@ -105,7 +105,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
-	// This handles freeing the actual pages
 	pagetable_destroy(as->as_pt);
 	kfree(as);
 }
@@ -174,7 +173,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	// Add lazy entries to our pagetable, so that we allocate
 	// stack pages as they are needed.
 	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
-	map_upages(as->as_pt, as->as_stack_end, stack_pages);
+	alloc_upages(as->as_pt, as->as_stack_end, stack_pages);
 
 	return 0;
 }
@@ -212,7 +211,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	// Add lazy entries to our pagetable, so that we allocate
 	// stack pages as they are needed.
 	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
-	map_upages(as->as_pt, as->as_stack_end, stack_pages);
+	alloc_upages(as->as_pt, as->as_stack_end, stack_pages);
 
 	return 0;
 }

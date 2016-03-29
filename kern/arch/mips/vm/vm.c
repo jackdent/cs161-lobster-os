@@ -57,7 +57,7 @@ free_kpages(vaddr_t addr)
 }
 
 void
-map_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
 {
         KASSERT(start % PAGE_SIZE == 0);
 
@@ -71,29 +71,48 @@ map_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
 }
 
 void
-unmap_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+free_upage(struct pte *pte, vaddr_t va)
 {
-        KASSERT(start % PAGE_SIZE == 0);
-
-        unsigned int i;
-        vaddr_t va;
-        struct pte *pte;
-        struct cme cme;
         cme_id_t cme_id;
+        swap_id_t swap_id;
+        struct cme cme;
 
-        // TODO: synchronisation
-        for (i = 0; i < npages; ++i) {
-                va = start + i * PAGE_SIZE;
-                pte = pagetable_get_pte_from_va(va);
-
-                pte->pte_state = S_INVALID;
-
+        switch (pte->pte_state) {
+        case S_INVALID, S_LAZY:
+                break;
+        case S_PRESENT:
                 tlb_remove(va);
 
                 cme_id = (cme_id_t)pte->pte_phys_page;
                 cme = coremap.cmes[cme_id];
 
                 KASSERT(cme.cme_state != S_KERNEL);
+
                 coremap.cmes[cme_id].cme_state = S_FREE;
+                break;
+        case S_SWAPPED:
+                swap_id_t swap_id = pte_get_swap_id(pte);
+                swap_free_slot(swap_id);
+                break;
+        };
+
+        pte->pte_state = S_INVALID;
+}
+
+void
+free_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+{
+        KASSERT(start % PAGE_SIZE == 0);
+
+        unsigned int i;
+        vaddr_t va;
+        struct pte *pte;
+
+        // TODO: synchronisation
+        for (i = 0; i < npages; ++i) {
+                va = start + i * PAGE_SIZE;
+                pte = pagetable_get_pte_from_va(va);
+
+                free_upage(pte, va);
         }
 }
