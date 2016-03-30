@@ -345,6 +345,7 @@ file      proc/fdtable.c
 
 file      vm/cme.c
 file      vm/coremap.c
+file      vm/daemon.c
 file      vm/kmalloc.c
 file      vm/pagetable.c
 file      vm/pte.c
