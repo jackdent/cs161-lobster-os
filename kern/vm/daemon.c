@@ -18,7 +18,7 @@ int daemon_index = 0;
 void
 daemon_init(void)
 {
- 	int err;
+	int err;
 	char *daemon_name;
 
 	if (!USE_DAEMON) {

@@ -6,8 +6,8 @@
 #include <proctable.h>
 #include <addrspace.h>
 
+// Forward declaration, implemented in vm/tlb.c
 void tlb_remove(vaddr_t va);
-
 
 void
 cm_init()
@@ -25,14 +25,13 @@ cm_init()
 		panic("Could not allocate coremap\n");
 	}
 
-	// the cmes are now alloc'd
+	// The cmes are now alloc'd
 	coremap.cmes = (struct cme*)PADDR_TO_KVADDR(start);
 
 	coremap.cm_size = ncmes;
 	spinlock_init(&coremap.cm_busy_spinlock);
 	spinlock_init(&coremap.cm_clock_spinlock);
 	coremap.cm_clock_hand = 0;
-
 
 	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
 
@@ -157,7 +156,6 @@ evict_page(cme_id_t cme_id)
 
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
 	pte_acquire_lock(pte, as->as_pt);
-
 
 	if (pte->pte_state == S_INVALID) {
 		panic("Trying to evict an invalid page?!");
