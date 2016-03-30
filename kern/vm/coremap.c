@@ -38,8 +38,8 @@ cm_init()
 
 	// Set the coremap as owned by the kernel
 	for (i = 0; i < ncmes; i++) {
-		coremap.cmes[i].cme_pid = 0;
-	        coremap.cmes[i].cme_state = S_KERNEL;
+		coremap.cmes[i] = cme_create(0, PHYS_PAGE_TO_PA(i), S_KERNEL);
+	        coremap.cmes[i].cme_busy = 0;
 	}
 }
 

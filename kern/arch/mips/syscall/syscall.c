@@ -181,7 +181,6 @@ syscall(struct trapframe *tf)
 	/* Memory management system calls */
 
 	case SYS_sbrk:
-		// TODO: work for 64 bit values
 		err = sys_sbrk(tf->tf_a0, &retval);
 		break;
 

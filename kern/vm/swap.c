@@ -5,6 +5,7 @@
 #include <uio.h>
 #include <swap.h>
 #include <kern/fcntl.h>
+#include <kern/errno.h>
 #include <synch.h>
 #include <machine/vm.h>
 
@@ -19,8 +20,7 @@ swap_init(void)
 		panic("swap_init: could not open swap disk");
 	}
 
-	// TODO: use vfs_swapon
-	err = vfs_open(swap_disk_path, O_RDWR, 0, &swap_file);
+	err = vfs_swapon(swap_disk_path, &swap_file);
 	if (err) {
 		panic("swap_init: could not open swap disk");
 	}
@@ -90,21 +90,21 @@ read_page_from_disk(void *page, swap_id_t disk_offset)
 	return VOP_READ(swap_file, &u);
 }
 
-// Write the page at swap_index on disk to the physical page pp
-int
+// Write the page at src to the disk at swap_index
+void
 swap_out(swap_id_t swap_index, paddr_t src)
 {
 	int ret;
 
 	ret = write_page_to_disk((void*)PADDR_TO_KVADDR(src), swap_index * PAGE_SIZE);
 	if (!ret) {
-		// TODO
+		// Nothing else we can really do here
+		panic("Disk error when reading from swap to RAM\n");
 	}
-	return ret;
 }
 
-// Read a page from swap_index into the page at dest
-int
+// Read the page from swap_index on disk into the page at dest
+void
 swap_in(swap_id_t swap_index, paddr_t dest)
 {
 	int ret;
@@ -112,15 +112,31 @@ swap_in(swap_id_t swap_index, paddr_t dest)
 	ret = read_page_from_disk((void *)PADDR_TO_KVADDR(dest), swap_index * PAGE_SIZE);
 
 	if (!ret) {
-		// TODO
+		// Nothing else we can really do here
+		panic("Disk error when writing from RAM to swap\n");
 	}
-	return ret;
 }
 
-void
+int
 swap_copy(swap_id_t from, swap_id_t to)
 {
-	(void)from; (void)to;
+	int ret;
+	void* buf;
 
-	// TODO: copy memory on disk
+	buf = kmalloc(PAGE_SIZE);
+	if (buf == NULL) {
+		return ENOMEM;
+	}
+
+	ret = read_page_from_disk((void *)PADDR_TO_KVADDR(buf), from * PAGE_SIZE);
+	if (!ret) {
+		panic("Disk error when reading from swap to RAM\n");
+	}
+
+	ret = write_page_to_disk((void *)PADDR_TO_KVADDR(buf), to * PAGE_SIZE);
+	if (!ret) {
+		panic("Disk error when writing from RAM to swap\n");
+	}
+
+	return 0;
 }

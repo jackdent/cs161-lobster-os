@@ -81,8 +81,9 @@
  * We put the stack at the very top of user virtual memory because it
  * grows downwards.
  */
-#define USERSTACK     USERSPACETOP
-#define STACK_END	0 // TODO Decide this
+#define STACK_PAGES 	4
+#define USERSTACK     	USERSPACETOP
+#define STACK_END	(USERSPACETOP - STACK_PAGES * PAGE_SIZE)
 #define INIT_HEAP_BASE	0
 #define INIT_HEAP_END 	0
 

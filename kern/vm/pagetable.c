@@ -94,7 +94,6 @@ pagetable_clone_pte(struct pte *old_pte, struct pte *new_pte)
 	return new_slot;
 }
 
-// TODO: synchronisation
 int
 pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 {
@@ -115,7 +114,7 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 
 		new_l1->l2s[i] = kmalloc(sizeof(struct l2));
 		if (new_l1->l2s[i] == NULL) {
-			return ENOMEM;
+			return ENOMEM; // caller will handle cleanup
 		}
 
 		old_l2 = old_l1->l2s[i];
@@ -127,6 +126,9 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 
 			*new_pte = *old_pte;
 
+			// So old_pte doesn't get evicted
+			pte_acquire_lock(old_pte, old_pt);
+
 			switch (old_pte->pte_state) {
 			case S_INVALID:
 			case S_LAZY:
@@ -137,11 +139,12 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				new_pte->pte_state = S_SWAPPED;
 				break;
 			case S_SWAPPED:
+				old_slot = old_pte->pte_phys_page;
 				new_slot = pagetable_clone_pte(old_pte, new_pte);
-				// TODO: swap_copy(old_slot, new_slot); TODO: copy into memory
-				(void) old_slot;
+				swap_copy(old_slot, new_slot);
 				break;
 			}
+			pte_release_lock(old_pte, old_pt);
 		}
 	}
 	return 0;

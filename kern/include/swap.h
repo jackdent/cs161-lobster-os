@@ -1,6 +1,6 @@
 #include <types.h>
 
-#define SWAP_DISK_PAGES 2000 // TODO: assign this based on size of disk
+#define SWAP_DISK_PAGES 2000 // ~8.2 MB
 #define DISK_OFFSET(index) (index * PAGE_SIZE)
 
 /*
@@ -32,14 +32,14 @@ void swap_free_slot(swap_id_t slot);
 /*
  * Write the page at swap_index on disk to the physical page pp.
  */
-int swap_out(swap_id_t index, paddr_t src);
+void swap_out(swap_id_t index, paddr_t src);
 
 /*
  * Read a page from swap_index into the page at dest.
  */
-int swap_in(swap_id_t index, paddr_t dest);
+void swap_in(swap_id_t index, paddr_t dest);
 
 /*
  * Copy the memory from one slot in the swap space to another.
  */
-void swap_copy(swap_id_t from, swap_id_t to);
+int swap_copy(swap_id_t from, swap_id_t to);
