@@ -42,6 +42,10 @@ alloc_kpages(unsigned npages)
                 coremap.cmes[curr] = cme;
         }
 
+        // Since we never swap out kernel pages, we can use this
+        // for storing the size of the allocation
+        coremap.cmes[start].cme_swap_id = npages;
+
         cm_release_locks(start, start + npages);
 
         return CME_ID_TO_PA(start);
@@ -50,9 +54,18 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {
-        (void)addr;
+        unsigned int npages, i;
+        paddr_t start;
+        cme_id_t cme_id;
 
-        /* TODO */
+        start = KVADDR_TO_PADDR(addr);
+        cme_id = PA_TO_CME_ID(start);
+        npages = coremap.cmes[cme_id].cme_swap_id;
+
+        for (i = 0; i < npages; i++) {
+                KASSERT(coremap.cmes[i].cme_state == S_KERNEL);
+                coremap.cmes[i].cme_state = S_FREE;
+        }
 }
 
 void
@@ -70,11 +83,13 @@ alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
 }
 
 void
-free_upage(struct pte *pte, vaddr_t va)
+free_upage(struct pagetable *pt, struct pte *pte, vaddr_t va)
 {
         cme_id_t cme_id;
         swap_id_t swap_id;
         struct cme cme;
+
+        pte_acquire_lock(pte, pt);
 
         switch (pte->pte_state) {
         case S_INVALID:
@@ -97,6 +112,7 @@ free_upage(struct pte *pte, vaddr_t va)
         };
 
         pte->pte_state = S_INVALID;
+        pte_release_lock(pte, pt);
 }
 
 void
@@ -108,11 +124,11 @@ free_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
         vaddr_t va;
         struct pte *pte;
 
-        // TODO: synchronisation
         for (i = 0; i < npages; ++i) {
                 va = start + i * PAGE_SIZE;
                 pte = pagetable_get_pte_from_va(pt, va);
+                KASSERT(pte != NULL);
 
-                free_upage(pte, va);
+                free_upage(pt, pte, va);
         }
 }

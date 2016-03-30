@@ -7,8 +7,6 @@
 #include <machine/tlb.h>
 #include <proc.h>
 
-// TODO: when do we want to disable interrupts?
-
 /*
  * Implements the Least Recently Added (LRA) algorithm
  * to evict TLB entries. The entries in the TLB are
@@ -23,6 +21,7 @@ tlb_add(vaddr_t va, struct pte *pte)
 	KASSERT(curthread != NULL);
 
 	uint32_t entryhi, entrylo, lra;
+	int spl;
 	cme_id_t cme_id;
 	struct cme cme;
 
@@ -44,7 +43,9 @@ tlb_add(vaddr_t va, struct pte *pte)
 	}
 
 	lra = curthread->t_cpu->c_tlb_lra;
+	spl = splhigh();
 	tlb_write(entryhi, entrylo, lra);
+	splx(spl);
 	curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
 
 	cm_release_lock(cme_id);
@@ -54,6 +55,7 @@ void
 tlb_make_writeable(vaddr_t va, struct pte *pte)
 {
 	uint32_t entryhi, entrylo;
+	int spl;
 	cme_id_t cme_id;
 	int index;
 
@@ -63,16 +65,16 @@ tlb_make_writeable(vaddr_t va, struct pte *pte)
 	coremap.cmes[cme_id].cme_state = S_DIRTY;
 
 	entryhi = VA_TO_VPAGE(va);
+	spl = splhigh();
 	index = tlb_probe(entryhi, 0);
 
 	if (index < 0) {
-		// TODO: should we tlb_add instead?
 		panic("Tried to mark a non-existent TLB entry as dirty\n");
 	}
 
 	entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
 	tlb_write(entryhi, entrylo, (uint32_t)index);
-
+	splx(spl);
 	cm_release_lock(cme_id);
 }
 
@@ -129,7 +131,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 	KASSERT(curproc != NULL);
 
 	uint32_t entryhi, entrylo;
-	int index;
+	int index, spl;
 	struct cme cme;
 
 	// Acquire then immediately release the lock on the cme so
@@ -151,6 +153,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 	}
 
 	entryhi = VA_TO_VPAGE(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
+	spl = splhigh();
 	index = tlb_probe(entryhi, 0);
 
 	if (index < 0) {
@@ -161,6 +164,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 	// Ensure that the TLB entry is clean
 	entrylo = CME_ID_TO_PPAGE(ts->ts_flushed_page);
 	tlb_write(entryhi, entrylo, (uint32_t)index);
+	splx(spl);
 }
 
 /*
@@ -220,7 +224,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
         struct addrspace *as;
         struct pte *pte;
-        int EFAULT = 1; // TODO: refine error handling
+        int EFAULT = 1;
 
         if (curproc == NULL) {
                 /*

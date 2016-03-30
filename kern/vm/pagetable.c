@@ -40,7 +40,7 @@ pagetable_destroy(struct pagetable *pt)
 
 		l2 = pt->pt_l1.l2s[i];
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
-			free_upage(&l2->l2_ptes[j], L1_L2_TO_VA(i, j));
+			free_upage(pt, &l2->l2_ptes[j], L1_L2_TO_VA(i, j));
 		}
 
 		kfree(l2);

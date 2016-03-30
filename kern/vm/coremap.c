@@ -155,11 +155,12 @@ evict_page(cme_id_t cme_id)
         (void)shootdown;
         // ipi_tlbshootdown(proc, &shootdown);
 
-	// TODO: do we need the pte lock??
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
+	pte_acquire_lock(pte, as->as_pt);
+
 
 	if (pte->pte_state == S_INVALID) {
-		// TODO: panic?
+		panic("Trying to evict an invalid page?!");
 	}
 
 	pte->pte_state = S_SWAPPED;
@@ -194,6 +195,7 @@ evict_page(cme_id_t cme_id)
 	}
 
 	swap_out(swap, CME_ID_TO_PA(cme_id));
+	pte_release_lock(pte, as->as_pt);
 }
 
 bool

@@ -64,7 +64,7 @@ void alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages);
  * Should only ever be called by the process that owns the address space
  * for those pages
  */
-void free_upage(struct pte *pte, vaddr_t va);
+void free_upage(struct pagetable *pt, struct pte *pte, vaddr_t va);
 
 /*
  * Marks the the n pages beginning at start (which should be page aligned)
