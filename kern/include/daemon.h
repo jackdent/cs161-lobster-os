@@ -9,6 +9,10 @@
 #include <synch.h>
 #include <machine/vm.h>
 
-int daemon_index = 0;
 
-void daemon_thread(void);
+#define USE_DAEMON true
+
+void daemon_init(void);
+
+/* Writeback daemon that runs in the background */
+void daemon_thread(void *data1, unsigned long data2);

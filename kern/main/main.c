@@ -51,7 +51,7 @@
 #include <test.h>
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
-
+#include <daemon.h>
 #include <machine/vm.h>
 
 /*
@@ -148,6 +148,7 @@ boot(void)
 	swap_init();
 
 	kheap_nextgeneration();
+	daemon_init();
 
 	/*
 	 * Make sure various things aren't screwed up.
