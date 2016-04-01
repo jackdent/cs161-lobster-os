@@ -191,7 +191,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
 	struct cme cme;
 	cme_id_t slot;
 
-	cme = cme_create(curproc->p_pid, va, S_CLEAN);
+	cme = cme_create(curproc->p_pid, va, S_UNSWAPPED);
 
 	switch(pte->pte_state) {
 	case S_PRESENT:
@@ -205,6 +205,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
 
 		evict_page(slot);
 
+                cme.cme_state= S_CLEAN;
 		cme.cme_swap_id = pte_get_swap_id(pte);
 		swap_in(cme.cme_swap_id, CME_ID_TO_PA(slot));
 

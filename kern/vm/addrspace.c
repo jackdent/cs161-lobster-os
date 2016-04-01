@@ -34,7 +34,9 @@
 #include <pagetable.h>
 #include <current.h>
 #include <proc.h>
-// #include <tlb.h>
+
+// Forward declaration, implemented in vm/tlb.c
+void tlb_flush(void);
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -122,7 +124,7 @@ as_activate(void)
 		return;
 	}
 
-	// tlb_flush();
+	tlb_flush();
 
 	curproc->p_addrspace = as;
 }

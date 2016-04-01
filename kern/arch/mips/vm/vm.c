@@ -87,11 +87,13 @@ alloc_upages(vaddr_t start, unsigned int npages)
         struct addrspace *as;
         unsigned int i;
         struct pte *pte;
+        vaddr_t va;
 
         as = curproc->p_addrspace;
 
         for (i = 0; i < npages; i++) {
-                pte = pagetable_get_pte_from_va(as->as_pt, start + (vaddr_t)(i * PAGE_SIZE));
+                va =  start + i * PAGE_SIZE;
+                pte = pagetable_get_pte_from_va(as->as_pt, va);
 
                 pt_acquire_lock(as->as_pt, pte);
                 KASSERT(pte->pte_state == S_INVALID);
@@ -122,6 +124,7 @@ free_upage(vaddr_t va)
                 break;
         case S_PRESENT:
                 cme_id = pte_get_cme_id(pte);
+
                 cm_acquire_lock(cme_id);
                 cm_free_page(cme_id);
                 cm_release_lock(cme_id);

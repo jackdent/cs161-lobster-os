@@ -165,20 +165,15 @@ evict_page(cme_id_t cme_id)
 	pte->pte_state = S_SWAPPED;
 
 	switch(cme->cme_state) {
-	case S_CLEAN:
+	case S_UNSWAPPED:
 		// If this is the first time we're writing the page
 		// out to disk, we grab a free swap entry, and assign
 		// its index to the page table entry. The swap id will
 		// be stable for this page for the remainder of its
 		// lifetime.
-		if (cme->cme_swap_id != pte_get_swap_id(pte)) {
-			swap = swap_capture_slot();
-			pte_set_swap_id(pte, swap);
-		}
-		else {
-			return;
-		}
-
+		swap = swap_capture_slot();
+		pte_set_swap_id(pte, swap);
+	case S_CLEAN:
 		break;
 	case S_DIRTY:
 		swap = cme->cme_swap_id;
@@ -200,7 +195,7 @@ evict_page(cme_id_t cme_id)
 void
 cm_free_page(cme_id_t cme_id)
 {
-        struct cme *cme;
+	struct cme *cme;
 
 	cme = &coremap.cmes[cme_id];
 
@@ -209,6 +204,10 @@ cm_free_page(cme_id_t cme_id)
 		panic("Cannot free a page that is already free\n");
 	case S_KERNEL:
 		// Kernel memory is directly mapped, so can't be in swap
+		break;
+	case S_UNSWAPPED:
+		// The page has never left main memory, so there is no
+		// swap entry to release
 		break;
 	case S_CLEAN:
 	case S_DIRTY:
