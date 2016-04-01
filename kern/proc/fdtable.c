@@ -51,7 +51,7 @@ add_file_to_fd_table(struct fd_table *fd_table, struct fd_file *file)
 
         lock_acquire(fd_table->fdt_lock);
 
-        for (int i = 0; i < FD_MAX; ++i) {
+        for (int i = 0; i < FD_MAX; i++) {
                 if (fd_table->fdt_table[i] == NULL) {
                         fd_table->fdt_table[i] = file;
                         lock_release(fd_table->fdt_lock);
@@ -89,7 +89,7 @@ clone_fd_table(struct fd_table *src, struct fd_table *dest)
         lock_acquire(src->fdt_lock);
         lock_acquire(dest->fdt_lock);
 
-        for (int i = 0; i < FD_MAX; ++i) {
+        for (int i = 0; i < FD_MAX; i++) {
 
                 if (src->fdt_table[i] != NULL) {
                         dest->fdt_table[i] = src->fdt_table[i];

@@ -58,7 +58,7 @@ cm_capture_slot()
 
 	spinlock_acquire(&coremap.cm_clock_spinlock);
 
-	for (i = 0; i < coremap.cm_size; ++i) {
+	for (i = 0; i < coremap.cm_size; i++) {
 		slot = coremap.cm_clock_hand;
 		entry = coremap.cmes[slot];
 
@@ -100,7 +100,7 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 	i = MIPS_KSEG0 / PAGE_SIZE;
 
 	while (i < coremap.cm_size - nslots) {
-		for (j = 0; j < nslots; ++j) {
+		for (j = 0; j < nslots; j++) {
 			if (coremap.cmes[i+j].cme_state == S_KERNEL) {
 				break;
 			}
@@ -155,7 +155,7 @@ evict_page(cme_id_t cme_id)
         // ipi_tlbshootdown(proc, &shootdown);
 
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
-	pte_acquire_lock(pte, as->as_pt);
+	pt_acquire_lock(as->as_pt, pte);
 
 	if (pte->pte_state == S_INVALID) {
 		panic("Trying to evict an invalid page?!");
@@ -189,11 +189,37 @@ evict_page(cme_id_t cme_id)
 		break;
 	default:
 		// Must be in state S_KERNEL
-		panic("Cannot evict a kernel page");
+		panic("Cannot evict a kernel page\n");
 	}
 
 	swap_out(swap, CME_ID_TO_PA(cme_id));
-	pte_release_lock(pte, as->as_pt);
+	pt_release_lock(as->as_pt, pte);
+}
+
+void
+cm_free_page(cme_id_t cme_id)
+{
+        struct cme *cme;
+
+	cme = &coremap.cmes[cme_id];
+
+	switch(cme->cme_state) {
+	case S_FREE:
+		panic("Cannot free a page that is already free\n");
+	case S_KERNEL:
+		// Kernel memory is directly mapped, so can't be in swap
+		break;
+	case S_CLEAN:
+	case S_DIRTY:
+		swap_free_slot(cme->cme_swap_id);
+		break;
+	}
+
+        cme->cme_state = S_FREE;
+
+	// We do not need to send a TLB shootdown since there is no shared
+	// user memory
+	tlb_remove(OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset));
 }
 
 bool

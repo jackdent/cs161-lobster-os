@@ -8,6 +8,7 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
+#include <pagetable.h>
 #include <coremap.h>
 #include <tlb.h>
 
@@ -23,6 +24,7 @@ alloc_kpages(unsigned npages)
         unsigned i;
         cme_id_t start, curr;
         vaddr_t addr;
+        paddr_t start_pa;
         struct cme cme;
 
         start = cm_capture_slots_for_kernel(npages);
@@ -38,6 +40,7 @@ alloc_kpages(unsigned npages)
                 KASSERT(addr >= MIPS_KSEG0);
 
                 cme = cme_create(kproc->p_pid, addr, S_KERNEL);
+                cme.cme_swap_id = 0;
 
                 coremap.cmes[curr] = cme;
         }
@@ -48,87 +51,103 @@ alloc_kpages(unsigned npages)
 
         cm_release_locks(start, start + npages);
 
-        return CME_ID_TO_PA(start);
+        start_pa = CME_ID_TO_PA(start);
+        return PADDR_TO_KVADDR(start_pa);
 }
 
 void
 free_kpages(vaddr_t addr)
 {
         unsigned int npages, i;
-        paddr_t start;
-        cme_id_t cme_id;
+        paddr_t start_pa;
+        cme_id_t start, end;
 
-        start = KVADDR_TO_PADDR(addr);
-        cme_id = PA_TO_CME_ID(start);
-        npages = coremap.cmes[cme_id].cme_swap_id;
+        start_pa = KVADDR_TO_PADDR(addr);
+        start = PA_TO_CME_ID(start_pa);
+
+        npages = coremap.cmes[start].cme_swap_id;
+        if (npages == 0) {
+                panic("Tried to free a kernel page that did not start the allocation.\n");
+        }
+
+        end = start + npages;
+        cm_acquire_locks(start, end);
 
         for (i = 0; i < npages; i++) {
-                KASSERT(coremap.cmes[i].cme_state == S_KERNEL);
-                coremap.cmes[i].cme_state = S_FREE;
+                KASSERT(coremap.cmes[start + i].cme_state == S_KERNEL);
+                cm_free_page(start + i);
         }
+
+        cm_release_locks(start, end);
 }
 
 void
-alloc_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+alloc_upages(vaddr_t start, unsigned int npages)
 {
         KASSERT(start % PAGE_SIZE == 0);
 
+        struct addrspace *as;
         unsigned int i;
         struct pte *pte;
 
-        for (i = 0; i < npages; ++i) {
-                pte = pagetable_get_pte_from_va(pt, start + (vaddr_t)(i * PAGE_SIZE));
+        as = curproc->p_addrspace;
+
+        for (i = 0; i < npages; i++) {
+                pte = pagetable_get_pte_from_va(as->as_pt, start + (vaddr_t)(i * PAGE_SIZE));
+
+                pt_acquire_lock(as->as_pt, pte);
+                KASSERT(pte->pte_state == S_INVALID);
                 pte->pte_state = S_LAZY;
+                pt_release_lock(as->as_pt, pte);
         }
 }
 
 void
-free_upage(struct pagetable *pt, struct pte *pte, vaddr_t va)
+free_upage(vaddr_t va)
 {
+        struct addrspace *as;
+        struct pte *pte;
         cme_id_t cme_id;
         swap_id_t swap_id;
-        struct cme cme;
 
-        pte_acquire_lock(pte, pt);
+        as = curproc->p_addrspace;
+        pte = pagetable_get_pte_from_va(as->as_pt, va);
+
+        KASSERT(pte != NULL);
+
+        pt_acquire_lock(as->as_pt, pte);
 
         switch (pte->pte_state) {
         case S_INVALID:
+                panic("Tried to free an invalid user page.\n");
         case S_LAZY:
                 break;
         case S_PRESENT:
-                tlb_remove(va);
-
-                cme_id = (cme_id_t)pte->pte_phys_page;
-                cme = coremap.cmes[cme_id];
-
-                KASSERT(cme.cme_state != S_KERNEL);
-
-                coremap.cmes[cme_id].cme_state = S_FREE;
+                cme_id = pte_get_cme_id(pte);
+                cm_acquire_lock(cme_id);
+                cm_free_page(cme_id);
+                cm_release_lock(cme_id);
                 break;
         case S_SWAPPED:
                 swap_id = pte_get_swap_id(pte);
                 swap_free_slot(swap_id);
                 break;
-        };
+        }
 
         pte->pte_state = S_INVALID;
-        pte_release_lock(pte, pt);
+        pt_release_lock(as->as_pt, pte);
 }
 
 void
-free_upages(struct pagetable *pt, vaddr_t start, unsigned int npages)
+free_upages(vaddr_t start, unsigned int npages)
 {
         KASSERT(start % PAGE_SIZE == 0);
 
         unsigned int i;
         vaddr_t va;
-        struct pte *pte;
 
-        for (i = 0; i < npages; ++i) {
+        for (i = 0; i < npages; i++) {
                 va = start + i * PAGE_SIZE;
-                pte = pagetable_get_pte_from_va(pt, va);
-                KASSERT(pte != NULL);
-
-                free_upage(pt, pte, va);
+                free_upage(va);
         }
 }

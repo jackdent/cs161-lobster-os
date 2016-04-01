@@ -55,3 +55,11 @@ struct pte *pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme);
  * copy the page over.
  */
 int pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt);
+
+/*
+ * Returns true iff the attempt to acquire the lock on
+ * the specified page table entry was successful.
+ */
+bool pt_attempt_lock(struct pagetable *pt, struct pte *pte);
+void pt_acquire_lock(struct pagetable *pt, struct pte *pte);
+void pt_release_lock(struct pagetable *pt, struct pte *pte);

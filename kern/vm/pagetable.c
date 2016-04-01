@@ -5,6 +5,8 @@
 #include <proc.h>
 #include <spinlock.h>
 #include <swap.h>
+#include <cme.h>
+#include <pte.h>
 
 struct pagetable *
 pagetable_create(void)
@@ -40,7 +42,7 @@ pagetable_destroy(struct pagetable *pt)
 
 		l2 = pt->pt_l1.l2s[i];
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
-			free_upage(pt, &l2->l2_ptes[j], L1_L2_TO_VA(i, j));
+			free_upage(L1_L2_TO_VA(i, j));
 		}
 
 		kfree(l2);
@@ -101,13 +103,14 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 	struct l2 *old_l2, *new_l2;
 	struct pte *old_pte, *new_pte;
 	swap_id_t old_slot, new_slot;
+	cme_id_t old_cme_id;
 	int i, j;
 
 	old_l1 = &old_pt->pt_l1;
 	new_l1 = &new_pt->pt_l1;
 
 	// Copy over the pages
-	for (i = 0; i < PAGE_TABLE_SIZE; ++i) {
+	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
 		if (old_l1->l2s[i] == NULL) {
 			continue;
 		}
@@ -127,7 +130,7 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 			*new_pte = *old_pte;
 
 			// So old_pte doesn't get evicted
-			pte_acquire_lock(old_pte, old_pt);
+			pt_acquire_lock(old_pt, old_pte);
 
 			switch (old_pte->pte_state) {
 			case S_INVALID:
@@ -135,17 +138,58 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				break;
 			case S_PRESENT:
 				new_slot = pagetable_clone_pte(old_pte, new_pte);
-				swap_out(new_slot, PHYS_PAGE_TO_PA(new_pte->pte_phys_page));
+				old_cme_id = pte_get_cme_id(old_pte);
+				swap_out(new_slot, CME_ID_TO_PA(old_cme_id));
 				new_pte->pte_state = S_SWAPPED;
 				break;
 			case S_SWAPPED:
-				old_slot = old_pte->pte_phys_page;
+				old_slot = pte_get_swap_id(old_pte);
 				new_slot = pagetable_clone_pte(old_pte, new_pte);
 				swap_copy(old_slot, new_slot);
 				break;
 			}
-			pte_release_lock(old_pte, old_pt);
+
+			pt_release_lock(old_pt, old_pte);
 		}
 	}
+
 	return 0;
+}
+
+bool
+pt_attempt_lock(struct pagetable *pt, struct pte *pte)
+{
+	KASSERT(pt != NULL);
+	KASSERT(pte != NULL);
+
+	bool acquired;
+
+	spinlock_acquire(&pt->pt_busy_spinlock);
+	acquired = (pte->pte_busy == 0);
+	pte->pte_busy = 1;
+	spinlock_release(&pt->pt_busy_spinlock);
+
+	return acquired;
+}
+
+void
+pt_acquire_lock(struct pagetable *pt, struct pte *pte)
+{
+	while (1) {
+		if (pt_attempt_lock(pt, pte)) {
+			break;
+		}
+	}
+}
+
+void
+pt_release_lock(struct pagetable *pt, struct pte *pte)
+{
+	KASSERT(pt != NULL);
+	KASSERT(pte != NULL);
+
+	spinlock_acquire(&pt->pt_busy_spinlock);
+	KASSERT(pte->pte_busy == 1);
+	pte->pte_busy = 0;
+	spinlock_release(&pt->pt_busy_spinlock);
 }

@@ -25,7 +25,7 @@ tlb_add(vaddr_t va, struct pte *pte)
 	cme_id_t cme_id;
 	struct cme cme;
 
-	cme_id = (cme_id_t)pte->pte_phys_page;
+	cme_id = pte_get_cme_id(pte);
 
 	cm_acquire_lock(cme_id);
 	cme = coremap.cmes[cme_id];
@@ -59,7 +59,7 @@ tlb_make_writeable(vaddr_t va, struct pte *pte)
 	cme_id_t cme_id;
 	int index;
 
-	cme_id = (cme_id_t)pte->pte_phys_page;
+        cme_id = pte_get_cme_id(pte);
 
 	cm_acquire_lock(cme_id);
 	coremap.cmes[cme_id].cme_state = S_DIRTY;
@@ -110,7 +110,7 @@ tlb_flush()
 
 	curcpu->c_tlb_lra = 0;
 
-	for (i = 0; i < NUM_TLB; ++i) {
+	for (i = 0; i < NUM_TLB; i++) {
 		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 	}
 

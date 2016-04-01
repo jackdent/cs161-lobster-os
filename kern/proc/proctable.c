@@ -42,7 +42,7 @@ assign_proc_to_pid(struct proc *proc)
 
         spinlock_acquire(&proc_table.pt_spinlock);
 
-        for (pid_t i = 0; i < PID_MAX; ++i) {
+        for (pid_t i = 0; i < PID_MAX; i++) {
                 pt_proc = proc_table.pt_table[i];
 
                 if (pt_proc != NULL
