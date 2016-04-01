@@ -25,7 +25,12 @@ enum cme_state {
         // The page is owned by the kernel
         S_KERNEL,
 
-        // The page is not owned by the kernel
+        // The page is not owned by the kernel,
+        // and has never been swapped to disk
+        S_UNSWAPPED,
+
+        // The page is not owned by the kernel,
+        // and has been swapped to disk in the past
         S_DIRTY,
         S_CLEAN
 };
@@ -37,7 +42,7 @@ struct cme {
         unsigned int cme_swap_id:24;
         unsigned int cme_busy:1;
         unsigned int cme_recent:1;
-        enum cme_state cme_state:2;
+        enum cme_state cme_state:3;
 };
 
 struct cme cme_create(pid_t pid, vaddr_t va, enum cme_state state);

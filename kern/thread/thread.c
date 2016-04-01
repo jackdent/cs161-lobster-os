@@ -58,9 +58,7 @@
 #define THREAD_STACK_MAGIC 0xbaadf00d
 
 /* Master array of CPUs. */
-DECLARRAY(cpu, static __UNUSED inline);
-DEFARRAY(cpu, static __UNUSED inline);
-static struct cpuarray allcpus;
+struct cpuarray allcpus;
 
 /* Used to wait for secondary CPUs to come online. */
 static struct semaphore *cpu_startup_sem;

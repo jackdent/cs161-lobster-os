@@ -1,3 +1,4 @@
+#include <cme.h>
 #include <swap.h>
 
 #define PA_TO_PHYS_PAGE(pa) (pa >> 12)
@@ -8,6 +9,7 @@
 #define LOWER_SWAP_BITS 5
 #define SWAP_PHYS_PAGE_MASK(swap_id) (swap_id >> LOWER_SWAP_BITS)
 #define SWAP_BITS_MASK(swap_id) (swap_id & ((1 << LOWER_SWAP_BITS) - 1))
+#define SWAP_ID(upper, lower) ((upper << LOWER_SWAP_BITS) | lower)
 
 enum pte_state {
         // The pte is invalid
@@ -33,20 +35,16 @@ struct pte {
         enum pte_state pte_state:2;
 };
 
-paddr_t pte_va_to_pa(struct pte *pte, vaddr_t va);
+paddr_t pte_get_pa(struct pte *pte, vaddr_t va);
 
 /*
- * Extract swap offset from the seperate bit fields in a pte.
+ * Extract the cme_id from the overloaded pte_phy_page field.
+ */
+cme_id_t pte_get_cme_id(struct pte *pte);
+void pte_set_cme_id(struct pte *pte, cme_id_t cme_id);
+
+/*
+ * Extract the swap offset from the overloaded pte_phys_page and swap_tail.
  */
 swap_id_t pte_get_swap_id(struct pte *pte);
 void pte_set_swap_id(struct pte *pte, swap_id_t swap_id);
-
-/*
- * Returns true iff the attempt to acquire the lock on
- * the specified page map entry was successful.
- */
-struct pagetable; // Forward declaration for locking
-
-bool pte_attempt_lock(struct pte *pte, struct pagetable *pt);
-void pte_acquire_lock(struct pte *pte, struct pagetable *pt);
-void pte_release_lock(struct pte *pte, struct pagetable *pt);

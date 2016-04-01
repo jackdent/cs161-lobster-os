@@ -31,9 +31,12 @@
 #include <kern/errno.h>
 #include <lib.h>
 #include <addrspace.h>
+#include <pagetable.h>
 #include <current.h>
 #include <proc.h>
-#include <tlb.h>
+
+// Forward declaration, implemented in vm/tlb.c
+void tlb_flush(void);
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -86,13 +89,14 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	new->as_stack_end = old->as_stack_end;
 
 	err = pagetable_clone(old->as_pt, new->as_pt);
-	if (new == NULL) {
+	if (err) {
 		goto err2;
 	}
 
 	*ret = new;
 
 	return 0;
+
 
 	err2:
 		as_destroy(new);
@@ -136,6 +140,27 @@ as_deactivate(void)
 	 */
 }
 
+static
+vaddr_t
+va_round_down_to_page(vaddr_t va)
+{
+        return va - va % PAGE_SIZE;
+}
+
+static
+vaddr_t
+va_round_up_to_page(vaddr_t va)
+{
+	vaddr_t rounded_down;
+
+	rounded_down = va_round_down_to_page(va);
+	if (rounded_down == va) {
+		return va;
+	}
+
+        return rounded_down + PAGE_SIZE;
+}
+
 /*
  * Set up a segment at virtual address VADDR of size MEMSIZE. The
  * segment in memory extends from VADDR up to (but not including)
@@ -155,25 +180,26 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	(void)writeable;
 	(void)executable;
 
-	int stack_pages;
+
+	vaddr_t region_start;
+	vaddr_t region_end;
+	unsigned int n_region_pages;
 
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
-	memsize += vaddr & (~(vaddr_t)PAGE_FRAME);
-	vaddr &= PAGE_FRAME;
-
-	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
+	region_start = va_round_up_to_page(vaddr);
+	region_end = va_round_up_to_page(region_start + memsize);
 
 	// Update heap bounds
 	if (as->as_heap_base < (vaddr + memsize)) {
-		as->as_heap_base = vaddr + memsize;
-		as->as_heap_end = as->as_heap_base;
+		as->as_heap_base = region_end;
+		as->as_heap_end = region_end;
 	}
 
-	// Add lazy entries to our pagetable, so that we allocate
-	// stack pages as they are needed.
-	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
-	alloc_upages(as->as_pt, as->as_stack_end, stack_pages);
+	// Add lazy entries to our pagetable, so that we region
+	// pages as they are needed.
+	n_region_pages = (region_end - region_start) / PAGE_SIZE;
+	alloc_upages(region_start, n_region_pages);
 
 	return 0;
 }
@@ -211,7 +237,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	// Add lazy entries to our pagetable, so that we allocate
 	// stack pages as they are needed.
 	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
-	alloc_upages(as->as_pt, as->as_stack_end, stack_pages);
+	alloc_upages(as->as_stack_end, stack_pages);
 
 	return 0;
 }
@@ -220,24 +246,4 @@ bool
 va_in_as_bounds(struct addrspace *as, vaddr_t va)
 {
 	return va < as->as_heap_end || va > as->as_stack_end;
-}
-
-static
-vaddr_t
-va_round_down_to_page(vaddr_t va)
-{
-        return va - va % PAGE_SIZE;
-}
-
-static
-__attribute__((unused)) vaddr_t
-va_round_up_to_page(vaddr_t va)
-{
-	vaddr_t rounded_down;
-
-	rounded_down = va_round_down_to_page(va);
-	if (rounded_down == va) {
-		return va;
-	}
-        return rounded_down + PAGE_SIZE;
 }

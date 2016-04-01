@@ -3,11 +3,21 @@
 #include <coremap.h>
 #include <machine/vm.h>
 #include <swap.h>
+#include <synch.h>
 #include <proctable.h>
+#include <pagetable.h>
 #include <addrspace.h>
+#include <thread.h>
+#include <current.h>
+#include <array.h>
+#include <cpu.h>
+
+// Global coremap struct
+struct cm coremap;
 
 // Forward declaration, implemented in vm/tlb.c
 void tlb_remove(vaddr_t va);
+void tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable);
 
 void
 cm_init()
@@ -17,7 +27,7 @@ cm_init()
 
 	ram_size = ram_getsize();
 	ncmes = (ram_size / PAGE_SIZE);
-	ncoremap_bytes = ncmes * sizeof(struct cme);
+	ncoremap_bytes = ncmes * sizeof(struct cme);;
 	ncoremap_pages = ROUNDUP(ncoremap_bytes, PAGE_SIZE);
 
 	start = ram_stealmem(ncoremap_pages);
@@ -36,7 +46,7 @@ cm_init()
 	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
 
 	// Set the coremap as owned by the kernel
-	for (i = 0; i < ncmes; i++) {
+	for (i = 0; i < ncoremap_pages; i++) {
 		coremap.cmes[i] = cme_create(0, PHYS_PAGE_TO_PA(i), S_KERNEL);
 	        coremap.cmes[i].cme_busy = 0;
 	}
@@ -58,7 +68,7 @@ cm_capture_slot()
 
 	spinlock_acquire(&coremap.cm_clock_spinlock);
 
-	for (i = 0; i < coremap.cm_size; ++i) {
+	for (i = 0; i < coremap.cm_size; i++) {
 		slot = coremap.cm_clock_hand;
 		entry = coremap.cmes[slot];
 
@@ -100,7 +110,7 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 	i = MIPS_KSEG0 / PAGE_SIZE;
 
 	while (i < coremap.cm_size - nslots) {
-		for (j = 0; j < nslots; ++j) {
+		for (j = 0; j < nslots; j++) {
 			if (coremap.cmes[i+j].cme_state == S_KERNEL) {
 				break;
 			}
@@ -120,6 +130,35 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 	return 0;
 }
 
+static
+void
+cm_tlb_shootdown(vaddr_t va, cme_id_t cme_id, enum tlbshootdown_type type)
+{
+	unsigned int numcpus, i, j;
+	struct cpu *cpu;
+
+	numcpus = cpuarray_num(&allcpus);
+
+	lock_acquire(tlbshootdown.ts_lock);
+	tlbshootdown.ts_flushed_cme_id = cme_id;
+	tlbshootdown.ts_flushed_va = va;
+	tlbshootdown.ts_type = type;
+
+	for (i = 0; i < cpuarray_num(&allcpus); i++) {
+		cpu = cpuarray_get(&allcpus, i);
+		if (cpu != curcpu->c_self) {
+			ipi_tlbshootdown(cpu, &tlbshootdown);
+		}
+	}
+
+	for (j = 0; j < numcpus; j++) {
+		// Will reset the semaphore to 0
+		P(tlbshootdown.ts_sem);
+	}
+
+	lock_release(tlbshootdown.ts_lock);
+}
+
 /*
  * If the core map entry is free, NOOP. Otherwise, write the page to
  * disk if it is dirty, or if it has never left main memory before.
@@ -128,14 +167,15 @@ cm_capture_slots_for_kernel(unsigned int nslots)
  * indicate that it is no longer present in main memory.
  */
 void
-evict_page(cme_id_t cme_id)
+cm_evict_page(cme_id_t cme_id)
 {
         struct addrspace *as;
         struct pte *pte;
         struct proc *proc;
-        struct tlbshootdown shootdown;
         struct cme *cme;
-        swap_id_t swap;
+        vaddr_t va;
+        paddr_t page;
+        swap_id_t swap_id;
 
 	cme = &coremap.cmes[cme_id];
 
@@ -143,57 +183,105 @@ evict_page(cme_id_t cme_id)
 		return;
 	}
 
-        proc = proc_table.pt_table[cme->cme_pid];
+	proc = proc_table.pt_table[cme->cme_pid];
+	KASSERT(proc != NULL);
+
         as = proc->p_addrspace;
-
-	tlb_remove(OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset));
-
-        // TODO: Shootdown the process if S_FREE or S_DIRTY
-        // Make sure memory isn't freed until all complete
-        shootdown.ts_flushed_page = cme_id;
-        (void)shootdown;
-        // ipi_tlbshootdown(proc, &shootdown);
+	KASSERT(as != NULL);
 
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
-	pte_acquire_lock(pte, as->as_pt);
+	KASSERT(pte != NULL);
 
-	if (pte->pte_state == S_INVALID) {
-		panic("Trying to evict an invalid page?!");
-	}
 
-	pte->pte_state = S_SWAPPED;
+	pt_acquire_lock(as->as_pt, pte);
+	KASSERT(pte->pte_state == S_PRESENT);
 
-	switch(cme->cme_state) {
-	case S_CLEAN:
+	page = CME_ID_TO_PA(cme_id);
+	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
+
+	tlb_remove(va);
+	cm_tlb_shootdown(va, cme_id, TS_EVICT);
+
+	switch (cme->cme_state) {
+	case S_KERNEL:
+		panic("Cannot evict a kernel page\n");
+	case S_UNSWAPPED:
 		// If this is the first time we're writing the page
 		// out to disk, we grab a free swap entry, and assign
 		// its index to the page table entry. The swap id will
 		// be stable for this page for the remainder of its
 		// lifetime.
-		if (cme->cme_swap_id != pte_get_swap_id(pte)) {
-			swap = swap_capture_slot();
-			pte_set_swap_id(pte, swap);
-		}
-		else {
-			return;
-		}
-
+		swap_id = swap_capture_slot();
+		pte_set_swap_id(pte, swap_id);
+		swap_out(swap_id, page);
+	case S_CLEAN:
 		break;
 	case S_DIRTY:
-		swap = cme->cme_swap_id;
+		swap_id = cme->cme_swap_id;
 
-		if (swap != pte_get_swap_id(pte)) {
+		if (swap_id != pte_get_swap_id(pte)) {
 			panic("Unstable swap id on a dirty page!\n");
 		}
 
+		swap_out(swap_id, page);
 		break;
-	default:
-		// Must be in state S_KERNEL
-		panic("Cannot evict a kernel page");
 	}
 
-	swap_out(swap, CME_ID_TO_PA(cme_id));
-	pte_release_lock(pte, as->as_pt);
+	cme->cme_state = S_CLEAN;
+	pte->pte_state = S_SWAPPED;
+	pt_release_lock(as->as_pt, pte);
+}
+
+/*
+ * Mark the TLB entry as unwriteable, write the page out to disk,
+ * and mark the core map entry as clean.
+ */
+void
+cm_clean_page(cme_id_t cme_id)
+{
+	struct cme *cme;
+	vaddr_t va;
+
+	cme = &coremap.cmes[cme_id];
+	KASSERT(cme->cme_state == S_DIRTY);
+
+	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
+
+	tlb_set_writeable(va, cme_id, false);
+	cm_tlb_shootdown(va, cme_id, TS_CLEAN);
+
+	cme->cme_state = S_CLEAN;
+	swap_out(cme->cme_swap_id, CME_ID_TO_PA(cme_id));
+}
+
+void
+cm_free_page(cme_id_t cme_id)
+{
+	struct cme *cme;
+
+	cme = &coremap.cmes[cme_id];
+
+	// We do not need to send a TLB shootdown since there is no shared
+	// user memory
+	tlb_remove(OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset));
+
+	switch(cme->cme_state) {
+	case S_FREE:
+		panic("Cannot free a page that is already free\n");
+	case S_KERNEL:
+		// Kernel memory is directly mapped, so can't be in swap
+		break;
+	case S_UNSWAPPED:
+		// The page has never left main memory, so there is no
+		// swap entry to release
+		break;
+	case S_CLEAN:
+	case S_DIRTY:
+		swap_free_slot(cme->cme_swap_id);
+		break;
+	}
+
+	cme->cme_state = S_FREE;
 }
 
 bool
@@ -234,8 +322,9 @@ cm_release_lock(cme_id_t i)
 
 void
 cm_acquire_locks(cme_id_t start, cme_id_t end) {
-	KASSERT(start < end);
+	KASSERT(start <= end);
 	KASSERT(start < coremap.cm_size);
+	KASSERT(end < coremap.cm_size);
 
 	while (start < end) {
 		cm_acquire_lock(start);
@@ -245,7 +334,8 @@ cm_acquire_locks(cme_id_t start, cme_id_t end) {
 
 void
 cm_release_locks(cme_id_t start, cme_id_t end) {
-	KASSERT(start < end);
+	KASSERT(start <= end);
+	KASSERT(start < coremap.cm_size);
 	KASSERT(end < coremap.cm_size);
 
 	while (start < end) {

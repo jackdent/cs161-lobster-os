@@ -138,6 +138,10 @@ struct thread {
 #define THREADINLINE INLINE
 #endif
 
+DECLARRAY(cpu, THREADINLINE);
+DEFARRAY(cpu, THREADINLINE);
+extern struct cpuarray allcpus;
+
 DECLARRAY(thread, THREADINLINE);
 DEFARRAY(thread, THREADINLINE);
 

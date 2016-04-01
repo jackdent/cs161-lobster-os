@@ -9,8 +9,7 @@ struct cm {
         cme_id_t cm_clock_hand;
 };
 
-// Global coremap
-struct cm coremap;
+extern struct cm coremap;
 
 void cm_init(void);
 
@@ -40,7 +39,21 @@ cme_id_t cm_capture_slots_for_kernel(unsigned int nslots);
  *
  * Assumes that the caller holds the core map entry lock.
  */
-void evict_page(cme_id_t cme_id);
+void cm_evict_page(cme_id_t cme_id);
+
+/*
+ * Writes a dirty page from main memory to disk.
+ *
+ * Assumes that the caller holds the core map entry lock.
+ */
+void cm_clean_page(cme_id_t cme_id);
+
+/*
+ * Frees the page in the coremap.
+ *
+ * Assumes that the caller holds the core map entry lock.
+ */
+void cm_free_page(cme_id_t cme_id);
 
 /*
  * Returns true iff the attempt to acquire the lock on

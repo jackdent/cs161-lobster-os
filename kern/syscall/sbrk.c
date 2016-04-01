@@ -42,9 +42,9 @@ sys_sbrk(int32_t amount, int32_t *retval)
         }
 
         if (new_break > old_break) {
-                alloc_upages(as->as_pt, old_break, npages);
+                alloc_upages(old_break, npages);
         } else {
-                free_upages(as->as_pt, new_break, npages);
+                free_upages(new_break, npages);
         }
 
         as->as_heap_end = new_break;
