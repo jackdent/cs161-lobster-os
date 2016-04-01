@@ -132,19 +132,19 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 
 static
 void
-cm_tlb_shootdown(cme_id_t cme_id, vaddr_t va, enum tlbshootdown_type type)
+cm_tlb_shootdown(vaddr_t va, cme_id_t cme_id, enum tlbshootdown_type type)
 {
-        unsigned int numcpus, i, j;
-        struct cpu *cpu;
+	unsigned int numcpus, i, j;
+	struct cpu *cpu;
 
-        numcpus = cpuarray_num(&allcpus);
+	numcpus = cpuarray_num(&allcpus);
 
 	lock_acquire(tlbshootdown.ts_lock);
 	tlbshootdown.ts_flushed_cme_id = cme_id;
 	tlbshootdown.ts_flushed_va = va;
 	tlbshootdown.ts_type = type;
 
-	for (i=0; i < cpuarray_num(&allcpus); i++) {
+	for (i = 0; i < cpuarray_num(&allcpus); i++) {
 		cpu = cpuarray_get(&allcpus, i);
 		if (cpu != curcpu->c_self) {
 			ipi_tlbshootdown(cpu, &tlbshootdown);
@@ -183,7 +183,7 @@ cm_evict_page(cme_id_t cme_id)
 		return;
 	}
 
-        proc = proc_table.pt_table[cme->cme_pid];
+	proc = proc_table.pt_table[cme->cme_pid];
 	KASSERT(proc != NULL);
 
         as = proc->p_addrspace;
@@ -199,7 +199,7 @@ cm_evict_page(cme_id_t cme_id)
 	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
 
 	tlb_remove(va);
-	cm_tlb_shootdown(cme_id, va, TS_EVICT);
+	cm_tlb_shootdown(va, cme_id, TS_EVICT);
 
 	switch (cme->cme_state) {
 	case S_KERNEL:
@@ -239,7 +239,7 @@ void
 cm_clean_page(cme_id_t cme_id)
 {
 	struct cme *cme;
-        vaddr_t va;
+	vaddr_t va;
 
 	cme = &coremap.cmes[cme_id];
 	KASSERT(cme->cme_state == S_DIRTY);
@@ -247,7 +247,7 @@ cm_clean_page(cme_id_t cme_id)
 	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
 
 	tlb_set_writeable(va, cme_id, false);
-	cm_tlb_shootdown(cme_id, va, TS_CLEAN);
+	cm_tlb_shootdown(va, cme_id, TS_CLEAN);
 
 	cme->cme_state = S_CLEAN;
 	swap_out(cme->cme_swap_id, CME_ID_TO_PA(cme_id));
@@ -259,6 +259,10 @@ cm_free_page(cme_id_t cme_id)
 	struct cme *cme;
 
 	cme = &coremap.cmes[cme_id];
+
+	// We do not need to send a TLB shootdown since there is no shared
+	// user memory
+	tlb_remove(OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset));
 
 	switch(cme->cme_state) {
 	case S_FREE:
@@ -276,11 +280,7 @@ cm_free_page(cme_id_t cme_id)
 		break;
 	}
 
-        cme->cme_state = S_FREE;
-
-	// We do not need to send a TLB shootdown since there is no shared
-	// user memory
-	tlb_remove(OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset));
+	cme->cme_state = S_FREE;
 }
 
 bool
@@ -321,8 +321,9 @@ cm_release_lock(cme_id_t i)
 
 void
 cm_acquire_locks(cme_id_t start, cme_id_t end) {
-	KASSERT(start < end);
+	KASSERT(start <= end);
 	KASSERT(start < coremap.cm_size);
+	KASSERT(end < coremap.cm_size);
 
 	while (start < end) {
 		cm_acquire_lock(start);
@@ -332,7 +333,8 @@ cm_acquire_locks(cme_id_t start, cme_id_t end) {
 
 void
 cm_release_locks(cme_id_t start, cme_id_t end) {
-	KASSERT(start < end);
+	KASSERT(start <= end);
+	KASSERT(start < coremap.cm_size);
 	KASSERT(end < coremap.cm_size);
 
 	while (start < end) {

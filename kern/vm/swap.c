@@ -42,13 +42,13 @@ swap_id_t
 swap_capture_slot(void)
 {
 	swap_id_t index;
-	int result;
+	int err;
 
 	lock_acquire(swap_map_lock);
-	result = bitmap_alloc(swap_map, &index);
+	err = bitmap_alloc(swap_map, &index);
 	lock_release(swap_map_lock);
 
-	if (result) {
+	if (err) {
 		panic("Ran out of swap space!");
 	} else {
 		return index;
@@ -70,23 +70,23 @@ swap_free_slot(swap_id_t slot)
 // Helpers
 static
 int
-write_page_to_disk(void *page, swap_id_t disk_offset)
+write_page_to_disk(void *page, swap_id_t swap_index)
 {
 	struct iovec iov;
 	struct uio u;
 
-	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, disk_offset, UIO_WRITE);
+	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, swap_index * PAGE_SIZE, UIO_WRITE);
 	return VOP_WRITE(swap_file, &u);
 }
 
 static
 int
-read_page_from_disk(void *page, swap_id_t disk_offset)
+read_page_from_disk(void *page, swap_id_t swap_index)
 {
 	struct iovec iov;
 	struct uio u;
 
-	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, disk_offset, UIO_READ);
+	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, swap_index * PAGE_SIZE, UIO_READ);
 	return VOP_READ(swap_file, &u);
 }
 
@@ -94,10 +94,10 @@ read_page_from_disk(void *page, swap_id_t disk_offset)
 void
 swap_out(swap_id_t swap_index, paddr_t src)
 {
-	int ret;
+	int err;
 
-	ret = write_page_to_disk((void*)PADDR_TO_KVADDR(src), swap_index * PAGE_SIZE);
-	if (!ret) {
+	err = write_page_to_disk((void*)PADDR_TO_KVADDR(src), swap_index);
+	if (err != 0) {
 		// Nothing else we can really do here
 		panic("Disk error when reading from swap to RAM\n");
 	}
@@ -107,11 +107,11 @@ swap_out(swap_id_t swap_index, paddr_t src)
 void
 swap_in(swap_id_t swap_index, paddr_t dest)
 {
-	int ret;
+	int err;
 
-	ret = read_page_from_disk((void *)PADDR_TO_KVADDR(dest), swap_index * PAGE_SIZE);
+	err = read_page_from_disk((void *)PADDR_TO_KVADDR(dest), swap_index);
 
-	if (!ret) {
+	if (err != 0) {
 		// Nothing else we can really do here
 		panic("Disk error when writing from RAM to swap\n");
 	}
@@ -120,21 +120,21 @@ swap_in(swap_id_t swap_index, paddr_t dest)
 int
 swap_copy(swap_id_t from, swap_id_t to)
 {
-	int ret;
-	void* buf;
+	int err;
+	void *buf;
 
 	buf = kmalloc(PAGE_SIZE);
 	if (buf == NULL) {
 		return ENOMEM;
 	}
 
-	ret = read_page_from_disk((void *)PADDR_TO_KVADDR(buf), from * PAGE_SIZE);
-	if (!ret) {
+	err = read_page_from_disk((void *)PADDR_TO_KVADDR(buf), from);
+	if (err != 0) {
 		panic("Disk error when reading from swap to RAM\n");
 	}
 
-	ret = write_page_to_disk((void *)PADDR_TO_KVADDR(buf), to * PAGE_SIZE);
-	if (!ret) {
+	err = write_page_to_disk((void *)PADDR_TO_KVADDR(buf), to);
+	if (err != 0) {
 		panic("Disk error when writing from RAM to swap\n");
 	}
 

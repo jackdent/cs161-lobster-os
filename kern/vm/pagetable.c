@@ -35,11 +35,11 @@ pagetable_destroy(struct pagetable *pt)
 
 	// Walk through all entries and free them
 	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
-		if (pt->pt_l1.l2s[i] == NULL) {
+		l2 = pt->pt_l1.l2s[i];
+		if (l2 == NULL) {
 			continue;
 		}
 
-		l2 = pt->pt_l1.l2s[i];
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
 			free_upage(L1_L2_TO_VA(i, j));
 		}
@@ -52,7 +52,7 @@ pagetable_destroy(struct pagetable *pt)
 }
 
 struct pte *
-pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, unsigned l2_offset)
+pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, unsigned int l2_offset)
 {
 	struct l2 *l2;
 	struct pte *pte;
@@ -63,9 +63,7 @@ pagetable_get_pte_from_offsets(struct pagetable *pt, unsigned int l1_offset, uns
 	}
 
 	pte = &l2->l2_ptes[l2_offset];
-	if (pte->pte_phys_page == 0) {
-		return NULL;
-	}
+
 	return pte;
 }
 
@@ -83,16 +81,14 @@ pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme)
 
 static
 swap_id_t
-pagetable_clone_pte(struct pte *old_pte, struct pte *new_pte)
+pagetable_assign_swap_slot_to_pte(struct pte *pte)
 {
-	swap_id_t new_slot;
+	swap_id_t slot;
 
-	pte_get_swap_id(old_pte);
-	new_slot = swap_capture_slot();
+	slot = swap_capture_slot();
+	pte_set_swap_id(pte, slot);
 
-	pte_set_swap_id(new_pte, new_slot);
-
-	return new_slot;
+	return slot;
 }
 
 int
@@ -126,24 +122,24 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 			old_pte = &old_l2->l2_ptes[j];
 			new_pte = &new_l2->l2_ptes[j];
 
-			*new_pte = *old_pte;
-
 			// So old_pte doesn't get evicted
 			pt_acquire_lock(old_pt, old_pte);
+
+			*new_pte = *old_pte;
 
 			switch (old_pte->pte_state) {
 			case S_INVALID:
 			case S_LAZY:
 				break;
 			case S_PRESENT:
-				new_slot = pagetable_clone_pte(old_pte, new_pte);
+				new_slot = pagetable_assign_swap_slot_to_pte(new_pte);
 				old_cme_id = pte_get_cme_id(old_pte);
 				swap_out(new_slot, CME_ID_TO_PA(old_cme_id));
 				new_pte->pte_state = S_SWAPPED;
 				break;
 			case S_SWAPPED:
+				new_slot = pagetable_assign_swap_slot_to_pte(new_pte);
 				old_slot = pte_get_swap_id(old_pte);
-				new_slot = pagetable_clone_pte(old_pte, new_pte);
 				swap_copy(old_slot, new_slot);
 				break;
 			}

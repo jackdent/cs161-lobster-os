@@ -4,8 +4,11 @@
 #include <spinlock.h>
 
 paddr_t
-pte_va_to_pa(struct pte *pte, vaddr_t va)
+pte_get_pa(struct pte *pte, vaddr_t va)
 {
+	KASSERT(pte);
+	KASSERT(pte->pte_state == S_PRESENT);
+
 	return PHYS_PAGE_TO_PA(pte->pte_phys_page) & OFFSET_MASK(va);
 }
 
@@ -32,7 +35,6 @@ pte_get_swap_id(struct pte *pte)
 	unsigned int upper, lower;
 
 	KASSERT(pte);
-	KASSERT(pte->pte_state == S_SWAPPED);
 
 	upper = pte->pte_phys_page;
 	lower = pte->pte_swap_tail;

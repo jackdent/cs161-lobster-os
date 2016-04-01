@@ -24,24 +24,27 @@ tlb_add(vaddr_t va, struct pte *pte)
 	uint32_t entryhi, entrylo, lra;
 	int spl;
 	cme_id_t cme_id;
-	struct cme cme;
+	struct cme *cme;
 
+        KASSERT(pte->pte_state == S_PRESENT);
 	cme_id = pte_get_cme_id(pte);
 
 	cm_acquire_lock(cme_id);
-	cme = coremap.cmes[cme_id];
-
-	if (cme.cme_state == S_FREE) {
-		panic("Tried to add a free page to the TLB\n");
-	}
+	cme = &coremap.cmes[cme_id];
 
 	entryhi = VA_TO_VPAGE(va);
 
-	if (cme.cme_state == S_DIRTY) {
-		entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
-	} else {
+        switch (cme->cme_state) {
+        case S_UNSWAPPED:
+        case S_CLEAN:
 		entrylo = CME_ID_TO_PPAGE(cme_id);
-	}
+                break;
+        case S_DIRTY:
+                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+                break;
+        default:
+                panic("Tried to add a page that isn't in physical memory to the TLB\n");
+        }
 
 	lra = curthread->t_cpu->c_tlb_lra;
 	spl = splhigh();
@@ -58,24 +61,42 @@ void
 tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
 {
 	uint32_t entryhi, entrylo;
-	int spl;
-	int index;
+        struct cme *cme;
+        int spl;
+        int index;
+
+        cm_acquire_lock(cme_id);
+        cme = &coremap.cmes[cme_id];
 
 	entryhi = VA_TO_VPAGE(va);
-	spl = splhigh();
-	index = tlb_probe(entryhi, 0);
 
-	if (index < 0) {
-		panic("Tried to mark a non-existent TLB entry as dirty\n");
-	}
+        switch (cme->cme_state) {
+        case S_UNSWAPPED:
+        case S_CLEAN:
+                if (writeable) {
+                        cme->cme_state = S_DIRTY;
+                        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+                } else {
+                        entrylo = CME_ID_TO_PPAGE(cme_id);
+                }
 
-	if (writeable) {
-		entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
-	} else {
-		entrylo = CME_ID_TO_PPAGE(cme_id);
-	}
+                break;
+        case S_DIRTY:
+                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+                break;
+        default:
+                panic("Tried to update the TLB write status on a page that isn't in physical memory\n");
+        }
+
+        spl = splhigh();
+        index = tlb_probe(entryhi, 0);
+
+        if (index < 0) {
+                panic("Tried to mark a non-existent TLB entry as dirty\n");
+        }
 
 	tlb_write(entryhi, entrylo, (uint32_t)index);
+
 	splx(spl);
 }
 
@@ -142,15 +163,14 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
  * If the page is already in memory, NOOP. Otherwise, find a slot
  * in the core map and assign it to the page table entry.
  *
- * If the page is in the lazy state, we're done. Otherwise,
- * the page was in the swap space on disk, so we copy
- * it into physical memory and set its swap_id on our core map
- * entry.
+ * If the page was in the swap space on disk, we copy it into
+ * physical memory and set its swap_id on our core map entry.
  *
  * Finally, we set the present bit to indicate the page
  * is now accessible in main memory.
  *
- * Assumes that the caller has validated the virtual address.
+ * Assumes that the caller has validated the virtual address, and
+ * that it holds the pte lock.
  */
 static
 void
@@ -161,30 +181,33 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
 	struct cme cme;
 	cme_id_t slot;
 
-	cme = cme_create(curproc->p_pid, va, S_UNSWAPPED);
-
-	switch(pte->pte_state) {
-	case S_PRESENT:
-		return;
-	case S_INVALID:
+        if (pte->pte_state == S_INVALID) {
 		panic("Cannot ensure than an invalid pte is in memory\n");
-	case S_LAZY:
-		break;
-	case S_SWAPPED:
-		slot = cm_capture_slot();
-
-		cm_evict_page(slot);
-
-                cme.cme_state= S_CLEAN;
-		cme.cme_swap_id = pte_get_swap_id(pte);
-		swap_in(cme.cme_swap_id, CME_ID_TO_PA(slot));
-
-		break;
 	}
 
-        pte->pte_state = S_PRESENT;
+        if (pte->pte_state == S_PRESENT) {
+                return;
+        }
+
+        slot = cm_capture_slot();
+        cm_evict_page(slot);
+
+        switch(pte->pte_state) {
+        case S_LAZY:
+                cme = cme_create(curproc->p_pid, va, S_UNSWAPPED);
+                break;
+        case S_SWAPPED:
+                cme = cme_create(curproc->p_pid, va, S_CLEAN);
+                cme.cme_swap_id = pte_get_swap_id(pte);
+
+                swap_in(cme.cme_swap_id, CME_ID_TO_PA(slot));
+                break;
+        }
+
         coremap.cmes[slot] = cme;
         cm_release_lock(slot);
+
+        pte->pte_state = S_PRESENT;
 }
 
 /*
@@ -225,6 +248,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 return EFAULT;
         }
 
+        pt_acquire_lock(as->as_pt, pte);
+
         ensure_in_memory(pte, faultaddress);
 
         switch (faulttype) {
@@ -241,6 +266,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 panic("Unknown TLB fault type\n");
                 break;
         }
+
+        pt_release_lock(as->as_pt, pte);
 
         return 0;
 }

@@ -81,19 +81,22 @@ free_kpages(vaddr_t addr)
         start_pa = KVADDR_TO_PADDR(addr);
         start = PA_TO_CME_ID(start_pa);
 
+        cm_acquire_lock(start);
+
         npages = coremap.cmes[start].cme_swap_id;
         if (npages == 0) {
                 panic("Tried to free a kernel page that did not start the allocation.\n");
         }
 
         end = start + npages;
-        cm_acquire_locks(start, end);
+        cm_acquire_locks(start + 1, end);
 
         for (i = 0; i < npages; i++) {
                 KASSERT(coremap.cmes[start + i].cme_state == S_KERNEL);
                 cm_free_page(start + i);
         }
 
+        cm_release_lock(start);
         cm_release_locks(start, end);
 }
 
@@ -108,10 +111,13 @@ alloc_upages(vaddr_t start, unsigned int npages)
         vaddr_t va;
 
         as = curproc->p_addrspace;
+        KASSERT(as != NULL);
 
         for (i = 0; i < npages; i++) {
                 va =  start + i * PAGE_SIZE;
+
                 pte = pagetable_get_pte_from_va(as->as_pt, va);
+                KASSERT(pte != NULL);
 
                 pt_acquire_lock(as->as_pt, pte);
                 KASSERT(pte->pte_state == S_INVALID);
@@ -129,8 +135,9 @@ free_upage(vaddr_t va)
         swap_id_t swap_id;
 
         as = curproc->p_addrspace;
-        pte = pagetable_get_pte_from_va(as->as_pt, va);
+        KASSERT(as != NULL);
 
+        pte = pagetable_get_pte_from_va(as->as_pt, va);
         KASSERT(pte != NULL);
 
         pt_acquire_lock(as->as_pt, pte);

@@ -35,7 +35,7 @@ struct pte {
         enum pte_state pte_state:2;
 };
 
-paddr_t pte_va_to_pa(struct pte *pte, vaddr_t va);
+paddr_t pte_get_pa(struct pte *pte, vaddr_t va);
 
 /*
  * Extract the cme_id from the overloaded pte_phy_page field.
