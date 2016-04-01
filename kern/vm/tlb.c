@@ -1,5 +1,6 @@
 #include <cme.h>
 #include <coremap.h>
+#include <addrspace.h>
 #include <tlb.h>
 #include <current.h>
 #include <spl.h>

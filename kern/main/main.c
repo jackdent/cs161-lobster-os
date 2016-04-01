@@ -51,8 +51,9 @@
 #include <test.h>
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
-#include <daemon.h>
+#include <swap.h>
 #include <machine/vm.h>
+#include <daemon.h>
 
 /*
  * These two pieces of data are maintained by the makefiles and build system.

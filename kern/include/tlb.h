@@ -1,5 +1,5 @@
-#include <addrspace.h>
 #include <machine/vm.h>
+#include <pagetable.h>
 
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown(const struct tlbshootdown *);

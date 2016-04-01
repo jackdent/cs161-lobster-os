@@ -1,12 +1,11 @@
 #include <types.h>
 #include <kern/errno.h>
+#include <pagetable.h>
+#include <vm.h>
 #include <lib.h>
-#include <addrspace.h>
 #include <proc.h>
 #include <spinlock.h>
 #include <swap.h>
-#include <cme.h>
-#include <pte.h>
 
 struct pagetable *
 pagetable_create(void)

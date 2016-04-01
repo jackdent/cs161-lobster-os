@@ -1,4 +1,5 @@
 #include <cme.h>
+#include <pte.h>
 #include <lib.h>
 #include <spinlock.h>
 

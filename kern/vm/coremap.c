@@ -4,6 +4,7 @@
 #include <machine/vm.h>
 #include <swap.h>
 #include <proctable.h>
+#include <pagetable.h>
 #include <addrspace.h>
 
 // Forward declaration, implemented in vm/tlb.c

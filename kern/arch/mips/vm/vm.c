@@ -6,11 +6,9 @@
 #include <spinlock.h>
 #include <proc.h>
 #include <current.h>
-#include <mips/tlb.h>
 #include <addrspace.h>
 #include <pagetable.h>
 #include <coremap.h>
-#include <tlb.h>
 
 void
 vm_bootstrap(void)
