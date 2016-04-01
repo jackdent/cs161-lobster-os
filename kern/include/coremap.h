@@ -9,8 +9,7 @@ struct cm {
         cme_id_t cm_clock_hand;
 };
 
-// Global coremap
-struct cm coremap;
+extern struct cm coremap;
 
 void cm_init(void);
 

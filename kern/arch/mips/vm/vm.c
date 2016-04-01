@@ -10,10 +10,28 @@
 #include <pagetable.h>
 #include <coremap.h>
 
+static
+void
+tlbshootdown_init()
+{
+        tlbshootdown.ts_lock = lock_create("tlbshootdown lock");
+        if (tlbshootdown.ts_lock == NULL) {
+                panic("Could not create tlbshootdown lock");
+        }
+
+        tlbshootdown.ts_sem = sem_create("tlbshootdown sem", 0);
+        if (tlbshootdown.ts_sem == NULL) {
+                panic("Could not create tlbshootdown sem");
+        }
+}
+
 void
 vm_bootstrap(void)
 {
         cm_init();
+
+        // We can now use kmalloc
+        tlbshootdown_init();
 }
 
 vaddr_t

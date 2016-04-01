@@ -129,11 +129,13 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 {
 	KASSERT(curproc != NULL);
 
-	if (ts->ts_type == TS_CLEAN) {
-		tlb_set_writeable(ts->ts_flushed_va, ts->ts_flushed_cme_id, false);
-	} else {
-		tlb_remove(ts->ts_flushed_va);
-	}
+        if (ts->ts_type == TS_CLEAN) {
+                tlb_set_writeable(ts->ts_flushed_va, ts->ts_flushed_cme_id, false);
+        } else {
+                tlb_remove(ts->ts_flushed_va);
+        }
+
+        V(tlbshootdown.ts_sem);
 }
 
 /*

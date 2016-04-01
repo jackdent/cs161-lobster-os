@@ -3,9 +3,17 @@
 #include <coremap.h>
 #include <machine/vm.h>
 #include <swap.h>
+#include <synch.h>
 #include <proctable.h>
 #include <pagetable.h>
 #include <addrspace.h>
+#include <thread.h>
+#include <current.h>
+#include <array.h>
+#include <cpu.h>
+
+// Global coremap struct
+struct cm coremap;
 
 // Forward declaration, implemented in vm/tlb.c
 void tlb_remove(vaddr_t va);
@@ -124,20 +132,31 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 
 static
 void
-cm_tlb_shootdown(cme_id_t cme_id, vaddr_t va, enum tlb_shootdown_type type)
+cm_tlb_shootdown(cme_id_t cme_id, vaddr_t va, enum tlbshootdown_type type)
 {
-        struct tlbshootdown shootdown;
+        unsigned int numcpus, i, j;
+        struct cpu *cpu;
 
-	// TODO: synchronisation
-	// TODO: there's a race condition, here, the shootdown only exists
-	// until the function returns. We need to allocate some memory for
-	// the struct
-	shootdown.ts_flushed_cme_id = cme_id;
-	shootdown.ts_flushed_va = va;
-	shootdown.ts_type = type;
+        numcpus = cpuarray_num(&allcpus);
 
-	(void)shootdown;
-	// ipi_tlbshootdown(&shootdown);
+	lock_acquire(tlbshootdown.ts_lock);
+	tlbshootdown.ts_flushed_cme_id = cme_id;
+	tlbshootdown.ts_flushed_va = va;
+	tlbshootdown.ts_type = type;
+
+	for (i=0; i < cpuarray_num(&allcpus); i++) {
+		cpu = cpuarray_get(&allcpus, i);
+		if (cpu != curcpu->c_self) {
+			ipi_tlbshootdown(cpu, &tlbshootdown);
+		}
+	}
+
+	for (j = 0; j < numcpus; j++) {
+		// Will reset the semaphore to 0
+		P(tlbshootdown.ts_sem);
+	}
+
+	lock_release(tlbshootdown.ts_lock);
 }
 
 /*
@@ -177,6 +196,10 @@ cm_evict_page(cme_id_t cme_id)
 	KASSERT(pte->pte_state == S_PRESENT);
 
 	page = CME_ID_TO_PA(cme_id);
+	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
+
+	tlb_remove(va);
+	cm_tlb_shootdown(cme_id, va, TS_EVICT);
 
 	switch (cme->cme_state) {
 	case S_KERNEL:
@@ -203,10 +226,6 @@ cm_evict_page(cme_id_t cme_id)
 		break;
 	}
 
-	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
-	tlb_remove(va);
-	cm_tlb_shootdown(cme_id, va, TS_EVICT);
-
 	cme->cme_state = S_CLEAN;
 	pte->pte_state = S_SWAPPED;
 	pt_release_lock(as->as_pt, pte);
@@ -225,15 +244,13 @@ cm_clean_page(cme_id_t cme_id)
 	cme = &coremap.cmes[cme_id];
 	KASSERT(cme->cme_state == S_DIRTY);
 
-	// TODO: only set this and release the lock after the shootdown
-	// has completed. We probably want a refcount on the shootdown
-	// struct.
-	cme->cme_state = S_CLEAN;
-	swap_out(cme->cme_swap_id, CME_ID_TO_PA(cme_id));
-
 	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
+
 	tlb_set_writeable(va, cme_id, false);
 	cm_tlb_shootdown(cme_id, va, TS_CLEAN);
+
+	cme->cme_state = S_CLEAN;
+	swap_out(cme->cme_swap_id, CME_ID_TO_PA(cme_id));
 }
 
 void

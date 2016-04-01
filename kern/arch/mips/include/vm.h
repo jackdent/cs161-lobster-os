@@ -122,8 +122,9 @@ paddr_t ram_getfirstfree(void);
  */
 
 #include <cme.h>
+#include <synch.h>
 
-enum tlb_shootdown_type {
+enum tlbshootdown_type {
         // Eviction, so remove the page from the TLB
         TS_EVICT,
         // Cleaning, so only mark it as readonly
@@ -133,8 +134,16 @@ enum tlb_shootdown_type {
 struct tlbshootdown {
         cme_id_t ts_flushed_cme_id;
         vaddr_t ts_flushed_va;
-        enum tlb_shootdown_type ts_type;
+        enum tlbshootdown_type ts_type;
+        // So that only one shootdown can be issued at a time
+        struct lock *ts_lock;
+        // So that the shootdown issuer can block until the
+        // shootdown is complete
+        struct semaphore *ts_sem;
 };
+
+// Global TLB shootdown struct
+struct tlbshootdown tlbshootdown;
 
 #define TLBSHOOTDOWN_MAX 16
 
