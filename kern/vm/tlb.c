@@ -45,7 +45,9 @@ tlb_add(vaddr_t va, struct pte *pte)
 
 	lra = curthread->t_cpu->c_tlb_lra;
 	spl = splhigh();
+
 	tlb_write(entryhi, entrylo, lra);
+
 	splx(spl);
 	curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
 
@@ -53,17 +55,11 @@ tlb_add(vaddr_t va, struct pte *pte)
 }
 
 void
-tlb_make_writeable(vaddr_t va, struct pte *pte)
+tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
 {
 	uint32_t entryhi, entrylo;
 	int spl;
-	cme_id_t cme_id;
 	int index;
-
-        cme_id = pte_get_cme_id(pte);
-
-	cm_acquire_lock(cme_id);
-	coremap.cmes[cme_id].cme_state = S_DIRTY;
 
 	entryhi = VA_TO_VPAGE(va);
 	spl = splhigh();
@@ -73,10 +69,14 @@ tlb_make_writeable(vaddr_t va, struct pte *pte)
 		panic("Tried to mark a non-existent TLB entry as dirty\n");
 	}
 
-	entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+	if (writeable) {
+		entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+	} else {
+		entrylo = CME_ID_TO_PPAGE(cme_id);
+	}
+
 	tlb_write(entryhi, entrylo, (uint32_t)index);
 	splx(spl);
-	cm_release_lock(cme_id);
 }
 
 void
@@ -119,53 +119,21 @@ tlb_flush()
 }
 
 /*
- * Processes will only share memory in their user segments with the
- * kernel page flushing daemon. When we receive a tlb shootdown, we
- * should block until the daemon is finished writing to disk, then
- * mark the TLB entry for the original virtual address as clean.
- * The kernel daemon is responsible for marking the core map entry
- * as clean.
+ * The caller function is responsible for marking as clean or dirty
+ * in the pte. If ts->ts_type is T_CLEAN, then we rewrite the TLB entry
+ * so as to catch the next write to the page. If ts->ts_type is TS_EVICT
+ * then we flush it from the TLB.
  */
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
 	KASSERT(curproc != NULL);
 
-	uint32_t entryhi, entrylo;
-	int index, spl;
-	struct cme cme;
-
-	// Acquire then immediately release the lock on the cme so
-	// that we block until the kernel daemon has finished
-	// flushing memory out to disk, to avoid race conditions.
-	cm_acquire_lock(ts->ts_flushed_page);
-	cme = coremap.cmes[ts->ts_flushed_page];
-	cm_release_lock(ts->ts_flushed_page);
-
-	if (cme.cme_pid != curproc->p_pid) {
-		// The page isn't in the address space for the
-		// currently scheduled process and will not
-		// be in the TLB, so we NOOP.
-		return;
+	if (ts->ts_type == TS_CLEAN) {
+		tlb_set_writeable(ts->ts_flushed_va, ts->ts_flushed_cme_id, false);
+	} else {
+		tlb_remove(ts->ts_flushed_va);
 	}
-
-	if (cme.cme_state != S_CLEAN) {
-		panic("Kernel daemon sent a TLB shootdown for an invalid page\n");
-	}
-
-	entryhi = VA_TO_VPAGE(OFFSETS_TO_VA(cme.cme_l1_offset, cme.cme_l2_offset));
-	spl = splhigh();
-	index = tlb_probe(entryhi, 0);
-
-	if (index < 0) {
-		// The page wasn't in the TLB, so we NOOP
-		return;
-	}
-
-	// Ensure that the TLB entry is clean
-	entrylo = CME_ID_TO_PPAGE(ts->ts_flushed_page);
-	tlb_write(entryhi, entrylo, (uint32_t)index);
-	splx(spl);
 }
 
 /*
@@ -203,7 +171,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
 	case S_SWAPPED:
 		slot = cm_capture_slot();
 
-		evict_page(slot);
+		cm_evict_page(slot);
 
                 cme.cme_state= S_CLEAN;
 		cme.cme_swap_id = pte_get_swap_id(pte);
@@ -262,7 +230,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 tlb_add(faultaddress, pte);
                 break;
         case VM_FAULT_READONLY:
-                tlb_make_writeable(faultaddress, pte);
+                tlb_set_writeable(faultaddress, PA_TO_PHYS_PAGE(pte->pte_phys_page), true);
                 break;
         case VM_FAULT_WRITE:
                 panic("Tried to write to a non-existent TLB entry");

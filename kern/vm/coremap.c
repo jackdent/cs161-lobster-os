@@ -9,6 +9,7 @@
 
 // Forward declaration, implemented in vm/tlb.c
 void tlb_remove(vaddr_t va);
+void tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable);
 
 void
 cm_init()
@@ -18,7 +19,7 @@ cm_init()
 
 	ram_size = ram_getsize();
 	ncmes = (ram_size / PAGE_SIZE);
-	ncoremap_bytes = ncmes * sizeof(struct cme);
+	ncoremap_bytes = ncmes * sizeof(struct cme);;
 	ncoremap_pages = ROUNDUP(ncoremap_bytes, PAGE_SIZE);
 
 	start = ram_stealmem(ncoremap_pages);
@@ -37,7 +38,7 @@ cm_init()
 	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
 
 	// Set the coremap as owned by the kernel
-	for (i = 0; i < ncmes; i++) {
+	for (i = 0; i < ncoremap_pages; i++) {
 		coremap.cmes[i] = cme_create(0, PHYS_PAGE_TO_PA(i), S_KERNEL);
 	        coremap.cmes[i].cme_busy = 0;
 	}
@@ -121,6 +122,24 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 	return 0;
 }
 
+static
+void
+cm_tlb_shootdown(cme_id_t cme_id, vaddr_t va, enum tlb_shootdown_type type)
+{
+        struct tlbshootdown shootdown;
+
+	// TODO: synchronisation
+	// TODO: there's a race condition, here, the shootdown only exists
+	// until the function returns. We need to allocate some memory for
+	// the struct
+	shootdown.ts_flushed_cme_id = cme_id;
+	shootdown.ts_flushed_va = va;
+	shootdown.ts_type = type;
+
+	(void)shootdown;
+	// ipi_tlbshootdown(&shootdown);
+}
+
 /*
  * If the core map entry is free, NOOP. Otherwise, write the page to
  * disk if it is dirty, or if it has never left main memory before.
@@ -129,14 +148,15 @@ cm_capture_slots_for_kernel(unsigned int nslots)
  * indicate that it is no longer present in main memory.
  */
 void
-evict_page(cme_id_t cme_id)
+cm_evict_page(cme_id_t cme_id)
 {
         struct addrspace *as;
         struct pte *pte;
         struct proc *proc;
-        struct tlbshootdown shootdown;
         struct cme *cme;
-        swap_id_t swap;
+        vaddr_t va;
+        paddr_t page;
+        swap_id_t swap_id;
 
 	cme = &coremap.cmes[cme_id];
 
@@ -145,51 +165,75 @@ evict_page(cme_id_t cme_id)
 	}
 
         proc = proc_table.pt_table[cme->cme_pid];
+	KASSERT(proc != NULL);
+
         as = proc->p_addrspace;
-
-	tlb_remove(OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset));
-
-        // TODO: Shootdown the process if S_FREE or S_DIRTY
-        // Make sure memory isn't freed until all complete
-        shootdown.ts_flushed_page = cme_id;
-        (void)shootdown;
-        // ipi_tlbshootdown(proc, &shootdown);
+	KASSERT(as != NULL);
 
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
+	KASSERT(pte != NULL);
+
 	pt_acquire_lock(as->as_pt, pte);
+	KASSERT(pte->pte_state == S_PRESENT);
 
-	if (pte->pte_state == S_INVALID) {
-		panic("Trying to evict an invalid page?!");
-	}
+	page = CME_ID_TO_PA(cme_id);
 
-	pte->pte_state = S_SWAPPED;
-
-	switch(cme->cme_state) {
+	switch (cme->cme_state) {
+	case S_KERNEL:
+		panic("Cannot evict a kernel page\n");
 	case S_UNSWAPPED:
 		// If this is the first time we're writing the page
 		// out to disk, we grab a free swap entry, and assign
 		// its index to the page table entry. The swap id will
 		// be stable for this page for the remainder of its
 		// lifetime.
-		swap = swap_capture_slot();
-		pte_set_swap_id(pte, swap);
+		swap_id = swap_capture_slot();
+		pte_set_swap_id(pte, swap_id);
+		swap_out(swap_id, page);
 	case S_CLEAN:
 		break;
 	case S_DIRTY:
-		swap = cme->cme_swap_id;
+		swap_id = cme->cme_swap_id;
 
-		if (swap != pte_get_swap_id(pte)) {
+		if (swap_id != pte_get_swap_id(pte)) {
 			panic("Unstable swap id on a dirty page!\n");
 		}
 
+		swap_out(swap_id, page);
 		break;
-	default:
-		// Must be in state S_KERNEL
-		panic("Cannot evict a kernel page\n");
 	}
 
-	swap_out(swap, CME_ID_TO_PA(cme_id));
+	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
+	tlb_remove(va);
+	cm_tlb_shootdown(cme_id, va, TS_EVICT);
+
+	cme->cme_state = S_CLEAN;
+	pte->pte_state = S_SWAPPED;
 	pt_release_lock(as->as_pt, pte);
+}
+
+/*
+ * Mark the TLB entry as unwriteable, write the page out to disk,
+ * and mark the core map entry as clean.
+ */
+void
+cm_clean_page(cme_id_t cme_id)
+{
+	struct cme *cme;
+        vaddr_t va;
+
+	cme = &coremap.cmes[cme_id];
+	KASSERT(cme->cme_state == S_DIRTY);
+
+	// TODO: only set this and release the lock after the shootdown
+	// has completed. We probably want a refcount on the shootdown
+	// struct.
+	cme->cme_state = S_CLEAN;
+	swap_out(cme->cme_swap_id, CME_ID_TO_PA(cme_id));
+
+	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
+	tlb_set_writeable(va, cme_id, false);
+	cm_tlb_shootdown(cme_id, va, TS_CLEAN);
 }
 
 void

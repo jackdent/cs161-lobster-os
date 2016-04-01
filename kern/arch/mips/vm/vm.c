@@ -29,7 +29,7 @@ alloc_kpages(unsigned npages)
 
         for (i = 0; i < npages; i++) {
                 curr = start + i;
-                evict_page(curr);
+                cm_evict_page(curr);
 
                 // We don't really need to do this because kernel
                 // memory is directy mapped, but it may be helpful

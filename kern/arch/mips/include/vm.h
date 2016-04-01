@@ -121,8 +121,19 @@ paddr_t ram_getfirstfree(void);
  * We'll take up to 16 invalidations before just flushing the whole TLB.
  */
 
+#include <cme.h>
+
+enum tlb_shootdown_type {
+        // Eviction, so remove the page from the TLB
+        TS_EVICT,
+        // Cleaning, so only mark it as readonly
+        TS_CLEAN
+};
+
 struct tlbshootdown {
-        uint32_t ts_flushed_page;
+        cme_id_t ts_flushed_cme_id;
+        vaddr_t ts_flushed_va;
+        enum tlb_shootdown_type ts_type;
 };
 
 #define TLBSHOOTDOWN_MAX 16
