@@ -202,7 +202,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
                 cme = cme_create(curproc->p_pid, va, S_UNSWAPPED);
 
                 // Zero out the memory on the newly allocated page
-                memset((void *)pa, 0, PAGE_SIZE);
+                memset((void *)PADDR_TO_KVADDR(pa), 0, PAGE_SIZE);
 
                 break;
         case S_SWAPPED:
