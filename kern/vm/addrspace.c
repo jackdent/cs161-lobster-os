@@ -180,26 +180,25 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	(void)writeable;
 	(void)executable;
 
-
 	vaddr_t region_start;
 	vaddr_t region_end;
 	unsigned int n_region_pages;
 
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
-	region_start = va_round_up_to_page(vaddr);
-	region_end = va_round_up_to_page(region_start + memsize);
-
-	// Update heap bounds
-	if (as->as_heap_base < (vaddr + memsize)) {
-		as->as_heap_base = region_end;
-		as->as_heap_end = region_end;
-	}
+	region_start = va_round_down_to_page(vaddr);
+	region_end = va_round_up_to_page(vaddr + memsize);
 
 	// Add lazy entries to our pagetable, so that we region
 	// pages as they are needed.
 	n_region_pages = (region_end - region_start) / PAGE_SIZE;
 	alloc_upages(region_start, n_region_pages);
+
+	// Update heap bounds
+	if (as->as_heap_base < region_end) {
+		as->as_heap_base = region_end;
+		as->as_heap_end = region_end;
+	}
 
 	return 0;
 }

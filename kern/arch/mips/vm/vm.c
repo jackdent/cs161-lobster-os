@@ -118,7 +118,6 @@ alloc_upages(vaddr_t start, unsigned int npages)
                 pte = pagetable_create_pte_from_va(as->as_pt, va);
 
                 pt_acquire_lock(as->as_pt, pte);
-                KASSERT(pte->pte_state == S_INVALID);
                 pte->pte_state = S_LAZY;
                 pt_release_lock(as->as_pt, pte);
         }
