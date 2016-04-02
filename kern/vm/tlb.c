@@ -114,6 +114,7 @@ tlb_remove(vaddr_t va)
 
         if (i < 0) {
                 // The page wasn't in the TLB, so we NOOP
+                splx(spl);
                 return;
         }
 
@@ -201,7 +202,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
                 cme = cme_create(curproc->p_pid, va, S_UNSWAPPED);
 
                 // Zero out the memory on the newly allocated page
-                memset(pa, 0, PAGE_SIZE);
+                memset((void *)pa, 0, PAGE_SIZE);
 
                 break;
         case S_SWAPPED:
