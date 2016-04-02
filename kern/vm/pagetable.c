@@ -186,7 +186,9 @@ pt_attempt_lock(struct pagetable *pt, struct pte *pte)
 
 	spinlock_acquire(&pt->pt_busy_spinlock);
 	acquired = (pte->pte_busy == 0);
-	pte->pte_busy = 1;
+	if (acquired) {
+		pte->pte_busy = 1;
+	}
 	spinlock_release(&pt->pt_busy_spinlock);
 
 	return acquired;
