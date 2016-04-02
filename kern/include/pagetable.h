@@ -50,6 +50,11 @@ struct pte *pagetable_get_pte_from_va(struct pagetable *pt, vaddr_t va);
 struct pte *pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme);
 
 /*
+ * Creates the l2 page table if necessary, and returns a pointer to the pte.
+ */
+struct pte *pagetable_create_pte_from_va(struct pagetable *pt, vaddr_t va);
+
+/*
  * Clone every entry in the page table. If the entry is in the state
  * S_PRESENT or S_SWAPPED, we create a new slot in the swap space and
  * copy the page over.

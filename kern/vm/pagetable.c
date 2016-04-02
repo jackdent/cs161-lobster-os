@@ -79,6 +79,31 @@ pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme)
 	return pagetable_get_pte_from_offsets(pt, cme->cme_l1_offset, cme->cme_l2_offset);
 }
 
+struct pte *
+pagetable_create_pte_from_va(struct pagetable *pt, vaddr_t va)
+{
+	struct l2 *l2;
+	unsigned int l1_offset, l2_offset;
+	struct pte *pte;
+
+	l1_offset = L1_PT_MASK(va);
+	l2_offset = L2_PT_MASK(va);
+
+	l2 = pt->pt_l1.l2s[l1_offset];
+	if (l2 == NULL) {
+		l2 = kmalloc(sizeof(struct l2));
+		if (l2 == NULL) {
+			panic("Could not create l2 pagetable for pte\n");
+		}
+
+		pt->pt_l1.l2s[l1_offset] = l2;
+	}
+
+	pte = &l2->l2_ptes[l2_offset];
+
+	return pte;
+}
+
 static
 swap_id_t
 pagetable_assign_swap_slot_to_pte(struct pte *pte)
