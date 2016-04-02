@@ -115,8 +115,7 @@ alloc_upages(vaddr_t start, unsigned int npages)
         for (i = 0; i < npages; i++) {
                 va =  start + i * PAGE_SIZE;
 
-                pte = pagetable_get_pte_from_va(as->as_pt, va);
-                KASSERT(pte != NULL);
+                pte = pagetable_create_pte_from_va(as->as_pt, va);
 
                 pt_acquire_lock(as->as_pt, pte);
                 KASSERT(pte->pte_state == S_INVALID);
