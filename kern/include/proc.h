@@ -41,6 +41,8 @@
 #include <fdtable.h>
 #include <synch.h>
 
+ #define KPROC_PID 0
+
 struct addrspace;
 struct thread;
 struct vnode;

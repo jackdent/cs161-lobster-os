@@ -28,7 +28,7 @@ cm_init()
 	ram_size = ram_getsize();
 	ncmes = (ram_size / PAGE_SIZE);
 	ncoremap_bytes = ncmes * sizeof(struct cme);;
-	ncoremap_pages = ROUNDUP(ncoremap_bytes, PAGE_SIZE);
+	ncoremap_pages = DIVROUNDUP(ncoremap_bytes, PAGE_SIZE);
 
 	start = ram_stealmem(ncoremap_pages);
 	if (start == 0) {
@@ -37,6 +37,7 @@ cm_init()
 
 	// The cmes are now alloc'd
 	coremap.cmes = (struct cme*)PADDR_TO_KVADDR(start);
+	base = start;
 
 	coremap.cm_size = ncmes;
 	spinlock_init(&coremap.cm_busy_spinlock);
@@ -47,7 +48,7 @@ cm_init()
 
 	// Set the coremap as owned by the kernel
 	for (i = 0; i < ncoremap_pages; i++) {
-		coremap.cmes[i] = cme_create(0, PHYS_PAGE_TO_PA(i), S_KERNEL);
+		coremap.cmes[i] = cme_create(0, 0, S_KERNEL);
 	        coremap.cmes[i].cme_busy = 0;
 	}
 }
@@ -107,11 +108,11 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 
 	spinlock_acquire(&coremap.cm_clock_spinlock);
 
-	i = MIPS_KSEG0 / PAGE_SIZE;
+	i = 0;
 
 	while (i < coremap.cm_size - nslots) {
 		for (j = 0; j < nslots; j++) {
-			if (coremap.cmes[i+j].cme_state == S_KERNEL) {
+			if (coremap.cmes[i + j].cme_state == S_KERNEL) {
 				break;
 			}
 		}
@@ -123,7 +124,6 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 		} else {
 			i += j + 1;
 		}
-
 	}
 
 	panic("Could not capture contiguous slots for kernel allocation\n");

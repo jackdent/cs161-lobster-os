@@ -53,9 +53,8 @@ alloc_kpages(unsigned npages)
                 // memory is directy mapped, but it may be helpful
                 // when debugging
                 addr = CME_ID_TO_PA(curr);
-                KASSERT(addr >= MIPS_KSEG0);
 
-                cme = cme_create(kproc->p_pid, addr, S_KERNEL);
+                cme = cme_create(KPROC_PID, PADDR_TO_KVADDR(addr), S_KERNEL);
                 cme.cme_swap_id = 0;
 
                 coremap.cmes[curr] = cme;
@@ -97,7 +96,7 @@ free_kpages(vaddr_t addr)
         }
 
         cm_release_lock(start);
-        cm_release_locks(start, end);
+        cm_release_locks(start + 1, end);
 }
 
 void

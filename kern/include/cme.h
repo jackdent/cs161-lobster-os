@@ -1,8 +1,10 @@
 #include <types.h>
 
-#define CME_ID_TO_PA(cme_id) (cme_id * PAGE_SIZE)
-#define PA_TO_CME_ID(pa) (pa / PAGE_SIZE)
+#define CME_ID_TO_PA(cme_id) ((cme_id * PAGE_SIZE) + base)
+#define PA_TO_CME_ID(pa) ((pa - base) / PAGE_SIZE)
 #define OFFSETS_TO_VA(l1, l2) ((l1 << 10 & l2) << 12)
+
+paddr_t base;
 
 /*
  * An index for pages that is *not* stable over their lifetime
