@@ -105,23 +105,25 @@ cme_id_t
 cm_capture_slots_for_kernel(unsigned int nslots)
 {
 	cme_id_t i, j;
-
 	spinlock_acquire(&coremap.cm_clock_spinlock);
-
 	i = 0;
 
 	while (i < coremap.cm_size - nslots) {
 		for (j = 0; j < nslots; j++) {
-			if (coremap.cmes[i + j].cme_state == S_KERNEL) {
+			if (!cm_attempt_lock(i + j)) {
+				break;
+			}
+			if (coremap.cmes[i + j].cme_state != S_FREE) {
+				cm_release_lock(i + j);
 				break;
 			}
 		}
 
 		if (j == nslots) {
-			cm_acquire_locks(i, i + nslots);
 			spinlock_release(&coremap.cm_clock_spinlock);
 			return i;
 		} else {
+			cm_release_locks(i, i + j);
 			i += j + 1;
 		}
 	}
@@ -289,10 +291,11 @@ cm_attempt_lock(cme_id_t i)
 	KASSERT(i < coremap.cm_size);
 
 	bool acquired;
-
 	spinlock_acquire(&coremap.cm_busy_spinlock);
 	acquired = (coremap.cmes[i].cme_busy == 0);
-	coremap.cmes[i].cme_busy = 1;
+	if (acquired) {
+		coremap.cmes[i].cme_busy = 1;
+	}
 	spinlock_release(&coremap.cm_busy_spinlock);
 
 	return acquired;
