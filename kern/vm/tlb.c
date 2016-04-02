@@ -16,13 +16,29 @@
  * after the most recently added entry, which is the
  * least recently added.
  */
+static
 void
-tlb_add(vaddr_t va, struct pte *pte)
+tlb_add(uint32_t entryhi, uint32_t entrylo)
+{
+        uint32_t lra;
+        int spl;
+
+        spl = splhigh();
+
+        lra = curthread->t_cpu->c_tlb_lra;
+        tlb_write(entryhi, entrylo, lra);
+        curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
+
+        splx(spl);
+}
+
+static
+void
+tlb_add_readable(vaddr_t va, struct pte *pte)
 {
         KASSERT(curthread != NULL);
 
-        uint32_t entryhi, entrylo, lra;
-        int spl;
+        uint32_t entryhi, entrylo;
         cme_id_t cme_id;
         struct cme *cme;
 
@@ -42,17 +58,39 @@ tlb_add(vaddr_t va, struct pte *pte)
         case S_DIRTY:
                 entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
                 break;
+        case S_KERNEL:
+                panic("Tried to add a kernel page to the TLB\n");
         default:
                 panic("Tried to add a page that isn't in physical memory to the TLB\n");
         }
 
-        lra = curthread->t_cpu->c_tlb_lra;
-        spl = splhigh();
+        tlb_add(entryhi, entrylo);
 
-        tlb_write(entryhi, entrylo, lra);
+        cm_release_lock(cme_id);
+}
 
-        splx(spl);
-        curthread->t_cpu->c_tlb_lra = (lra + 1) % NUM_TLB;
+static
+void
+tlb_add_writeable(vaddr_t va, struct pte *pte)
+{
+        KASSERT(curthread != NULL);
+
+        uint32_t entryhi, entrylo;
+        cme_id_t cme_id;
+        struct cme *cme;
+
+        KASSERT(pte->pte_state == S_PRESENT);
+        cme_id = pte_get_cme_id(pte);
+
+        cm_acquire_lock(cme_id);
+
+        cme = &coremap.cmes[cme_id];
+        cme->cme_state = S_DIRTY;
+
+        entryhi = VA_TO_VPAGE(va);
+        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+
+        tlb_add(entryhi, entrylo);
 
         cm_release_lock(cme_id);
 }
@@ -217,6 +255,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
         cm_release_lock(slot);
 
         pte->pte_state = S_PRESENT;
+        pte_set_cme_id(pte, slot);
 }
 
 /*
@@ -263,13 +302,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
         switch (faulttype) {
         case VM_FAULT_READ:
-                tlb_add(faultaddress, pte);
+                tlb_add_readable(faultaddress, pte);
+        case VM_FAULT_WRITE:
+                tlb_add_writeable(faultaddress, pte);
                 break;
         case VM_FAULT_READONLY:
                 tlb_set_writeable(faultaddress, PA_TO_PHYS_PAGE(pte->pte_phys_page), true);
-                break;
-        case VM_FAULT_WRITE:
-                panic("Tried to write to a non-existent TLB entry\n");
                 break;
         default:
                 panic("Unknown TLB fault type\n");

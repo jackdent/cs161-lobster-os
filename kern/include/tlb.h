@@ -13,11 +13,6 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 int vm_fault(int faulttype, vaddr_t faultaddress);
 
 /*
- * Assumes the caller holds the pte lock.
- */
-void tlb_add(vaddr_t va, struct pte *pte);
-
-/*
  * Assumes that the caller holds the core map entry lock.
  */
 void tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable);

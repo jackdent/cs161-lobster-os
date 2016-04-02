@@ -192,7 +192,6 @@ cm_evict_page(cme_id_t cme_id)
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
 	KASSERT(pte != NULL);
 
-
 	pt_acquire_lock(as->as_pt, pte);
 	KASSERT(pte->pte_state == S_PRESENT);
 
