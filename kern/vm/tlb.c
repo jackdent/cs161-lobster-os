@@ -114,6 +114,7 @@ tlb_remove(vaddr_t va)
 
 	if (i < 0) {
 		// The page wasn't in the TLB, so we NOOP
+        splx(spl);
 		return;
 	}
 
