@@ -307,7 +307,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
                 tlb_add_writeable(faultaddress, pte);
                 break;
         case VM_FAULT_READONLY:
-                tlb_set_writeable(faultaddress, PA_TO_PHYS_PAGE(pte->pte_phys_page), true);
+                tlb_set_writeable(faultaddress, pte_get_cme_id(pte), true);
                 break;
         default:
                 panic("Unknown TLB fault type\n");
