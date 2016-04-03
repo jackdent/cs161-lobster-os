@@ -1,4 +1,4 @@
-#include <cme.h>
+#include <pagetable.h>
 #include <coremap.h>
 #include <addrspace.h>
 #include <tlb.h>
@@ -7,6 +7,7 @@
 #include <cpu.h>
 #include <machine/tlb.h>
 #include <proc.h>
+#include <kern/errno.h>
 
 /*
  * Implements the Least Recently Added (LRA) algorithm
@@ -40,23 +41,25 @@ tlb_add_readable(vaddr_t va, struct pte *pte)
 
         uint32_t entryhi, entrylo;
         cme_id_t cme_id;
+        paddr_t pa;
         struct cme *cme;
 
         KASSERT(pte->pte_state == S_PRESENT);
-        cme_id = pte_get_cme_id(pte);
+        pa = pte_get_phys_page(pte);
+        cme_id = PA_TO_CME_ID(pa);
 
         cm_acquire_lock(cme_id);
         cme = &coremap.cmes[cme_id];
 
-        entryhi = VA_TO_VPAGE(va);
+        entryhi = VA_TO_TLBHI(va);
 
         switch (cme->cme_state) {
         case S_UNSWAPPED:
         case S_CLEAN:
-                entrylo = CME_ID_TO_PPAGE(cme_id);
+                entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
                 break;
         case S_DIRTY:
-                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+                entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                 break;
         case S_KERNEL:
                 panic("Tried to add a kernel page to the TLB\n");
@@ -77,18 +80,20 @@ tlb_add_writeable(vaddr_t va, struct pte *pte)
 
         uint32_t entryhi, entrylo;
         cme_id_t cme_id;
+        paddr_t pa;
         struct cme *cme;
 
         KASSERT(pte->pte_state == S_PRESENT);
-        cme_id = pte_get_cme_id(pte);
+        pa = pte_get_phys_page(pte);
+        cme_id = PA_TO_CME_ID(pa);
 
         cm_acquire_lock(cme_id);
 
         cme = &coremap.cmes[cme_id];
         cme->cme_state = S_DIRTY;
 
-        entryhi = VA_TO_VPAGE(va);
-        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+        entryhi = VA_TO_TLBHI(va);
+        entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
 
         tlb_add(entryhi, entrylo);
 
@@ -106,21 +111,21 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         cm_acquire_lock(cme_id);
         cme = &coremap.cmes[cme_id];
 
-        entryhi = VA_TO_VPAGE(va);
+        entryhi = VA_TO_TLBHI(va);
 
         switch (cme->cme_state) {
         case S_UNSWAPPED:
         case S_CLEAN:
                 if (writeable) {
                         cme->cme_state = S_DIRTY;
-                        entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+                        entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                 } else {
-                        entrylo = CME_ID_TO_PPAGE(cme_id);
+                        entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
                 }
 
                 break;
         case S_DIRTY:
-                entrylo = CME_ID_TO_WRITEABLE_PPAGE(cme_id);
+                entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                 break;
         default:
                 panic("Tried to update the TLB write status on a page that isn't in physical memory\n");
@@ -147,7 +152,7 @@ tlb_remove(vaddr_t va)
         /* Disable interrupts on this CPU while frobbing the TLB. */
         spl = splhigh();
 
-        entryhi = VA_TO_VPAGE(va);
+        entryhi = VA_TO_TLBHI(va);
         i = tlb_probe(entryhi, 0);
 
         if (i < 0) {
@@ -255,7 +260,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
         cm_release_lock(slot);
 
         pte->pte_state = S_PRESENT;
-        pte_set_cme_id(pte, slot);
+        pte_set_phys_page(pte, pa);
 }
 
 /*
@@ -267,7 +272,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
         struct addrspace *as;
         struct pte *pte;
-        int EFAULT = 1;
+        paddr_t pa;
 
         if (curproc == NULL) {
                 /*
@@ -303,11 +308,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
         switch (faulttype) {
         case VM_FAULT_READ:
                 tlb_add_readable(faultaddress, pte);
+                break;
         case VM_FAULT_WRITE:
                 tlb_add_writeable(faultaddress, pte);
                 break;
         case VM_FAULT_READONLY:
-                tlb_set_writeable(faultaddress, pte_get_cme_id(pte), true);
+                pa = pte_get_phys_page(pte);
+                tlb_set_writeable(faultaddress, PA_TO_CME_ID(pa), true);
                 break;
         default:
                 panic("Unknown TLB fault type\n");

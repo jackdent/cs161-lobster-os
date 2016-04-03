@@ -12,21 +12,21 @@ pte_get_pa(struct pte *pte, vaddr_t va)
 	return PHYS_PAGE_TO_PA(pte->pte_phys_page) & OFFSET_MASK(va);
 }
 
-cme_id_t
-pte_get_cme_id(struct pte *pte)
+paddr_t
+pte_get_phys_page(struct pte *pte)
 {
 	KASSERT(pte);
 	KASSERT(pte->pte_state == S_PRESENT);
 
-	return (cme_id_t)pte->pte_phys_page;
+	return PHYS_PAGE_TO_PA(pte->pte_phys_page);
 }
 
 void
-pte_set_cme_id(struct pte *pte, cme_id_t cme_id)
+pte_set_phys_page(struct pte *pte, paddr_t pa)
 {
 	KASSERT(pte);
 
-	pte->pte_phys_page = cme_id;
+	pte->pte_phys_page = PA_TO_PHYS_PAGE(pa);
 }
 
 swap_id_t

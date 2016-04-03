@@ -1,8 +1,5 @@
 #include <cme.h>
 
-#define L1_PT_MASK
-#define L2_PT_MASK
-
 struct cme
 cme_create(pid_t pid, vaddr_t va, enum cme_state state)
 {

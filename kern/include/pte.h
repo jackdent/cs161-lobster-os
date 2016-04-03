@@ -1,10 +1,13 @@
-#include <cme.h>
 #include <swap.h>
+
+#ifndef cmd_id_t
+typedef uint32_t cme_id_t;
+#endif
 
 #define PA_TO_PHYS_PAGE(pa) (pa >> 12)
 #define PHYS_PAGE_TO_PA(page) (page << 12)
 #define OFFSET_MASK(va) (va & 0xFFF)
-#define L1_L2_TO_VA(l1, l2) (l1 << 22) & (l2 << 12)
+#define L1_L2_TO_VA(l1, l2) (l1 << 22) | (l2 << 12)
 
 #define LOWER_SWAP_BITS 5
 #define SWAP_PHYS_PAGE_MASK(swap_id) (swap_id >> LOWER_SWAP_BITS)
@@ -38,10 +41,10 @@ struct pte {
 paddr_t pte_get_pa(struct pte *pte, vaddr_t va);
 
 /*
- * Extract the cme_id from the overloaded pte_phy_page field.
+ * Extract the physical page number.
  */
-cme_id_t pte_get_cme_id(struct pte *pte);
-void pte_set_cme_id(struct pte *pte, cme_id_t cme_id);
+paddr_t pte_get_phys_page(struct pte *pte);
+void pte_set_phys_page(struct pte *pte, paddr_t pa);
 
 /*
  * Extract the swap offset from the overloaded pte_phys_page and swap_tail.

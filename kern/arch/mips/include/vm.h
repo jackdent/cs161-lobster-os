@@ -121,8 +121,11 @@ paddr_t ram_getfirstfree(void);
  * We'll take up to 16 invalidations before just flushing the whole TLB.
  */
 
-#include <cme.h>
 #include <synch.h>
+
+#ifndef cmd_id_t
+typedef uint32_t cme_id_t;
+#endif
 
 enum tlbshootdown_type {
         // Eviction, so remove the page from the TLB

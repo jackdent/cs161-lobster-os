@@ -1,4 +1,5 @@
 #include <types.h>
+#include <pagetable_masks.h>
 
 #define CME_ID_TO_PA(cme_id) ((cme_id * PAGE_SIZE) + base)
 #define PA_TO_CME_ID(pa) ((pa - base) / PAGE_SIZE)

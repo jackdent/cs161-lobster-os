@@ -145,7 +145,7 @@ free_upage(vaddr_t va)
         case S_LAZY:
                 break;
         case S_PRESENT:
-                cme_id = pte_get_cme_id(pte);
+                cme_id = PA_TO_CME_ID(pte_get_phys_page(pte));
 
                 cm_acquire_lock(cme_id);
                 cm_free_page(cme_id);

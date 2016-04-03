@@ -1,5 +1,5 @@
 #include <machine/vm.h>
-#include <pagetable.h>
+#include <cme.h>
 #include <addrspace.h>
 
 /*

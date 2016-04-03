@@ -7,6 +7,7 @@
 #include <spinlock.h>
 #include <swap.h>
 
+
 struct pagetable *
 pagetable_create(void)
 {
@@ -32,6 +33,7 @@ pagetable_destroy(struct pagetable *pt)
 
 	int i, j;
 	struct l2 *l2;
+	struct pte pte;
 
 	// Walk through all entries and free them
 	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
@@ -41,7 +43,10 @@ pagetable_destroy(struct pagetable *pt)
 		}
 
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
-			free_upage(L1_L2_TO_VA(i, j));
+			pte = l2->l2_ptes[j];
+			if (pte.pte_state == S_PRESENT || pte.pte_state == S_SWAPPED) {
+				free_upage(L1_L2_TO_VA(i, j));
+			}
 		}
 
 		kfree(l2);
@@ -158,8 +163,8 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				break;
 			case S_PRESENT:
 				new_slot = pagetable_assign_swap_slot_to_pte(new_pte);
-				old_cme_id = pte_get_cme_id(old_pte);
-				swap_out(new_slot, CME_ID_TO_PA(old_cme_id));
+				old_cme_id = PA_TO_CME_ID(pte_get_phys_page(old_pte));
+				swap_out(new_slot, old_cme_id);
 				new_pte->pte_state = S_SWAPPED;
 				break;
 			case S_SWAPPED:

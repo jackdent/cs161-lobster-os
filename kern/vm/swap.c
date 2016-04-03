@@ -8,6 +8,7 @@
 #include <kern/errno.h>
 #include <synch.h>
 #include <machine/vm.h>
+#include <cme.h>
 
 void
 swap_init(void)
@@ -15,7 +16,7 @@ swap_init(void)
 	int err;
 	char *swap_disk_path;
 
-	swap_disk_path = kstrdup("lhd0raw:");
+	swap_disk_path = kstrdup("lhd0:");
 	if (swap_disk_path == NULL) {
 		panic("swap_init: could not open swap disk");
 	}
@@ -61,8 +62,10 @@ swap_free_slot(swap_id_t slot)
 {
 	lock_acquire(swap_map_lock);
 
-	KASSERT(bitmap_isset(swap_map, slot));
-	bitmap_unmark(swap_map, slot);
+	(void)slot;
+	// TODO: uncomment when testing swap
+	//KASSERT(bitmap_isset(swap_map, slot));
+	//bitmap_unmark(swap_map, slot);
 
 	lock_release(swap_map_lock);
 }
@@ -92,11 +95,11 @@ read_page_from_disk(void *page, swap_id_t swap_index)
 
 // Write the page at src to the disk at swap_index
 void
-swap_out(swap_id_t swap_index, paddr_t src)
+swap_out(swap_id_t swap_index, cme_id_t src)
 {
 	int err;
 
-	err = write_page_to_disk((void*)PADDR_TO_KVADDR(src), swap_index);
+	err = write_page_to_disk((void*)PADDR_TO_KVADDR(CME_ID_TO_PA(src)), swap_index);
 	if (err != 0) {
 		// Nothing else we can really do here
 		panic("Disk error when reading from swap to RAM\n");
@@ -105,11 +108,11 @@ swap_out(swap_id_t swap_index, paddr_t src)
 
 // Read the page from swap_index on disk into the page at dest
 void
-swap_in(swap_id_t swap_index, paddr_t dest)
+swap_in(swap_id_t swap_index, cme_id_t dest)
 {
 	int err;
 
-	err = read_page_from_disk((void *)PADDR_TO_KVADDR(dest), swap_index);
+	err = read_page_from_disk((void *)PADDR_TO_KVADDR(CME_ID_TO_PA(dest)), swap_index);
 
 	if (err != 0) {
 		// Nothing else we can really do here

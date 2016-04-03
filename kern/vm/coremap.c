@@ -5,12 +5,12 @@
 #include <swap.h>
 #include <synch.h>
 #include <proctable.h>
-#include <pagetable.h>
 #include <addrspace.h>
 #include <thread.h>
 #include <current.h>
 #include <array.h>
 #include <cpu.h>
+#include <pagetable.h>
 
 // Global coremap struct
 struct cm coremap;
