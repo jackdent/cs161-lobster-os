@@ -141,6 +141,7 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         tlb_write(entryhi, entrylo, (uint32_t)index);
 
         splx(spl);
+        cm_release_lock(cme_id);
 }
 
 void

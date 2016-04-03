@@ -146,7 +146,6 @@ boot(void)
 
 	/* Default bootfs - but ignore failure, in case emu0 doesn't exist */
 	vfs_setbootfs("emu0");
-	// TODO: uncomment when testing swap
 	swap_init();
 
 	kheap_nextgeneration();

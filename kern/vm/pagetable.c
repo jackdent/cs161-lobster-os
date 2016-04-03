@@ -173,7 +173,7 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				swap_copy(old_slot, new_slot);
 				break;
 			}
-
+			pt_release_lock(new_pt, new_pte);
 			pt_release_lock(old_pt, old_pte);
 		}
 	}

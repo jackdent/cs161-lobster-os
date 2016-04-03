@@ -11,7 +11,7 @@ typedef uint32_t cme_id_t;
 
 #define LOWER_SWAP_BITS 5
 #define SWAP_PHYS_PAGE_MASK(swap_id) (swap_id >> LOWER_SWAP_BITS)
-#define SWAP_BITS_MASK(swap_id) (swap_id & ((1 << LOWER_SWAP_BITS) - 1))
+#define SWAP_TAIL_MASK(swap_id) (swap_id & ((1 << LOWER_SWAP_BITS) - 1))
 #define SWAP_ID(upper, lower) ((upper << LOWER_SWAP_BITS) | lower)
 
 enum pte_state {

@@ -48,5 +48,5 @@ pte_set_swap_id(struct pte *pte, swap_id_t swap_id)
 	KASSERT(pte);
 
 	pte->pte_phys_page = SWAP_PHYS_PAGE_MASK(swap_id);
-	pte->pte_swap_tail = SWAP_BITS_MASK(swap_id);
+	pte->pte_swap_tail = SWAP_TAIL_MASK(swap_id);
 }
