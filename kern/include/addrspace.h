@@ -36,17 +36,27 @@
 
 
 #include <vm.h>
+#include <array.h>
 #include "opt-dumbvm.h"
 
 struct vnode;
 
-
 /*
  * Address space - data structure associated with the virtual memory
  * space of a process.
- *
- * You write this.
  */
+
+#ifndef REGIONINLINE
+#define REGIONINLINE INLINE
+#endif
+
+DECLARRAY(region, REGIONINLINE);
+DEFARRAY(region, REGIONINLINE);
+
+struct region {
+  vaddr_t r_base;
+  vaddr_t r_end;
+};
 
 struct addrspace {
 #if OPT_DUMBVM
@@ -59,6 +69,7 @@ struct addrspace {
         paddr_t as_stackpbase;
 #else
         struct pagetable *as_pt;
+        struct regionarray *as_regions;
         vaddr_t as_heap_base;
         vaddr_t as_heap_end;  // exclusive bounds, page aligned
         vaddr_t as_stack_end; // exclusive bounds
