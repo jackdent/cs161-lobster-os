@@ -135,10 +135,12 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         index = tlb_probe(entryhi, 0);
 
         if (index < 0) {
-                panic("Tried to mark a non-existent TLB entry as dirty\n");
+                // In case we get a tlb shootdown removing the entry before we
+                // get a chance to update it
+                tlb_add(entryhi, entrylo);
+        } else {
+                tlb_write(entryhi, entrylo, (uint32_t)index);
         }
-
-        tlb_write(entryhi, entrylo, (uint32_t)index);
 
         splx(spl);
         cm_release_lock(cme_id);
