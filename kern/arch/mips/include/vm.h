@@ -87,6 +87,7 @@
 #define STACK_END	(USERSPACETOP - STACK_PAGES * PAGE_SIZE)
 #define INIT_HEAP_BASE	0
 #define INIT_HEAP_END 	0
+#define HEAP_MAX        0x40000000
 
 /*
  * Interface to the low-level module that looks after the amount of

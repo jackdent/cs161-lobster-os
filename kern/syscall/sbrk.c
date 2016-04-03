@@ -28,6 +28,11 @@ sys_sbrk(int32_t amount, int32_t *retval)
                 return 0;
         }
 
+        // negative wraparound
+        if ((int)amount + (int)old_break < (int)as->as_heap_base) {
+                return EINVAL;
+        }
+
         // The new heap break must be page aligned
         if (amount % PAGE_SIZE != 0) {
                 return EINVAL;
@@ -35,6 +40,10 @@ sys_sbrk(int32_t amount, int32_t *retval)
 
         if (new_break < as->as_heap_base) {
                 return EINVAL;
+        }
+
+        if (new_break > HEAP_MAX) {
+                return ENOMEM;
         }
 
         if (new_break > as->as_stack_end) {
