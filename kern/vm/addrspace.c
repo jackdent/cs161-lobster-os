@@ -346,7 +346,7 @@ va_in_as_bounds(struct addrspace *as, vaddr_t va)
 		return true;
 	}
 
-	if (va > as->as_stack_end) {
+	if (va_in_region(va, as->as_stack_end, USERSTACK)) {
 		return true;
 	}
 
