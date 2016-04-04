@@ -33,7 +33,7 @@ pagetable_destroy(struct pagetable *pt)
 
 	int i, j;
 	struct l2 *l2;
-	struct pte pte;
+	struct pte *pte;
 
 	// Walk through all entries and free them
 	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
@@ -43,8 +43,8 @@ pagetable_destroy(struct pagetable *pt)
 		}
 
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
-			pte = l2->l2_ptes[j];
-			if (pte.pte_state == S_PRESENT || pte.pte_state == S_SWAPPED) {
+			pte = &l2->l2_ptes[j];
+			if (pte->pte_state == S_PRESENT || pte->pte_state == S_SWAPPED) {
 				free_upage(L1_L2_TO_VA(i, j));
 			}
 		}
@@ -84,9 +84,31 @@ pagetable_get_pte_from_cme(struct pagetable *pt, struct cme *cme)
 	return pagetable_get_pte_from_offsets(pt, cme->cme_l1_offset, cme->cme_l2_offset);
 }
 
+static
+struct l2 *
+pagetable_create_l2(struct l1 *l1, unsigned int offset)
+{
+	KASSERT(l1->l2s[offset] == NULL);
+
+	struct l2 *l2;
+
+	l2 = kmalloc(sizeof(struct l2));
+	if (l2 == NULL) {
+		return NULL;
+	}
+
+	l1->l2s[offset] = l2;
+
+	// Set all l2 pte's to 0 initially
+	memset((void*)l2, 0, sizeof(struct l2));
+
+	return l2;
+}
+
 struct pte *
 pagetable_create_pte_from_va(struct pagetable *pt, vaddr_t va)
 {
+	struct l1 *l1;
 	struct l2 *l2;
 	unsigned int l1_offset, l2_offset;
 	struct pte *pte;
@@ -94,14 +116,13 @@ pagetable_create_pte_from_va(struct pagetable *pt, vaddr_t va)
 	l1_offset = L1_PT_MASK(va);
 	l2_offset = L2_PT_MASK(va);
 
-	l2 = pt->pt_l1.l2s[l1_offset];
+	l1 = &pt->pt_l1;
+	l2 = l1->l2s[l1_offset];
 	if (l2 == NULL) {
-		l2 = kmalloc(sizeof(struct l2));
+		l2 = pagetable_create_l2(l1, l1_offset);
 		if (l2 == NULL) {
-			panic("Could not create l2 pagetable for pte\n");
+			panic("Could not create l2 pagetable\n");
 		}
-
-		pt->pt_l1.l2s[l1_offset] = l2;
 	}
 
 	pte = &l2->l2_ptes[l2_offset];
@@ -140,16 +161,12 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 			continue;
 		}
 
-		new_l1->l2s[i] = kmalloc(sizeof(struct l2));
-		if (new_l1->l2s[i] == NULL) {
+		old_l2 = old_l1->l2s[i];
+		new_l2 = pagetable_create_l2(new_l1, i);
+
+		if (new_l2 == NULL) {
 			return ENOMEM; // caller will handle cleanup
 		}
-
-		// set all l2 pte's to NULL initially
-		memset((void*)new_l1->l2s[i], 0, sizeof(struct l2));
-
-		old_l2 = old_l1->l2s[i];
-		new_l2 = new_l1->l2s[i];
 
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
 			old_pte = &old_l2->l2_ptes[j];
@@ -176,6 +193,7 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				swap_copy(old_slot, new_slot);
 				break;
 			}
+
 			pt_release_lock(new_pt, new_pte);
 			pt_release_lock(old_pt, old_pte);
 		}
