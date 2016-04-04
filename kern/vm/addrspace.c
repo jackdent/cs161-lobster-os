@@ -27,9 +27,12 @@
  * SUCH DAMAGE.
  */
 
+#define REGIONINLINE
+
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
+#include <array.h>
 #include <addrspace.h>
 #include <pagetable.h>
 #include <current.h>
@@ -59,6 +62,11 @@ as_create(void)
 		goto err2;
 	}
 
+	as->as_regions = regionarray_create();
+	if (as->as_regions == NULL) {
+		goto err3;
+	}
+
 	as->as_heap_base = INIT_HEAP_BASE;
 	as->as_heap_end = INIT_HEAP_END;
 	as->as_stack_end = STACK_END;
@@ -66,10 +74,57 @@ as_create(void)
 	return as;
 
 
+	err3:
+		pagetable_destroy(as->as_pt);
 	err2:
 		kfree(as);
 	err1:
 		return NULL;
+}
+
+static
+void
+as_destroy_regions(struct addrspace *as)
+{
+	unsigned int i;
+	struct region *region;
+
+	for (i = 0; i < regionarray_num(as->as_regions); i++) {
+		region = regionarray_get(as->as_regions, i);
+		kfree(region);
+	}
+}
+
+static
+int
+as_copy_regions(struct addrspace *old, struct addrspace *new)
+{
+	int err;
+	unsigned int i;
+	struct region *old_region, *new_region;
+
+	for (i = 0; i < regionarray_num(old->as_regions); i++) {
+		old_region = regionarray_get(old->as_regions, i);
+
+		new_region = kmalloc(sizeof(struct region));
+		if (new_region == NULL) {
+			goto err1;
+		}
+
+		err = regionarray_add(new->as_regions, new_region, NULL);
+		if (err) {
+			goto err1;
+		}
+
+		*new_region = *old_region;
+	}
+
+	return 0;
+
+
+	err1:
+		as_destroy_regions(new);
+		return -1;
 }
 
 int
@@ -84,20 +139,27 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		goto err1;
 	}
 
-	new->as_heap_base = old->as_heap_base;
-	new->as_heap_end = old->as_heap_end;
-	new->as_stack_end = old->as_stack_end;
-
 	err = pagetable_clone(old->as_pt, new->as_pt);
 	if (err) {
 		goto err2;
 	}
+
+	err = as_copy_regions(old, new);
+	if (err) {
+		goto err3;
+	}
+
+	new->as_heap_base = old->as_heap_base;
+	new->as_heap_end = old->as_heap_end;
+	new->as_stack_end = old->as_stack_end;
 
 	*ret = new;
 
 	return 0;
 
 
+	err3:
+		pagetable_destroy(new->as_pt);
 	err2:
 		as_destroy(new);
 	err1:
@@ -107,6 +169,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
+	as_destroy_regions(as);
+	regionarray_destroy(as->as_regions);
 	pagetable_destroy(as->as_pt);
 	kfree(as);
 }
@@ -180,27 +244,43 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	(void)writeable;
 	(void)executable;
 
-	vaddr_t region_start;
-	vaddr_t region_end;
+	int err;
 	unsigned int n_region_pages;
+	struct region *region;
+
+	region = kmalloc(sizeof(struct region));
+	if (region == NULL) {
+		err = -1;
+		goto err1;
+	}
 
 	// Enforce that a region starts at the beginning of a page
 	// and uses up the remainder of its last page
-	region_start = va_round_down_to_page(vaddr);
-	region_end = va_round_up_to_page(vaddr + memsize);
+	region->r_base = va_round_down_to_page(vaddr);
+	region->r_end = va_round_up_to_page(vaddr + memsize);
+
+	err = regionarray_add(as->as_regions, region, NULL);
+	if (err) {
+		goto err2;
+	}
 
 	// Add lazy entries to our pagetable, so that we region
 	// pages as they are needed.
-	n_region_pages = (region_end - region_start) / PAGE_SIZE;
-	alloc_upages(region_start, n_region_pages);
+	n_region_pages = (region->r_end - region->r_base) / PAGE_SIZE;
+	alloc_upages(region->r_base, n_region_pages);
 
 	// Update heap bounds
-	if (as->as_heap_base < region_end) {
-		as->as_heap_base = region_end;
-		as->as_heap_end = region_end;
+	if (as->as_heap_base < region->r_end) {
+		as->as_heap_base = region->r_end;
+		as->as_heap_end = region->r_end;
 	}
 
 	return 0;
+
+	err2:
+		kfree(region);
+	err1:
+		return err;
 }
 
 int
@@ -241,8 +321,34 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	return 0;
 }
 
+static
+bool
+va_in_region(vaddr_t va, vaddr_t start, vaddr_t end)
+{
+	return va >= start && va < end;
+}
+
 bool
 va_in_as_bounds(struct addrspace *as, vaddr_t va)
 {
-	return va < as->as_heap_end || va > as->as_stack_end;
+	unsigned int i;
+	struct region *region;
+
+	for (i = 0; i < regionarray_num(as->as_regions); i++) {
+		region = regionarray_get(as->as_regions, i);
+
+		if (va_in_region(va, region->r_base, region->r_end)) {
+			return true;
+		}
+	}
+
+	if (va_in_region(va, as->as_heap_base, as->as_heap_end)) {
+		return true;
+	}
+
+	if (va > as->as_stack_end) {
+		return true;
+	}
+
+	return false;
 }
