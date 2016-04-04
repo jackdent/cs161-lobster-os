@@ -40,6 +40,9 @@ cm_init()
 	base = start;
 
 	coremap.cm_size = ncmes - PA_TO_PHYS_PAGE(base);
+	coremap.cm_kernel_break = (coremap.cm_size / 10) * 9;
+	KASSERT(coremap.cm_kernel_break > 0);
+
 	spinlock_init(&coremap.cm_busy_spinlock);
 	spinlock_init(&coremap.cm_clock_spinlock);
 	coremap.cm_clock_hand = 0;
@@ -119,10 +122,12 @@ cme_id_t
 cm_capture_slots_for_kernel(unsigned int nslots)
 {
 	cme_id_t i, j;
+
+	KASSERT(coremap.cm_kernel_break > nslots);
 	spinlock_acquire(&coremap.cm_clock_spinlock);
 	i = 0;
 
-	while (i < coremap.cm_size - nslots) {
+	while (i < coremap.cm_kernel_break - nslots) {
 		for (j = 0; j < nslots; j++) {
 			if (!cm_attempt_lock(i + j)) {
 				break;

@@ -3,6 +3,9 @@
 
 struct cm {
         unsigned int cm_size;
+        // Slots above the kernel break will be reserved for
+        // user pages
+        unsigned int cm_kernel_break;
         struct cme *cmes;
         struct spinlock cm_busy_spinlock;
         struct spinlock cm_clock_spinlock;
