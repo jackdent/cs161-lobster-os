@@ -112,6 +112,7 @@ cm_capture_slot()
 			spinlock_release(&coremap.cm_clock_spinlock);
 			return slot;
 		}
+
 		cm_release_lock(slot);
 	}
 	panic("Cannot capture coremap slot: all memory pages are kernel?\n");
@@ -122,6 +123,7 @@ cme_id_t
 cm_capture_slots_for_kernel(unsigned int nslots)
 {
 	cme_id_t i, j;
+	struct cme *cme;
 
 	KASSERT(coremap.cm_kernel_break > nslots);
 	spinlock_acquire(&coremap.cm_clock_spinlock);
@@ -129,10 +131,11 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 
 	while (i < coremap.cm_kernel_break - nslots) {
 		for (j = 0; j < nslots; j++) {
-			if (!cm_attempt_lock(i + j)) {
-				break;
-			}
-			if (coremap.cmes[i + j].cme_state != S_FREE) {
+			cm_acquire_lock(i + j);
+
+			cme = &coremap.cmes[i + j];
+
+			if (cme->cme_state == S_KERNEL) {
 				cm_release_lock(i + j);
 				break;
 			}

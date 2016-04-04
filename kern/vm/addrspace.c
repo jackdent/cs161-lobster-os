@@ -264,7 +264,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		goto err2;
 	}
 
-	// Add lazy entries to our pagetable, so that we region
+	// Add lazy entries to our pagetable, so that we allocate
 	// pages as they are needed.
 	n_region_pages = (region->r_end - region->r_base) / PAGE_SIZE;
 	alloc_upages(region->r_base, n_region_pages);
