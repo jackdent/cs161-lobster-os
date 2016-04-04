@@ -112,7 +112,7 @@ swap_in(swap_id_t swap_index, cme_id_t dest)
 {
 	int err;
 
-	err = read_page_from_disk((void *)PADDR_TO_KVADDR(CME_ID_TO_PA(dest)), swap_index);
+	err = read_page_from_disk((void*)PADDR_TO_KVADDR(CME_ID_TO_PA(dest)), swap_index);
 
 	if (err != 0) {
 		// Nothing else we can really do here
@@ -131,12 +131,12 @@ swap_copy(swap_id_t from, swap_id_t to)
 		return ENOMEM;
 	}
 
-	err = read_page_from_disk((void *)PADDR_TO_KVADDR(buf), from);
+	err = read_page_from_disk((void*)buf, from);
 	if (err != 0) {
 		panic("Disk error when reading from swap to RAM\n");
 	}
 
-	err = write_page_to_disk((void *)PADDR_TO_KVADDR(buf), to);
+	err = write_page_to_disk((void*)buf, to);
 	if (err != 0) {
 		panic("Disk error when writing from RAM to swap\n");
 	}
