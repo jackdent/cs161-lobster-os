@@ -54,10 +54,10 @@ tlb_add_readable(vaddr_t va, struct pte *pte)
         entryhi = VA_TO_TLBHI(va);
 
         switch (cme->cme_state) {
-        case S_UNSWAPPED:
         case S_CLEAN:
                 entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
                 break;
+        case S_UNSWAPPED:
         case S_DIRTY:
                 entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                 break;
@@ -116,15 +116,16 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         entryhi = VA_TO_TLBHI(va);
 
         switch (cme->cme_state) {
-        case S_UNSWAPPED:
         case S_CLEAN:
                 if (writeable) {
                         entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
-                } else {
-                        entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
+                        cme->cme_state = S_DIRTY;
                 }
-
+                else {
+                    entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
+                }
                 break;
+        case S_UNSWAPPED:
         case S_DIRTY:
                 entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                 break;
