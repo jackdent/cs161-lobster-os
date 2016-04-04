@@ -120,10 +120,10 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
                 if (writeable) {
                         entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                         cme->cme_state = S_DIRTY;
+                } else {
+                        entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
                 }
-                else {
-                    entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);
-                }
+
                 break;
         case S_UNSWAPPED:
         case S_DIRTY:
