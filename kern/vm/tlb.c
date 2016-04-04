@@ -90,7 +90,9 @@ tlb_add_writeable(vaddr_t va, struct pte *pte)
         cm_acquire_lock(cme_id);
 
         cme = &coremap.cmes[cme_id];
-        cme->cme_state = S_DIRTY;
+        if (cme->cme_state == S_CLEAN) {
+            cme->cme_state = S_DIRTY;
+        }
 
         entryhi = VA_TO_TLBHI(va);
         entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
@@ -117,7 +119,6 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         case S_UNSWAPPED:
         case S_CLEAN:
                 if (writeable) {
-                        cme->cme_state = S_DIRTY;
                         entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
                 } else {
                         entrylo = CME_ID_TO_RONLY_TLBLO(cme_id);

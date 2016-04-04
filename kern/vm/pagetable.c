@@ -145,6 +145,9 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 			return ENOMEM; // caller will handle cleanup
 		}
 
+		// set all l2 pte's to NULL initially
+		memset((void*)new_l1->l2s[i], 0, sizeof(struct l2));
+
 		old_l2 = old_l1->l2s[i];
 		new_l2 = new_l1->l2s[i];
 

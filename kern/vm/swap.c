@@ -102,7 +102,7 @@ swap_out(swap_id_t swap_index, cme_id_t src)
 	err = write_page_to_disk((void*)PADDR_TO_KVADDR(CME_ID_TO_PA(src)), swap_index);
 	if (err != 0) {
 		// Nothing else we can really do here
-		panic("Disk error when reading from swap to RAM\n");
+		panic("Disk error when writing from RAM to swap\n");
 	}
 }
 
@@ -116,7 +116,7 @@ swap_in(swap_id_t swap_index, cme_id_t dest)
 
 	if (err != 0) {
 		// Nothing else we can really do here
-		panic("Disk error when writing from RAM to swap\n");
+		panic("Disk error when reading from swap to RAM\n");
 	}
 }
 

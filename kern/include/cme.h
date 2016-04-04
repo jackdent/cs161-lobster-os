@@ -3,7 +3,7 @@
 
 #define CME_ID_TO_PA(cme_id) ((cme_id * PAGE_SIZE) + base)
 #define PA_TO_CME_ID(pa) ((pa - base) / PAGE_SIZE)
-#define OFFSETS_TO_VA(l1, l2) ((l1 << 10 & l2) << 12)
+#define OFFSETS_TO_VA(l1, l2) ((l1 << 10 | l2) << 12)
 
 paddr_t base;
 

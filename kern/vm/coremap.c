@@ -39,7 +39,7 @@ cm_init()
 	coremap.cmes = (struct cme*)PADDR_TO_KVADDR(start);
 	base = start;
 
-	coremap.cm_size = ncmes;
+	coremap.cm_size = ncmes - PA_TO_PHYS_PAGE(base);
 	spinlock_init(&coremap.cm_busy_spinlock);
 	spinlock_init(&coremap.cm_clock_spinlock);
 	coremap.cm_clock_hand = 0;
@@ -81,7 +81,7 @@ cm_capture_slot()
 
 		coremap.cmes[slot].cme_recent = 0;
 
-		if (entry.cme_state == S_FREE || (entry.cme_recent == 0 && entry.cme_pid != 0)) {
+		if (entry.cme_state == S_FREE || (entry.cme_recent == 0 && entry.cme_state != S_KERNEL)) {
 			spinlock_release(&coremap.cm_clock_spinlock);
 			return slot;
 		}
@@ -90,15 +90,29 @@ cm_capture_slot()
 	}
 
 	// If we reach the end of the loop without returning, we
-	// should evict the entry the clock hand first pointed to
-	slot = coremap.cm_clock_hand;
+	// should evict the entry the clock hand first pointed to,
+	// unless it's a kernel page
+	for (i = 0; i < coremap.cm_size; i++) {
+		slot = coremap.cm_clock_hand;
+		entry = coremap.cmes[slot];
 
-	cm_acquire_lock(slot);
-	coremap.cmes[slot].cme_recent = 0;
-	cm_advance_clock_hand();
+		cm_advance_clock_hand();
 
-	spinlock_release(&coremap.cm_clock_spinlock);
-	return slot;
+		if (!cm_attempt_lock(slot)) {
+			continue;
+		}
+
+		coremap.cmes[slot].cme_recent = 0;
+
+		if (entry.cme_state != S_KERNEL) {
+			cm_advance_clock_hand();
+			spinlock_release(&coremap.cm_clock_spinlock);
+			return slot;
+		}
+		cm_release_lock(slot);
+	}
+	panic("Cannot capture coremap slot: all memory pages are kernel?\n");
+	return 0;
 }
 
 cme_id_t
@@ -153,7 +167,8 @@ cm_tlb_shootdown(vaddr_t va, cme_id_t cme_id, enum tlbshootdown_type type)
 		}
 	}
 
-	for (j = 0; j < numcpus; j++) {
+	// Don't wait on self
+	for (j = 0; j < numcpus - 1; j++) {
 		// Will reset the semaphore to 0
 		P(tlbshootdown.ts_sem);
 	}
@@ -176,7 +191,6 @@ cm_evict_page(cme_id_t cme_id)
         struct proc *proc;
         struct cme *cme;
         vaddr_t va;
-        paddr_t page;
         swap_id_t swap_id;
 
 	cme = &coremap.cmes[cme_id];
@@ -197,7 +211,6 @@ cm_evict_page(cme_id_t cme_id)
 	pt_acquire_lock(as->as_pt, pte);
 	KASSERT(pte->pte_state == S_PRESENT);
 
-	page = CME_ID_TO_PA(cme_id);
 	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
 
 	tlb_remove(va);
@@ -214,17 +227,15 @@ cm_evict_page(cme_id_t cme_id)
 		// lifetime.
 		swap_id = swap_capture_slot();
 		pte_set_swap_id(pte, swap_id);
-		swap_out(swap_id, page);
+		swap_out(swap_id, cme_id);
+		break;
 	case S_CLEAN:
+		pte_set_swap_id(pte, cme->cme_swap_id);
 		break;
 	case S_DIRTY:
 		swap_id = cme->cme_swap_id;
-
-		if (swap_id != pte_get_swap_id(pte)) {
-			panic("Unstable swap id on a dirty page!\n");
-		}
-
-		swap_out(swap_id, page);
+		pte_set_swap_id(pte, cme->cme_swap_id);
+		swap_out(swap_id, cme_id);
 		break;
 	}
 
@@ -252,7 +263,7 @@ cm_clean_page(cme_id_t cme_id)
 	cm_tlb_shootdown(va, cme_id, TS_CLEAN);
 
 	cme->cme_state = S_CLEAN;
-	swap_out(cme->cme_swap_id, CME_ID_TO_PA(cme_id));
+	swap_out(cme->cme_swap_id, cme_id);
 }
 
 void
