@@ -63,9 +63,8 @@ swap_free_slot(swap_id_t slot)
 	lock_acquire(swap_map_lock);
 
 	(void)slot;
-	// TODO: uncomment when testing swap
-	//KASSERT(bitmap_isset(swap_map, slot));
-	//bitmap_unmark(swap_map, slot);
+	KASSERT(bitmap_isset(swap_map, slot));
+	bitmap_unmark(swap_map, slot);
 
 	lock_release(swap_map_lock);
 }
