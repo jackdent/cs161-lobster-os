@@ -42,6 +42,7 @@ alloc_kpages(unsigned npages)
         vaddr_t addr;
         paddr_t start_pa;
         struct cme cme;
+        struct addrspace *as;
 
         if (!cm_try_raise_page_count(npages)) {
                 return 0;
@@ -58,7 +59,8 @@ alloc_kpages(unsigned npages)
                 // when debugging
                 addr = CME_ID_TO_PA(curr);
 
-                cme = cme_create(kproc->p_addrspace, PADDR_TO_KVADDR(addr), S_KERNEL);
+                as = (kproc == NULL) ? NULL : kproc->p_addrspace;
+                cme = cme_create(as, PADDR_TO_KVADDR(addr), S_KERNEL);
                 cme.cme_swap_id = 0;
 
                 coremap.cmes[curr] = cme;
