@@ -10,6 +10,9 @@ struct cm {
         struct spinlock cm_busy_spinlock;
         struct spinlock cm_clock_spinlock;
         cme_id_t cm_clock_hand;
+        struct spinlock cm_page_count_spinlock;
+        int cm_allocated_pages; // # of pages allocated, either in swap or RAM
+        unsigned int cm_total_pages;	 // # of pages in swap + RAM
 };
 
 extern struct cm coremap;

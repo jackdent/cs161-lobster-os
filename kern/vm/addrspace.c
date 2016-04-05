@@ -267,7 +267,10 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	// Add lazy entries to our pagetable, so that we allocate
 	// pages as they are needed.
 	n_region_pages = (region->r_end - region->r_base) / PAGE_SIZE;
-	alloc_upages(region->r_base, n_region_pages);
+	err = alloc_upages(region->r_base, n_region_pages);
+	if (err) {
+		goto err2;
+	}
 
 	// Update heap bounds
 	if (as->as_heap_base < region->r_end) {
@@ -309,6 +312,7 @@ int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 	unsigned int stack_pages;
+	int err;
 
 	// Initial user-level stack pointer
 	*stackptr = USERSTACK;
@@ -316,9 +320,9 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	// Add lazy entries to our pagetable, so that we allocate
 	// stack pages as they are needed.
 	stack_pages = (USERSTACK - as->as_stack_end) / PAGE_SIZE;
-	alloc_upages(as->as_stack_end, stack_pages);
+	err = alloc_upages(as->as_stack_end, stack_pages);
 
-	return 0;
+	return err;
 }
 
 static

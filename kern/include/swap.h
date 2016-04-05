@@ -1,6 +1,5 @@
 #include <types.h>
 
-#define SWAP_DISK_PAGES 2000 // ~8.2 MB
 #define DISK_OFFSET(index) (index * PAGE_SIZE)
 
 /*
@@ -9,9 +8,14 @@
  */
 typedef uint32_t swap_id_t;
 
-struct vnode *swap_file;
-struct bitmap *swap_map;
-struct lock *swap_map_lock;
+struct swap {
+	struct vnode *swap_file;
+	struct bitmap *swap_map;
+	struct lock *swap_map_lock;
+	unsigned int swap_slots;
+};
+
+struct swap swap;
 
 /*
  * Initialize the swap file, swap map, and swap map lock.

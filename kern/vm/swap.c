@@ -8,31 +8,40 @@
 #include <kern/errno.h>
 #include <synch.h>
 #include <machine/vm.h>
-#include <cme.h>
+#include <coremap.h>
+#include <kern/stat.h>
 
 void
 swap_init(void)
 {
 	int err;
 	char *swap_disk_path;
+	struct stat stat;
 
 	swap_disk_path = kstrdup("lhd0:");
 	if (swap_disk_path == NULL) {
 		panic("swap_init: could not open swap disk");
 	}
 
-	err = vfs_swapon(swap_disk_path, &swap_file);
+	err = vfs_swapon(swap_disk_path, &swap.swap_file);
 	if (err) {
 		panic("swap_init: could not open swap disk");
 	}
 
-	swap_map = bitmap_create(SWAP_DISK_PAGES);
-	if (swap_map == NULL) {
+	err = VOP_STAT(swap.swap_file, &stat);
+	if (err) {
+		panic("swap_init: could not open swap disk");
+	}
+	swap.swap_slots = stat.st_size / PAGE_SIZE;
+	coremap.cm_total_pages += swap.swap_slots;
+
+	swap.swap_map = bitmap_create(swap.swap_slots);
+	if (swap.swap_map == NULL) {
 		panic("swap_init: could not create swap disk map");
 	}
 
-	swap_map_lock = lock_create("swap map lock");
-	if (swap_map_lock == NULL) {
+	swap.swap_map_lock = lock_create("swap map lock");
+	if (swap.swap_map_lock == NULL) {
 		panic("swap_init: could not create disk map lock");
 	}
 
@@ -45,9 +54,9 @@ swap_capture_slot(void)
 	swap_id_t index;
 	int err;
 
-	lock_acquire(swap_map_lock);
-	err = bitmap_alloc(swap_map, &index);
-	lock_release(swap_map_lock);
+	lock_acquire(swap.swap_map_lock);
+	err = bitmap_alloc(swap.swap_map, &index);
+	lock_release(swap.swap_map_lock);
 
 	if (err) {
 		panic("Ran out of swap space!");
@@ -60,13 +69,13 @@ swap_capture_slot(void)
 void
 swap_free_slot(swap_id_t slot)
 {
-	lock_acquire(swap_map_lock);
+	lock_acquire(swap.swap_map_lock);
 
 	(void)slot;
-	KASSERT(bitmap_isset(swap_map, slot));
-	bitmap_unmark(swap_map, slot);
+	KASSERT(bitmap_isset(swap.swap_map, slot));
+	bitmap_unmark(swap.swap_map, slot);
 
-	lock_release(swap_map_lock);
+	lock_release(swap.swap_map_lock);
 }
 
 // Helpers
@@ -77,8 +86,8 @@ write_page_to_disk(void *page, swap_id_t swap_index)
 	struct iovec iov;
 	struct uio u;
 
-	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, swap_index * PAGE_SIZE, UIO_WRITE);
-	return VOP_WRITE(swap_file, &u);
+	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, DISK_OFFSET(swap_index), UIO_WRITE);
+	return VOP_WRITE(swap.swap_file, &u);
 }
 
 static
@@ -88,8 +97,8 @@ read_page_from_disk(void *page, swap_id_t swap_index)
 	struct iovec iov;
 	struct uio u;
 
-	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, swap_index * PAGE_SIZE, UIO_READ);
-	return VOP_READ(swap_file, &u);
+	uio_kinit(&iov, &u, (char*)page, PAGE_SIZE, DISK_OFFSET(swap_index), UIO_READ);
+	return VOP_READ(swap.swap_file, &u);
 }
 
 // Write the page at src to the disk at swap_index

@@ -5,7 +5,6 @@
 #include <lib.h>
 #include <proc.h>
 #include <spinlock.h>
-#include <swap.h>
 
 
 struct pagetable *

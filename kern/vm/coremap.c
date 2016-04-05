@@ -2,7 +2,6 @@
 #include <lib.h>
 #include <coremap.h>
 #include <machine/vm.h>
-#include <swap.h>
 #include <synch.h>
 #include <proctable.h>
 #include <addrspace.h>
@@ -45,7 +44,13 @@ cm_init()
 
 	spinlock_init(&coremap.cm_busy_spinlock);
 	spinlock_init(&coremap.cm_clock_spinlock);
+	spinlock_init(&coremap.cm_page_count_spinlock);
+
 	coremap.cm_clock_hand = 0;
+
+	coremap.cm_allocated_pages = ncoremap_pages;
+	// swap pages will be added to this count in swap_init()
+	coremap.cm_total_pages = coremap.cm_size;
 
 	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
 

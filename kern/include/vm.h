@@ -52,9 +52,10 @@ void free_kpages(vaddr_t addr);
 
 /*
  * Maps the n pages beginning at start (which should be page aligned) into
- * the lazy state. Every page should be in state S_INVALID.
+ * the lazy state. Every page should be in state S_INVALID. Returns 0
+ * on success, ENOMEM otherwise
  */
-void alloc_upages(vaddr_t start, unsigned int npages);
+int alloc_upages(vaddr_t start, unsigned int npages);
 
 /*
  * If the page table entry has state S_INVALID, NOOP. Otherwise, mark the

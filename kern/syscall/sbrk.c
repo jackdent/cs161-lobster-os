@@ -51,7 +51,9 @@ sys_sbrk(int32_t amount, int32_t *retval)
         }
 
         if (new_break > old_break) {
-                alloc_upages(old_break, npages);
+                if (alloc_upages(old_break, npages != 0)) {
+                        return ENOMEM;
+                }
         } else {
                 free_upages(new_break, npages);
         }
