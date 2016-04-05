@@ -43,7 +43,7 @@ pagetable_destroy(struct pagetable *pt)
 
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
 			pte = &l2->l2_ptes[j];
-			if (pte->pte_state == S_PRESENT || pte->pte_state == S_SWAPPED) {
+			if (pte->pte_state != S_INVALID) {
 				free_upage(L1_L2_TO_VA(i, j));
 			}
 		}

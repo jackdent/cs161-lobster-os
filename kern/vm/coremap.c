@@ -342,7 +342,8 @@ cm_release_lock(cme_id_t i)
 }
 
 void
-cm_acquire_locks(cme_id_t start, cme_id_t end) {
+cm_acquire_locks(cme_id_t start, cme_id_t end)
+{
 	KASSERT(start <= end);
 	KASSERT(start < coremap.cm_size);
 	KASSERT(end < coremap.cm_size);
@@ -354,7 +355,8 @@ cm_acquire_locks(cme_id_t start, cme_id_t end) {
 }
 
 void
-cm_release_locks(cme_id_t start, cme_id_t end) {
+cm_release_locks(cme_id_t start, cme_id_t end)
+{
 	KASSERT(start <= end);
 	KASSERT(start < coremap.cm_size);
 	KASSERT(end < coremap.cm_size);
@@ -383,7 +385,8 @@ cm_try_raise_page_count(unsigned int npages)
 }
 
 void
-cm_lower_page_count(unsigned int npages) {
+cm_lower_page_count(unsigned int npages)
+{
 	spinlock_acquire(&coremap.cm_page_count_spinlock);
 
         coremap.cm_allocated_pages -= npages;

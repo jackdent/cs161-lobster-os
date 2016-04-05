@@ -170,13 +170,17 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 		goto err3;
 	}
 
-	// Clean up
-	vfs_close(v);
-
 	/* Define the user stack in the address space */
 	result = as_define_stack(as, stack_ptr);
 	if (result) {
 		goto err3;
+	}
+
+	/* Clean up */
+	vfs_close(v);
+
+	if (old_as != NULL) {
+		as_destroy(old_as);
 	}
 
 	return 0;
