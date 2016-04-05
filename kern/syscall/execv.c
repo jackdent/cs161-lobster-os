@@ -173,7 +173,7 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	/* Define the user stack in the address space */
 	result = as_define_stack(as, stack_ptr);
 	if (result) {
-		goto err3;
+		goto err4;
 	}
 
 	/* Clean up */
@@ -186,6 +186,8 @@ _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point)
 	return 0;
 
 
+	err4:
+		vfs_close(v);
 	err3:
 		proc_setas(old_as);
 		as_activate();
