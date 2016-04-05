@@ -373,20 +373,26 @@ cm_release_locks(cme_id_t start, cme_id_t end) {
 bool
 cm_try_raise_page_count(unsigned int npages)
 {
+	bool success;
+
 	spinlock_acquire(&coremap.cm_page_count_spinlock);
-        if (coremap.cm_allocated_pages + npages > coremap.cm_total_pages) {
-                spinlock_release(&coremap.cm_page_count_spinlock);
-                return false;
+
+	success = (coremap.cm_allocated_pages + npages <= coremap.cm_total_pages);
+        if (success) {
+	        coremap.cm_allocated_pages += npages;
         }
-        coremap.cm_allocated_pages += npages;
+
         spinlock_release(&coremap.cm_page_count_spinlock);
-        return true;
+
+        return success;
 }
 
 void
 cm_lower_page_count(unsigned int npages) {
 	spinlock_acquire(&coremap.cm_page_count_spinlock);
+
         coremap.cm_allocated_pages -= npages;
         KASSERT(coremap.cm_allocated_pages >= 0);
+
         spinlock_release(&coremap.cm_page_count_spinlock);
 }
