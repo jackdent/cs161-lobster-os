@@ -117,6 +117,7 @@ pagetable_create_pte_from_va(struct pagetable *pt, vaddr_t va)
 
 	l1 = &pt->pt_l1;
 	l2 = l1->l2s[l1_offset];
+
 	if (l2 == NULL) {
 		l2 = pagetable_create_l2(l1, l1_offset);
 		if (l2 == NULL) {

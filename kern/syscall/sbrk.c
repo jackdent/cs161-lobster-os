@@ -16,21 +16,16 @@ sys_sbrk(int32_t amount, int32_t *retval)
         struct addrspace *as;
         vaddr_t old_break, new_break;
         unsigned int npages;
+        int err;
 
         as = curproc->p_addrspace;
         old_break = as->as_heap_end;
         new_break = old_break + amount;
 
-        npages = amount / PAGE_SIZE;
         *retval = old_break;
 
         if (amount == 0) {
                 return 0;
-        }
-
-        // negative wraparound
-        if ((int)amount + (int)old_break < (int)as->as_heap_base) {
-                return EINVAL;
         }
 
         // The new heap break must be page aligned
@@ -51,10 +46,14 @@ sys_sbrk(int32_t amount, int32_t *retval)
         }
 
         if (new_break > old_break) {
-                if (alloc_upages(old_break, npages != 0)) {
-                        return ENOMEM;
+                npages = amount / PAGE_SIZE;
+
+                err = alloc_upages(old_break, npages);
+                if (err) {
+                        return err;
                 }
         } else {
+                npages = (amount * -1) / PAGE_SIZE;
                 free_upages(new_break, npages);
         }
 
