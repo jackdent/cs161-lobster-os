@@ -1,5 +1,6 @@
 #include <types.h>
 #include <pagetable_masks.h>
+#include <addrspace.h>
 
 #define CME_ID_TO_PA(cme_id) ((cme_id * PAGE_SIZE) + base)
 #define PA_TO_CME_ID(pa) ((pa - base) / PAGE_SIZE)
@@ -39,7 +40,7 @@ enum cme_state {
 };
 
 struct cme {
-        unsigned int cme_pid:15;
+        struct addrspace *cme_as;
         unsigned int cme_l1_offset:10;
         unsigned int cme_l2_offset:10;
         unsigned int cme_swap_id:24;
@@ -48,6 +49,6 @@ struct cme {
         enum cme_state cme_state:3;
 };
 
-struct cme cme_create(pid_t pid, vaddr_t va, enum cme_state state);
+struct cme cme_create(struct addrspace *as, vaddr_t va, enum cme_state state);
 
 #endif

@@ -58,7 +58,7 @@ alloc_kpages(unsigned npages)
                 // when debugging
                 addr = CME_ID_TO_PA(curr);
 
-                cme = cme_create(KPROC_PID, PADDR_TO_KVADDR(addr), S_KERNEL);
+                cme = cme_create(kproc->p_addrspace, PADDR_TO_KVADDR(addr), S_KERNEL);
                 cme.cme_swap_id = 0;
 
                 coremap.cmes[curr] = cme;

@@ -3,7 +3,6 @@
 #include <coremap.h>
 #include <machine/vm.h>
 #include <synch.h>
-#include <proctable.h>
 #include <addrspace.h>
 #include <thread.h>
 #include <current.h>
@@ -56,7 +55,7 @@ cm_init()
 
 	// Set the coremap as owned by the kernel
 	for (i = 0; i < ncoremap_pages; i++) {
-		coremap.cmes[i] = cme_create(0, 0, S_KERNEL);
+		coremap.cmes[i] = cme_create(NULL, 0, S_KERNEL);
 	        coremap.cmes[i].cme_busy = 0;
 	}
 }
@@ -201,7 +200,6 @@ cm_evict_page(cme_id_t cme_id)
 {
         struct addrspace *as;
         struct pte *pte;
-        struct proc *proc;
         struct cme *cme;
         vaddr_t va;
         swap_id_t swap_id;
@@ -212,10 +210,7 @@ cm_evict_page(cme_id_t cme_id)
 		return;
 	}
 
-	proc = proc_table.pt_table[cme->cme_pid];
-	KASSERT(proc != NULL);
-
-        as = proc->p_addrspace;
+        as = cme->cme_as;
 	KASSERT(as != NULL);
 
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);

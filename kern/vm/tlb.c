@@ -230,6 +230,7 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
         struct cme cme;
         cme_id_t slot;
         paddr_t pa;
+        struct addrspace *as;
 
         if (pte->pte_state == S_INVALID) {
                 panic("Cannot ensure than an invalid pte is in memory\n");
@@ -242,19 +243,20 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
         slot = cm_capture_slot();
         cm_evict_page(slot);
 
+        as = curproc->p_addrspace;
         pa = CME_ID_TO_PA(slot);
 
         switch(pte->pte_state) {
         case S_LAZY:
                 // Actually free memory for the page for the first time
-                cme = cme_create(curproc->p_pid, va, S_UNSWAPPED);
+                cme = cme_create(as, va, S_UNSWAPPED);
 
                 // Zero out the memory on the newly allocated page
                 memset((void *)PADDR_TO_KVADDR(pa), 0, PAGE_SIZE);
 
                 break;
         case S_SWAPPED:
-                cme = cme_create(curproc->p_pid, va, S_CLEAN);
+                cme = cme_create(as, va, S_CLEAN);
                 cme.cme_swap_id = pte_get_swap_id(pte);
 
                 swap_in(cme.cme_swap_id, slot);
