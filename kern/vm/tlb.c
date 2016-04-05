@@ -197,7 +197,7 @@ tlb_flush()
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
-        KASSERT(curproc != NULL);
+        //KASSERT(curproc != NULL);
 
         if (ts->ts_type == TS_CLEAN) {
                 tlb_set_writeable(ts->ts_flushed_va, ts->ts_flushed_cme_id, false);
@@ -304,7 +304,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
         }
 
         pte = pagetable_get_pte_from_va(as->as_pt, faultaddress);
-        if (pte == NULL) {
+        if (pte == NULL || pte->pte_state == S_INVALID) {
                 return EFAULT;
         }
 
