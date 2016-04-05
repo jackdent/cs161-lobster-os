@@ -120,6 +120,7 @@ proc_create(const char *name, int *err) {
 	*err = 0;
 	return proc;
 
+
 	err7:
 		sem_destroy(proc->p_wait_sem);
 	err6:
@@ -215,7 +216,6 @@ proc_cleanup(struct proc *proc)
 	lock_destroy(proc->p_lock);
 	array_destroy(proc->p_children);
 	fd_table_destroy(proc->p_fd_table);
-	kfree(proc->p_name);
 }
 
 /*
@@ -229,6 +229,7 @@ proc_reap(struct proc *proc)
 
 	sem_destroy(proc->p_wait_sem);
 	release_pid(proc->p_pid);
+	kfree(proc->p_name);
 	kfree(proc);
 }
 
