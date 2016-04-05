@@ -3,6 +3,8 @@
 #include <types.h>
 #include <cme.h>
 
+struct addrspace;
+
 struct l2 {
 	struct pte l2_ptes[PAGE_TABLE_SIZE];
 };
@@ -25,7 +27,7 @@ struct pagetable *pagetable_create(void);
  * Free all pages mapped from the pagetable and the
  * pagetable itself
  */
-void pagetable_destroy(struct pagetable *pt);
+void pagetable_destroy(struct pagetable *pt, struct addrspace *as);
 
 /*
  * Lookup a pagetable entry based on the supplied l2 and l2 offsets, and

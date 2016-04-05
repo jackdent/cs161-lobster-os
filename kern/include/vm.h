@@ -29,6 +29,8 @@
 
 #include <machine/vm.h>
 
+struct addrspace;
+
 #ifndef _VM_H_
 #define _VM_H_
 
@@ -64,12 +66,12 @@ int alloc_upages(vaddr_t start, unsigned int npages);
  * Should only ever be called by the process that owns the address space
  * for those pages
  */
-void free_upage(vaddr_t va);
+void free_upage(vaddr_t va, struct addrspace *as);
 
 /*
  * Marks the the n pages beginning at start (which should be page aligned)
  * as invalid, freeing the relevant page table entries.
  */
-void free_upages(vaddr_t start, unsigned int npages);
+void free_upages(vaddr_t start, unsigned int npages, struct addrspace *as);
 
 #endif /* _VM_H_ */

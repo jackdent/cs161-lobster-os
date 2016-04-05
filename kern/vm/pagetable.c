@@ -5,6 +5,7 @@
 #include <lib.h>
 #include <proc.h>
 #include <spinlock.h>
+#include <current.h>
 
 
 struct pagetable *
@@ -26,13 +27,18 @@ pagetable_create(void)
 }
 
 void
-pagetable_destroy(struct pagetable *pt)
+pagetable_destroy(struct pagetable *pt, struct addrspace *as)
 {
 	KASSERT(pt != NULL);
 
 	int i, j;
 	struct l2 *l2;
 	struct pte *pte;
+
+	if (as == NULL) {
+		as = curproc->p_addrspace;
+	}
+	KASSERT(as != NULL);
 
 	// Walk through all entries and free them
 	for (i = 0; i < PAGE_TABLE_SIZE; i++) {
@@ -44,7 +50,7 @@ pagetable_destroy(struct pagetable *pt)
 		for (j = 0; j < PAGE_TABLE_SIZE; j++) {
 			pte = &l2->l2_ptes[j];
 			if (pte->pte_state != S_INVALID) {
-				free_upage(L1_L2_TO_VA(i, j));
+				free_upage(L1_L2_TO_VA(i, j), as);
 			}
 		}
 

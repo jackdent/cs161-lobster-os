@@ -54,7 +54,7 @@ sys_sbrk(int32_t amount, int32_t *retval)
                 }
         } else {
                 npages = (amount * -1) / PAGE_SIZE;
-                free_upages(new_break, npages);
+                free_upages(new_break, npages, curproc->p_addrspace);
         }
 
         as->as_heap_end = new_break;

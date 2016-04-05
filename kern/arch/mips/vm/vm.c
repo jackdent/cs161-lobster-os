@@ -139,14 +139,16 @@ alloc_upages(vaddr_t start, unsigned int npages)
 }
 
 void
-free_upage(vaddr_t va)
+free_upage(vaddr_t va, struct addrspace *as)
 {
-        struct addrspace *as;
         struct pte *pte;
         cme_id_t cme_id;
         swap_id_t swap_id;
 
-        as = curproc->p_addrspace;
+        if (as == NULL) {
+                as = curproc->p_addrspace;
+        }
+
         KASSERT(as != NULL);
 
         pte = pagetable_get_pte_from_va(as->as_pt, va);
@@ -179,7 +181,7 @@ free_upage(vaddr_t va)
 }
 
 void
-free_upages(vaddr_t start, unsigned int npages)
+free_upages(vaddr_t start, unsigned int npages, struct addrspace *as)
 {
         KASSERT(start % PAGE_SIZE == 0);
 
@@ -188,6 +190,6 @@ free_upages(vaddr_t start, unsigned int npages)
 
         for (i = 0; i < npages; i++) {
                 va = start + i * PAGE_SIZE;
-                free_upage(va);
+                free_upage(va, as);
         }
 }

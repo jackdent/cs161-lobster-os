@@ -75,7 +75,7 @@ as_create(void)
 
 
 	err3:
-		pagetable_destroy(as->as_pt);
+		pagetable_destroy(as->as_pt, as);
 	err2:
 		kfree(as);
 	err1:
@@ -159,7 +159,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 
 	err3:
-		pagetable_destroy(new->as_pt);
+		pagetable_destroy(new->as_pt, NULL);
 	err2:
 		as_destroy(new);
 	err1:
@@ -171,7 +171,7 @@ as_destroy(struct addrspace *as)
 {
 	as_destroy_regions(as);
 	regionarray_destroy(as->as_regions);
-	pagetable_destroy(as->as_pt);
+	pagetable_destroy(as->as_pt, as);
 	kfree(as);
 }
 
