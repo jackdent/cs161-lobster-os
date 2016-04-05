@@ -43,13 +43,9 @@ alloc_kpages(unsigned npages)
         paddr_t start_pa;
         struct cme cme;
 
-        spinlock_acquire(&coremap.cm_page_count_spinlock);
-        if (coremap.cm_allocated_pages + npages > coremap.cm_total_pages) {
-                spinlock_release(&coremap.cm_page_count_spinlock);
+        if (!cm_try_raise_page_count(npages)) {
                 return 0;
         }
-        coremap.cm_allocated_pages += npages;
-        spinlock_release(&coremap.cm_page_count_spinlock);
 
         start = cm_capture_slots_for_kernel(npages);
 
@@ -107,10 +103,7 @@ free_kpages(vaddr_t addr)
         cm_release_lock(start);
         cm_release_locks(start + 1, end);
 
-        spinlock_acquire(&coremap.cm_page_count_spinlock);
-        coremap.cm_allocated_pages -= npages;
-        KASSERT(coremap.cm_allocated_pages >= 0);
-        spinlock_release(&coremap.cm_page_count_spinlock);
+        cm_lower_page_count(npages);
 }
 
 int
@@ -126,13 +119,9 @@ alloc_upages(vaddr_t start, unsigned int npages)
         as = curproc->p_addrspace;
         KASSERT(as != NULL);
 
-        spinlock_acquire(&coremap.cm_page_count_spinlock);
-        if (coremap.cm_allocated_pages + npages > coremap.cm_total_pages) {
-                spinlock_release(&coremap.cm_page_count_spinlock);
+        if (!cm_try_raise_page_count(npages)) {
                 return ENOMEM;
         }
-        coremap.cm_allocated_pages += npages;
-        spinlock_release(&coremap.cm_page_count_spinlock);
 
         for (i = 0; i < npages; i++) {
                 va =  start + i * PAGE_SIZE;
@@ -184,10 +173,7 @@ free_upage(vaddr_t va)
         pte->pte_state = S_INVALID;
         pt_release_lock(as->as_pt, pte);
 
-        spinlock_acquire(&coremap.cm_page_count_spinlock);
-        coremap.cm_allocated_pages -= 1;
-        KASSERT(coremap.cm_allocated_pages >= 0);
-        spinlock_release(&coremap.cm_page_count_spinlock);
+        cm_lower_page_count(1);
 }
 
 void

@@ -75,3 +75,9 @@ void cm_release_lock(cme_id_t i);
  */
 void cm_acquire_locks(cme_id_t start, cme_id_t end);
 void cm_release_locks(cme_id_t start, cme_id_t end);
+
+/*
+ * For keeping track of allocation counts
+ */
+bool cm_try_raise_page_count(unsigned int npages);
+void cm_lower_page_count(unsigned int npages);
