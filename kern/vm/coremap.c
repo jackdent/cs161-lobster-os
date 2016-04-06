@@ -39,7 +39,7 @@ cm_init()
 	base = start;
 
 	coremap.cm_size = ncmes - PA_TO_PHYS_PAGE(base);
-	coremap.cm_kernel_break = (coremap.cm_size / 10) * 9;
+	coremap.cm_kernel_break = (coremap.cm_size / 10) * 8;
 	KASSERT(coremap.cm_kernel_break > 0);
 
 	spinlock_init(&coremap.cm_busy_spinlock);

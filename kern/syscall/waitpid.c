@@ -52,9 +52,7 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 	}
 
 	// Finish cleaning up the child proc
-	spinlock_acquire(&proc_table.pt_spinlock);
 	proc_reap(proc_table.pt_table[pid]);
-	spinlock_release(&proc_table.pt_spinlock);
 
 	// Remove pid from array of children
 	remove_child_pid_from_parent(curproc, pid);
