@@ -191,7 +191,7 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				break;
 			case S_PRESENT:
 				new_slot = pagetable_assign_swap_slot_to_pte(new_pte);
-				old_cme_id = PA_TO_CME_ID(pte_get_phys_page(old_pte));
+				old_cme_id = PA_TO_CME_ID(pte_get_pa(old_pte));
 				swap_out(new_slot, old_cme_id);
 				new_pte->pte_state = S_SWAPPED;
 				break;

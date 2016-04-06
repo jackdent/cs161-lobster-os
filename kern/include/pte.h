@@ -38,13 +38,11 @@ struct pte {
         enum pte_state pte_state:2;
 };
 
-paddr_t pte_get_pa(struct pte *pte, vaddr_t va);
-
 /*
  * Extract the physical page number.
  */
-paddr_t pte_get_phys_page(struct pte *pte);
-void pte_set_phys_page(struct pte *pte, paddr_t pa);
+paddr_t pte_get_pa(struct pte *pte);
+void pte_set_pa(struct pte *pte, paddr_t pa);
 
 /*
  * Extract the swap offset from the overloaded pte_phys_page and swap_tail.

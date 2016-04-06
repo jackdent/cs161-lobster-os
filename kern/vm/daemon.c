@@ -69,6 +69,7 @@ daemon_thread(void *data1, unsigned long data2)
 
 			cm_release_lock(cme_id);
 		}
+
 		allocated_pages = cm_get_page_count();
 		if (allocated_pages <= daemon.d_memory_threshold) {
 			lock_acquire(daemon.d_lock);

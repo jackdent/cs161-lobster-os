@@ -4,16 +4,7 @@
 #include <spinlock.h>
 
 paddr_t
-pte_get_pa(struct pte *pte, vaddr_t va)
-{
-	KASSERT(pte);
-	KASSERT(pte->pte_state == S_PRESENT);
-
-	return PHYS_PAGE_TO_PA(pte->pte_phys_page) & OFFSET_MASK(va);
-}
-
-paddr_t
-pte_get_phys_page(struct pte *pte)
+pte_get_pa(struct pte *pte)
 {
 	KASSERT(pte);
 	KASSERT(pte->pte_state == S_PRESENT);
@@ -22,7 +13,7 @@ pte_get_phys_page(struct pte *pte)
 }
 
 void
-pte_set_phys_page(struct pte *pte, paddr_t pa)
+pte_set_pa(struct pte *pte, paddr_t pa)
 {
 	KASSERT(pte);
 

@@ -73,6 +73,7 @@ main(void)
     for (i = 0; i < Dim; i++)
 	for (j = 0; j < Dim; j++)
             for (k = 0; k < Dim; k++)
+                printf("mat");
 		C[i][j] += T[i][j][k];
 
     r = 0;

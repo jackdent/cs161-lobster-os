@@ -162,7 +162,7 @@ free_upage(vaddr_t va, struct addrspace *as)
         case S_LAZY:
                 break;
         case S_PRESENT:
-                cme_id = PA_TO_CME_ID(pte_get_phys_page(pte));
+                cme_id = PA_TO_CME_ID(pte_get_pa(pte));
 
                 cm_acquire_lock(cme_id);
                 cm_free_page(cme_id);

@@ -33,22 +33,19 @@ tlb_add(uint32_t entryhi, uint32_t entrylo)
         splx(spl);
 }
 
+/*
+ * Assumes that the caller holds the core map entry lock.
+ */
 static
 void
-tlb_add_readable(vaddr_t va, struct pte *pte)
+tlb_add_readable(vaddr_t va, struct pte *pte, cme_id_t cme_id)
 {
         KASSERT(curthread != NULL);
+        KASSERT(pte->pte_state == S_PRESENT);
 
         uint32_t entryhi, entrylo;
-        cme_id_t cme_id;
-        paddr_t pa;
         struct cme *cme;
 
-        KASSERT(pte->pte_state == S_PRESENT);
-        pa = pte_get_phys_page(pte);
-        cme_id = PA_TO_CME_ID(pa);
-
-        cm_acquire_lock(cme_id);
         cme = &coremap.cmes[cme_id];
 
         entryhi = VA_TO_TLBHI(va);
@@ -68,28 +65,23 @@ tlb_add_readable(vaddr_t va, struct pte *pte)
         }
 
         tlb_add(entryhi, entrylo);
-
-        cm_release_lock(cme_id);
 }
 
+/*
+ * Assumes that the caller holds the core map entry lock.
+ */
 static
 void
-tlb_add_writeable(vaddr_t va, struct pte *pte)
+tlb_add_writeable(vaddr_t va, struct pte *pte, cme_id_t cme_id)
 {
         KASSERT(curthread != NULL);
+        KASSERT(pte->pte_state == S_PRESENT);
 
         uint32_t entryhi, entrylo;
-        cme_id_t cme_id;
-        paddr_t pa;
         struct cme *cme;
 
-        KASSERT(pte->pte_state == S_PRESENT);
-        pa = pte_get_phys_page(pte);
-        cme_id = PA_TO_CME_ID(pa);
-
-        cm_acquire_lock(cme_id);
-
         cme = &coremap.cmes[cme_id];
+
         if (cme->cme_state == S_CLEAN) {
             cme->cme_state = S_DIRTY;
         }
@@ -98,8 +90,6 @@ tlb_add_writeable(vaddr_t va, struct pte *pte)
         entrylo = CME_ID_TO_WRITEABLE_TLBLO(cme_id);
 
         tlb_add(entryhi, entrylo);
-
-        cm_release_lock(cme_id);
 }
 
 void
@@ -110,7 +100,6 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         int spl;
         int index;
 
-        cm_acquire_lock(cme_id);
         cme = &coremap.cmes[cme_id];
 
         entryhi = VA_TO_TLBHI(va);
@@ -145,7 +134,6 @@ tlb_set_writeable(vaddr_t va, cme_id_t cme_id, bool writeable)
         }
 
         splx(spl);
-        cm_release_lock(cme_id);
 }
 
 void
@@ -197,8 +185,6 @@ tlb_flush()
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
-        //KASSERT(curproc != NULL);
-
         if (ts->ts_type == TS_CLEAN) {
                 tlb_set_writeable(ts->ts_flushed_va, ts->ts_flushed_cme_id, false);
         } else {
@@ -222,7 +208,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
  * that it holds the pte lock.
  */
 static
-void
+cme_id_t
 ensure_in_memory(struct pte *pte, vaddr_t va)
 {
         KASSERT(curproc != NULL);
@@ -237,7 +223,9 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
         }
 
         if (pte->pte_state == S_PRESENT) {
-                return;
+                slot = PA_TO_CME_ID(pte_get_pa(pte));
+                cm_acquire_lock(slot);
+                return slot;
         }
 
         slot = cm_capture_slot();
@@ -254,20 +242,22 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
                 // Zero out the memory on the newly allocated page
                 memset((void *)PADDR_TO_KVADDR(pa), 0, PAGE_SIZE);
 
+                coremap.cmes[slot] = cme;
                 break;
         case S_SWAPPED:
                 cme = cme_create(as, va, S_CLEAN);
                 cme.cme_swap_id = pte_get_swap_id(pte);
 
                 swap_in(cme.cme_swap_id, slot);
+
+                coremap.cmes[slot] = cme;
                 break;
         }
 
-        coremap.cmes[slot] = cme;
-        cm_release_lock(slot);
-
         pte->pte_state = S_PRESENT;
-        pte_set_phys_page(pte, pa);
+        pte_set_pa(pte, pa);
+
+        return slot;
 }
 
 /*
@@ -279,6 +269,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
         struct addrspace *as;
         struct pte *pte;
+        cme_id_t cme_id;
         paddr_t pa;
 
         if (curproc == NULL) {
@@ -310,24 +301,27 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
         pt_acquire_lock(as->as_pt, pte);
 
-        ensure_in_memory(pte, faultaddress);
+        cme_id = ensure_in_memory(pte, faultaddress);
 
         switch (faulttype) {
         case VM_FAULT_READ:
-                tlb_add_readable(faultaddress, pte);
+                tlb_add_readable(faultaddress, pte, cme_id);
                 break;
         case VM_FAULT_WRITE:
-                tlb_add_writeable(faultaddress, pte);
+                tlb_add_writeable(faultaddress, pte, cme_id);
                 break;
         case VM_FAULT_READONLY:
-                pa = pte_get_phys_page(pte);
-                tlb_set_writeable(faultaddress, PA_TO_CME_ID(pa), true);
+                pa = pte_get_pa(pte);
+                KASSERT(PA_TO_CME_ID(pa) == cme_id);
+
+                tlb_set_writeable(faultaddress, cme_id, true);
                 break;
         default:
                 panic("Unknown TLB fault type\n");
                 break;
         }
 
+        cm_release_lock(cme_id);
         pt_release_lock(as->as_pt, pte);
 
         return 0;
