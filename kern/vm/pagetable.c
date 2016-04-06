@@ -35,9 +35,6 @@ pagetable_destroy(struct pagetable *pt, struct addrspace *as)
 	struct l2 *l2;
 	struct pte *pte;
 
-	if (as == NULL) {
-		as = curproc->p_addrspace;
-	}
 	KASSERT(as != NULL);
 
 	// Walk through all entries and free them

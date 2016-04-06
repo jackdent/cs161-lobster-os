@@ -159,7 +159,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 
 	err3:
-		pagetable_destroy(new->as_pt, NULL);
+		pagetable_destroy(new->as_pt, new);
 	err2:
 		as_destroy(new);
 	err1:
