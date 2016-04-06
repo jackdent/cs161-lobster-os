@@ -84,3 +84,4 @@ void cm_release_locks(cme_id_t start, cme_id_t end);
  */
 bool cm_try_raise_page_count(unsigned int npages);
 void cm_lower_page_count(unsigned int npages);
+int cm_get_page_count(void);

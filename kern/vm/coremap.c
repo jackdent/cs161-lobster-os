@@ -9,6 +9,7 @@
 #include <array.h>
 #include <cpu.h>
 #include <pagetable.h>
+#include <daemon.h>
 
 // Global coremap struct
 struct cm coremap;
@@ -50,6 +51,9 @@ cm_init()
 	// swap pages will be added to this count in swap_init()
 	coremap.cm_total_pages = coremap.cm_size;
 	min_allocated_pages = ncoremap_pages;
+
+	daemon.d_memory_threshold = (USE_DAEMON_FRAC_NUMER * coremap.cm_size);
+	daemon.d_memory_threshold /= USE_DAEMON_FRAC_DENOM;
 
 	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
 
@@ -368,7 +372,12 @@ cm_try_raise_page_count(unsigned int npages)
 
 	success = (coremap.cm_allocated_pages + npages <= coremap.cm_total_pages);
         if (success) {
-	        coremap.cm_allocated_pages += npages;
+		coremap.cm_allocated_pages += npages;
+		if (USE_DAEMON && coremap.cm_allocated_pages > daemon.d_memory_threshold && !daemon.d_awake) {
+			lock_acquire(daemon.d_lock);
+			cv_signal(daemon.d_cv, daemon.d_lock);
+			lock_release(daemon.d_lock);
+		}
         }
 
         spinlock_release(&coremap.cm_page_count_spinlock);
@@ -385,4 +394,16 @@ cm_lower_page_count(unsigned int npages)
         KASSERT(coremap.cm_allocated_pages >= min_allocated_pages);
 
         spinlock_release(&coremap.cm_page_count_spinlock);
+}
+
+int
+cm_get_page_count(void)
+{
+	int result;
+
+	spinlock_acquire(&coremap.cm_page_count_spinlock);
+        result = coremap.cm_allocated_pages;
+        spinlock_release(&coremap.cm_page_count_spinlock);
+
+        return result;
 }
