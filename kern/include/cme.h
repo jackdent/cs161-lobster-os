@@ -50,5 +50,6 @@ struct cme {
 };
 
 struct cme cme_create(struct addrspace *as, vaddr_t va, enum cme_state state);
+bool cme_is_equal_to(struct cme *cme, struct cme *other);
 
 #endif

@@ -441,12 +441,13 @@ cm_attempt_lock_with_pte(cme_id_t cme_id)
 	pt_acquire_lock(as->as_pt, pte);
 	cm_acquire_lock(cme_id);
 
-	(void)old_cme;
-	// if (*cme != old_cme) {
-	// 	cm_release_lock(cme_id);
-	// 	pt_release_lock(as->as_pt, pte);
-	// 	return false;
-	// }
+	// The cme has changed in the time that we dropped and reacquired
+	// the lock
+	if (!cme_is_equal_to(cme, &old_cme)) {
+		cm_release_lock(cme_id);
+		pt_release_lock(as->as_pt, pte);
+		return false;
+	}
 
 	return true;
 }

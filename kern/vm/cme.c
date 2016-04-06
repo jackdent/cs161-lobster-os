@@ -15,3 +15,22 @@ cme_create(struct addrspace *as, vaddr_t va, enum cme_state state)
 
         return cme;
 }
+
+bool
+cme_is_equal_to(struct cme *cme, struct cme *other)
+{
+        KASSERT(cme != NULL);
+        KASSERT(other != NULL);
+
+        if (cme->cme_as != other->cme_as
+         || cme->cme_l1_offset != other->cme_l1_offset
+         || cme->cme_l2_offset != other->cme_l2_offset
+         || cme->cme_swap_id != other->cme_swap_id
+         || cme->cme_busy != other->cme_busy
+         || cme->cme_recent != other->cme_recent
+         || cme->cme_state != other->cme_state) {
+                return false;
+        }
+
+        return true;
+}

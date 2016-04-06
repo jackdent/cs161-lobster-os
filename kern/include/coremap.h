@@ -83,6 +83,11 @@ void cm_release_lock(cme_id_t i);
 void cm_acquire_locks(cme_id_t start, cme_id_t end);
 void cm_release_locks(cme_id_t start, cme_id_t end);
 
+/*
+ * Returns true iff we acquired BOTH the pte lock and the
+ * cme lock (in that order). Also returns true if the page
+ * is owned by the kernel or is free.
+ */
 bool cm_attempt_lock_with_pte(cme_id_t i);
 void cm_release_lock_with_pte(cme_id_t cme_id);
 void cm_release_locks_with_ptes(cme_id_t start, cme_id_t end);
