@@ -47,16 +47,13 @@ sys_waitpid(pid_t pid, int *status, int options, pid_t *retval)
 			goto err2;
 		}
 
-	}
-	else {
+	} else {
 		err = 0;
 	}
 
 	// Finish cleaning up the child proc
 	spinlock_acquire(&proc_table.pt_spinlock);
-	sem_destroy(proc_table.pt_table[pid]->p_wait_sem);
-	kfree(proc_table.pt_table[pid]);
-	proc_table.pt_table[pid] = NULL;
+	proc_reap(proc_table.pt_table[pid]);
 	spinlock_release(&proc_table.pt_spinlock);
 
 	// Remove pid from array of children

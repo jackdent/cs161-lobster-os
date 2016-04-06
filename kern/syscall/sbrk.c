@@ -37,6 +37,11 @@ sys_sbrk(int32_t amount, int32_t *retval)
                 return EINVAL;
         }
 
+        // Negative wraparound
+        if (amount < 0 && new_break > old_break) {
+                return EINVAL;
+        }
+
         if (new_break > HEAP_MAX) {
                 return ENOMEM;
         }
