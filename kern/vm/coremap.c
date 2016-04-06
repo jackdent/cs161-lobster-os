@@ -164,7 +164,8 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 			if (!cm_attempt_lock(i + j)) {
 				break;
 			}
-			if (coremap.cmes[i + j].cme_state != S_FREE) {
+
+			if (coremap.cmes[i + j].cme_state == S_KERNEL) {
 				cm_release_lock(i + j);
 				break;
 			}
