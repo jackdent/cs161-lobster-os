@@ -141,7 +141,6 @@ cm_capture_slot()
 		coremap.cmes[slot].cme_recent = 0;
 
 		if (entry.cme_state != S_KERNEL) {
-			cm_advance_clock_hand();
 			cm_release_clock_lock();
 			return slot;
 		}
