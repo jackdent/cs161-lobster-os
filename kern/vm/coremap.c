@@ -44,6 +44,8 @@ cm_init()
 	spinlock_init(&coremap.cm_busy_spinlock);
 	spinlock_init(&coremap.cm_page_count_spinlock);
 
+	spinlock_init(&coremap.cm_clock_busy_spinlock);
+        coremap.cm_clock_busy = false;
 	coremap.cm_clock_hand = 0;
 
 	coremap.cm_allocated_pages = ncoremap_pages;
@@ -67,12 +69,37 @@ cm_advance_clock_hand()
 	coremap.cm_clock_hand = (coremap.cm_clock_hand + 1) % coremap.cm_size;
 }
 
+// We can't hold a spinlock for a long time, so we simulate one
+static
+void
+cm_acquire_clock_lock()
+{
+	spinlock_acquire(&coremap.cm_clock_busy_spinlock);
+
+	while (coremap.cm_clock_busy == true) {
+		spinlock_release(&coremap.cm_clock_busy_spinlock);
+		spinlock_acquire(&coremap.cm_clock_busy_spinlock);
+	}
+
+	coremap.cm_clock_busy = true;
+	spinlock_release(&coremap.cm_clock_busy_spinlock);
+}
+
+static
+void
+cm_release_clock_lock()
+{
+	coremap.cm_clock_busy = false;
+}
+
 cme_id_t
 cm_capture_slot()
 {
 	unsigned int i;
 	cme_id_t slot;
 	struct cme entry;
+
+	cm_acquire_clock_lock();
 
 	for (i = 0; i < coremap.cm_size; i++) {
 		slot = coremap.cm_clock_hand;
@@ -87,6 +114,7 @@ cm_capture_slot()
 		coremap.cmes[slot].cme_recent = 0;
 
 		if (entry.cme_state == S_FREE || (entry.cme_recent == 0 && entry.cme_state != S_KERNEL)) {
+			cm_release_clock_lock();
 			return slot;
 		}
 
@@ -110,11 +138,13 @@ cm_capture_slot()
 
 		if (entry.cme_state != S_KERNEL) {
 			cm_advance_clock_hand();
+			cm_release_clock_lock();
 			return slot;
 		}
 
 		cm_release_lock(slot);
 	}
+
 	panic("Cannot capture coremap slot: all memory pages are kernel?\n");
 	return 0;
 }
@@ -125,6 +155,8 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 	cme_id_t i, j;
 
 	KASSERT(coremap.cm_kernel_break > nslots);
+
+	cm_acquire_clock_lock();
 	i = 0;
 
 	while (i < coremap.cm_kernel_break - nslots) {
@@ -139,6 +171,7 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 		}
 
 		if (j == nslots) {
+			cm_release_clock_lock();
 			return i;
 		} else {
 			cm_release_locks(i, i + j);
