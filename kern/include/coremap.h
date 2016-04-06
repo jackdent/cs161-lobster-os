@@ -16,6 +16,10 @@ struct cm {
 
 extern struct cm coremap;
 
+// We should always have at least as many pages allocated as
+// the number of pages for the coremap itself
+int min_allocated_pages;
+
 void cm_init(void);
 
 /*

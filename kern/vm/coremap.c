@@ -49,6 +49,7 @@ cm_init()
 	coremap.cm_allocated_pages = ncoremap_pages;
 	// swap pages will be added to this count in swap_init()
 	coremap.cm_total_pages = coremap.cm_size;
+	min_allocated_pages = ncoremap_pages;
 
 	memset(coremap.cmes, 0, ncmes * sizeof(struct cme));
 
@@ -381,7 +382,7 @@ cm_lower_page_count(unsigned int npages)
 	spinlock_acquire(&coremap.cm_page_count_spinlock);
 
         coremap.cm_allocated_pages -= npages;
-        KASSERT(coremap.cm_allocated_pages >= 0);
+        KASSERT(coremap.cm_allocated_pages >= min_allocated_pages);
 
         spinlock_release(&coremap.cm_page_count_spinlock);
 }
