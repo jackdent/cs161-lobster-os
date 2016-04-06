@@ -204,8 +204,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
  * Finally, we set the present bit to indicate the page
  * is now accessible in main memory.
  *
- * Assumes that the caller has validated the virtual address, and
- * that it holds the pte lock.
+ * Assumes that the caller has validated the virtual address.
  */
 static
 cme_id_t
@@ -229,7 +228,6 @@ ensure_in_memory(struct pte *pte, vaddr_t va)
         }
 
         slot = cm_capture_slot();
-        cm_evict_page(slot);
 
         as = curproc->p_addrspace;
         pa = CME_ID_TO_PA(slot);
@@ -300,7 +298,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
         }
 
         pt_acquire_lock(as->as_pt, pte);
-
         cme_id = ensure_in_memory(pte, faultaddress);
 
         switch (faulttype) {

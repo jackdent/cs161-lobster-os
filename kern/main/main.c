@@ -149,7 +149,6 @@ boot(void)
 	swap_init();
 
 	kheap_nextgeneration();
-	// TODO: uncomment when testing swap
 	daemon_init();
 
 	/*

@@ -48,9 +48,11 @@ cme_id_t cm_capture_slots_for_kernel(unsigned int nslots);
 /*
  * Evicts a page from main memory to disk, if necessary.
  *
- * Assumes that the caller holds the core map entry lock.
+ * Assumes that the caller holds the core map entry lock and
+ * the pte lock.
  */
 void cm_evict_page(cme_id_t cme_id);
+void cm_evict_pages(cme_id_t start, cme_id_t end);
 
 /*
  * Writes a dirty page from main memory to disk.
@@ -80,6 +82,10 @@ void cm_release_lock(cme_id_t i);
  */
 void cm_acquire_locks(cme_id_t start, cme_id_t end);
 void cm_release_locks(cme_id_t start, cme_id_t end);
+
+bool cm_attempt_lock_with_pte(cme_id_t i);
+void cm_release_lock_with_pte(cme_id_t cme_id);
+void cm_release_locks_with_ptes(cme_id_t start, cme_id_t end);
 
 /*
  * For keeping track of allocation counts

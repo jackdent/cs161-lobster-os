@@ -111,18 +111,20 @@ cm_capture_slot()
 
 		cm_advance_clock_hand();
 
-		if (!cm_attempt_lock(slot)) {
+		if (!cm_attempt_lock_with_pte(slot)) {
 			continue;
 		}
 
 		coremap.cmes[slot].cme_recent = 0;
 
 		if (entry.cme_state == S_FREE || (entry.cme_recent == 0 && entry.cme_state != S_KERNEL)) {
+		        cm_evict_page(slot);
 			cm_release_clock_lock();
+
 			return slot;
 		}
 
-		cm_release_lock(slot);
+		cm_release_lock_with_pte(slot);
 	}
 
 	// If we reach the end of the loop without returning, we
@@ -134,18 +136,20 @@ cm_capture_slot()
 
 		cm_advance_clock_hand();
 
-		if (!cm_attempt_lock(slot)) {
+		if (!cm_attempt_lock_with_pte(slot)) {
 			continue;
 		}
 
 		coremap.cmes[slot].cme_recent = 0;
 
 		if (entry.cme_state != S_KERNEL) {
+		        cm_evict_page(slot);
 			cm_release_clock_lock();
+
 			return slot;
 		}
 
-		cm_release_lock(slot);
+		cm_release_lock_with_pte(slot);
 	}
 
 	panic("Cannot capture coremap slot: all memory pages are kernel?\n");
@@ -164,21 +168,22 @@ cm_capture_slots_for_kernel(unsigned int nslots)
 
 	while (i < coremap.cm_kernel_break - nslots) {
 		for (j = 0; j < nslots; j++) {
-			if (!cm_attempt_lock(i + j)) {
+			if (!cm_attempt_lock_with_pte(i + j)) {
 				break;
 			}
 
 			if (coremap.cmes[i + j].cme_state == S_KERNEL) {
-				cm_release_lock(i + j);
+				cm_release_lock_with_pte(i + j);
 				break;
 			}
 		}
 
 		if (j == nslots) {
+			cm_evict_pages(i, i + j);
 			cm_release_clock_lock();
 			return i;
 		} else {
-			cm_release_locks(i, i + j);
+			cm_release_locks_with_ptes(i, i + j);
 			i += j + 1;
 		}
 	}
@@ -234,7 +239,6 @@ cm_evict_page(cme_id_t cme_id)
         swap_id_t swap_id;
 
 	cme = &coremap.cmes[cme_id];
-
 	if (cme->cme_state == S_FREE) {
 		return;
 	}
@@ -244,8 +248,6 @@ cm_evict_page(cme_id_t cme_id)
 
 	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
 	KASSERT(pte != NULL);
-
-	pt_acquire_lock(as->as_pt, pte);
 	KASSERT(pte->pte_state == S_PRESENT);
 
 	va = OFFSETS_TO_VA(cme->cme_l1_offset, cme->cme_l2_offset);
@@ -278,7 +280,21 @@ cm_evict_page(cme_id_t cme_id)
 
 	cme->cme_state = S_CLEAN;
 	pte->pte_state = S_SWAPPED;
+
 	pt_release_lock(as->as_pt, pte);
+}
+
+void
+cm_evict_pages(cme_id_t start, cme_id_t end)
+{
+	KASSERT(start <= end);
+	KASSERT(start < coremap.cm_size);
+	KASSERT(end < coremap.cm_size);
+
+	while (start < end) {
+                cm_evict_page(start);
+		start++;
+	}
 }
 
 /*
@@ -392,6 +408,84 @@ cm_release_locks(cme_id_t start, cme_id_t end)
 
 	while (start < end) {
 		cm_release_lock(start);
+		start++;
+	}
+}
+
+bool
+cm_attempt_lock_with_pte(cme_id_t cme_id)
+{
+        struct addrspace *as;
+        struct pte *pte;
+        struct cme *cme;
+        struct cme old_cme;
+
+	if (!cm_attempt_lock(cme_id)) {
+		return false;
+	}
+
+	cme = &coremap.cmes[cme_id];
+	old_cme = *cme;
+
+	if (cme->cme_state == S_KERNEL || cme->cme_state == S_FREE) {
+		return true;
+	}
+
+        as = cme->cme_as;
+	KASSERT(as != NULL);
+
+	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
+	KASSERT(pte != NULL);
+
+	cm_release_lock(cme_id);
+	pt_acquire_lock(as->as_pt, pte);
+	cm_acquire_lock(cme_id);
+
+	(void)old_cme;
+	// if (*cme != old_cme) {
+	// 	cm_release_lock(cme_id);
+	// 	pt_release_lock(as->as_pt, pte);
+	// 	return false;
+	// }
+
+	return true;
+}
+
+void
+cm_release_lock_with_pte(cme_id_t cme_id)
+{
+        struct cme *cme;
+        struct addrspace *as;
+        struct pte *pte;
+
+	cme = &coremap.cmes[cme_id];
+
+	switch(cme->cme_state) {
+	case S_KERNEL:
+	case S_FREE:
+		cm_release_lock(cme_id);
+		return;
+	}
+
+        as = cme->cme_as;
+	KASSERT(as != NULL);
+
+	pte = pagetable_get_pte_from_cme(as->as_pt, cme);
+	KASSERT(pte != NULL);
+
+	cm_release_lock(cme_id);
+	pt_release_lock(as->as_pt, pte);
+}
+
+void
+cm_release_locks_with_ptes(cme_id_t start, cme_id_t end)
+{
+	KASSERT(start <= end);
+	KASSERT(start < coremap.cm_size);
+	KASSERT(end < coremap.cm_size);
+
+	while (start < end) {
+		cm_release_lock_with_pte(start);
 		start++;
 	}
 }
