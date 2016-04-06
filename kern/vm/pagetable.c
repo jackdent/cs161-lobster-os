@@ -6,6 +6,7 @@
 #include <proc.h>
 #include <spinlock.h>
 #include <current.h>
+#include <coremap.h>
 
 
 struct pagetable *
@@ -180,6 +181,10 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 
 			*new_pte = *old_pte;
 
+			if (old_pte->pte_state != S_INVALID && !cm_try_raise_page_count(1)) {
+				return ENOMEM;
+			}
+
 			switch (old_pte->pte_state) {
 			case S_INVALID:
 			case S_LAZY:
@@ -194,7 +199,6 @@ pagetable_clone(struct pagetable *old_pt, struct pagetable *new_pt)
 				new_slot = pagetable_assign_swap_slot_to_pte(new_pte);
 				old_slot = pte_get_swap_id(old_pte);
 				swap_copy(old_slot, new_slot);
-				break;
 			}
 
 			pt_release_lock(new_pt, new_pte);
