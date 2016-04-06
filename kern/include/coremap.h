@@ -8,7 +8,6 @@ struct cm {
         unsigned int cm_kernel_break;
         struct cme *cmes;
         struct spinlock cm_busy_spinlock;
-        struct spinlock cm_clock_spinlock;
         cme_id_t cm_clock_hand;
         struct spinlock cm_page_count_spinlock;
         int cm_allocated_pages; // # of pages allocated, either in swap or RAM

@@ -42,7 +42,6 @@ cm_init()
 	KASSERT(coremap.cm_kernel_break > 0);
 
 	spinlock_init(&coremap.cm_busy_spinlock);
-	spinlock_init(&coremap.cm_clock_spinlock);
 	spinlock_init(&coremap.cm_page_count_spinlock);
 
 	coremap.cm_clock_hand = 0;
@@ -74,8 +73,6 @@ cm_capture_slot()
 	cme_id_t slot;
 	struct cme entry;
 
-	spinlock_acquire(&coremap.cm_clock_spinlock);
-
 	for (i = 0; i < coremap.cm_size; i++) {
 		slot = coremap.cm_clock_hand;
 		entry = coremap.cmes[slot];
@@ -89,7 +86,6 @@ cm_capture_slot()
 		coremap.cmes[slot].cme_recent = 0;
 
 		if (entry.cme_state == S_FREE || (entry.cme_recent == 0 && entry.cme_state != S_KERNEL)) {
-			spinlock_release(&coremap.cm_clock_spinlock);
 			return slot;
 		}
 
@@ -113,7 +109,6 @@ cm_capture_slot()
 
 		if (entry.cme_state != S_KERNEL) {
 			cm_advance_clock_hand();
-			spinlock_release(&coremap.cm_clock_spinlock);
 			return slot;
 		}
 
@@ -127,26 +122,22 @@ cme_id_t
 cm_capture_slots_for_kernel(unsigned int nslots)
 {
 	cme_id_t i, j;
-	struct cme *cme;
 
 	KASSERT(coremap.cm_kernel_break > nslots);
-	spinlock_acquire(&coremap.cm_clock_spinlock);
 	i = 0;
 
 	while (i < coremap.cm_kernel_break - nslots) {
 		for (j = 0; j < nslots; j++) {
-			cm_acquire_lock(i + j);
-
-			cme = &coremap.cmes[i + j];
-
-			if (cme->cme_state == S_KERNEL) {
+			if (!cm_attempt_lock(i + j)) {
+				break;
+			}
+			if (coremap.cmes[i + j].cme_state != S_FREE) {
 				cm_release_lock(i + j);
 				break;
 			}
 		}
 
 		if (j == nslots) {
-			spinlock_release(&coremap.cm_clock_spinlock);
 			return i;
 		} else {
 			cm_release_locks(i, i + j);
