@@ -72,6 +72,8 @@ proc_create(const char *name, int *err) {
 		goto err1;
 	}
 
+	proc->p_parent_pid = -1; // To be set by caller
+
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
 		*err = ENOMEM;
@@ -111,7 +113,6 @@ proc_create(const char *name, int *err) {
 	}
 	spinlock_init(&proc->p_addrspace_spinlock);
 
-	proc->p_parent_pid = -1; // To be set by caller
 	proc->p_numthreads = 0;
 	proc->p_exit_status = -1;
 	proc->p_addrspace = NULL;
