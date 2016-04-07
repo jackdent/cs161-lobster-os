@@ -1,0 +1,41 @@
+sys161: System/161 release 2.0.6, compiled Jan 22 2016 16:55:36
+
+OS/161 base system version 2.0.2
+Copyright (c) 2000, 2001-2005, 2008-2011, 2013, 2014
+   President and Fellows of Harvard College.  All rights reserved.
+
+Lobster's system version 0 (ASST3 #386)
+
+Using O(n) priority scheduler
+
+16028k physical memory available
+Device probe...
+lamebus0 (system main bus)
+emu0 at lamebus0
+ltrace0 at lamebus0
+ltimer0 at lamebus0
+beep0 at ltimer0
+rtclock0 at ltimer0
+lrandom0 at lamebus0
+random0 at lrandom0
+lhd0 at lamebus0
+lhd1 at lamebus0
+lser0 at lamebus0
+con0 at lser0
+
+cpu0: MIPS/161 (System/161 2.x) features 0x0
+buffers: max count 8192; max size 4096k
+vfs: Swap attached to lhd0
+OS/161 kernel [? for menu]: p testbin/matmult
+matmult finished.
+answer is: 8772192 (should be 8772192)
+Passed.
+Operation took 1.942754899 seconds
+OS/161 kernel [? for menu]: q
+Shutting down.
+The system is halted.
+sys161: 280473418 cycles (85775976 run, 194697442 global-idle)
+sys161:   cpu0: 43762252 kern, 5347780 user, 0 idle; 18852 ll, 18852/0 sc, 55207 sync
+sys161: 1048 irqs 962 exns 8r/8w disk 24r/841w console 9r/0w/3m emufs 0r/0w net
+sys161: Elapsed real time: 7.532410 seconds (37.2355 mhz)
+sys161: Elapsed virtual time: 9.756589839 seconds (25 mhz)
