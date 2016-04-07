@@ -927,7 +927,12 @@ subpage_kmalloc(size_t sz
 			fl = (struct freelist *)fla;
 
 			retptr = fl;
+			if ((vaddr_t)fl->next - prpage >= PAGE_SIZE) {
+				fl->next = NULL;
+				pr->nfree = 1;
+			}
 			fl = fl->next;
+
 			pr->nfree--;
 
 			if (fl != NULL) {
