@@ -61,7 +61,6 @@ int _launch_program(char *progname, vaddr_t *stack_ptr, vaddr_t *entry_point);
 int extract_args(userptr_t args, char *buf, struct array *argv, struct array *argv_lens, bool copy_args);
 void copy_args_to_stack(vaddr_t *stack_ptr, struct array *argv, struct array *argv_lens);
 
-
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.
  */
@@ -86,6 +85,17 @@ int sys_lseek(int fd, off_t pos, int whence, off_t *new_pos);
 int sys_dup2(int old_fd, int new_fd);
 int sys_chdir(userptr_t path);
 int sys___getcwd(userptr_t buf, size_t len, size_t *copied);
+
+int sys_sync(void);
+int sys_mkdir(userptr_t path, mode_t mode);
+int sys_rmdir(userptr_t path);
+int sys_remove(userptr_t path);
+int sys_link(userptr_t oldpath, userptr_t newpath);
+int sys_rename(userptr_t oldpath, userptr_t newpath);
+int sys_getdirentry(int fd, userptr_t buf, size_t buflen, int *retval);
+int sys_fstat(int fd, userptr_t statptr);
+int sys_fsync(int fd);
+int sys_ftruncate(int fd, off_t len);
 
 /*
  * Prototypes for memory management system calls

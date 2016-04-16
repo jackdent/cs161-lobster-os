@@ -390,6 +390,7 @@ file      vfs/devnull.c
 
 file      syscall/loadelf.c
 file      syscall/time_syscalls.c
+file      syscall/more_syscalls.c
 
 # Process system calls
 file      syscall/runprogram.c

@@ -128,7 +128,7 @@ initfreemap(uint32_t fsblocks)
 	}
 
 	/* allocate a block for the root directory contents */
-	rootdir_data_block = SFS_FREEMAP_START + freemapblocks;
+	rootdir_data_block = journalstart + journalblocks;
 	allocblock(rootdir_data_block);
 
 	/* all blocks in the freemap but past the volume end are "in use" */

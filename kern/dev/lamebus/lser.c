@@ -174,6 +174,8 @@ lser_writepolled(void *vsc, int ch)
 int
 config_lser(struct lser_softc *sc, int lserno)
 {
+	uint32_t x;
+
 	(void)lserno;
 
 	/*
@@ -183,10 +185,12 @@ config_lser(struct lser_softc *sc, int lserno)
 	spinlock_init(&sc->ls_lock);
 	sc->ls_wbusy = false;
 
+	x = bus_read_register(sc->ls_busdata, sc->ls_buspos, LSER_REG_RIRQ);
 	bus_write_register(sc->ls_busdata, sc->ls_buspos,
-			   LSER_REG_RIRQ, LSER_IRQ_ENABLE);
+			   LSER_REG_RIRQ, x | LSER_IRQ_ENABLE);
+	x = bus_read_register(sc->ls_busdata, sc->ls_buspos, LSER_REG_WIRQ);
 	bus_write_register(sc->ls_busdata, sc->ls_buspos,
-			   LSER_REG_WIRQ, LSER_IRQ_ENABLE);
+			   LSER_REG_WIRQ, x | LSER_IRQ_ENABLE);
 
 	return 0;
 }
