@@ -1,0 +1,44 @@
+1) sys_remove only works at the VFS level in removing a vnode via vfs_remove. It does not check each user process to make sure that process doesn’t have it open, hence why problems can arise. So, reads or writes to that file will fail with ENOENT.
+
+
+2)
+Tracing file system calls:
+a) SYS_open: vfs_open() is called. If the O_CREAT flag is set, it calls vfs_lookparent(), which will return the vnode for the device if it exists. Then call VOP_CREAT() to get the file, or make it if it doesn’t already exist, in which case it calls sfs_creat() to actually make the file. If the file does exists, sfs_loadvnode() iterates through the vnodes until it finds a vnode that’s inode number matches. Load it into a buffer via sfs_readblock(), set its operations via ss_fileops(), and finally call VOP_INIT() and vnodearray_add() to make it a useable vnode. If it does not exist, call sfs_makeobj(), which calls sfs_balloc() to make space on disk for it, zero it out via sfs_clearblock(), and then pass the inode along to sfs_loadvnode().
+
+If the O_CREAT flag is not set, do vfs_open(), which calls vfs_lookup() and VOP_LOOKUP() to find the vnode that already exists. We then pass this vnode to sfs_open(). This will fail, of course, it a non-existant filename is passed in.
+
+The O_TRUNC will do the above, but also call VOP_TRUNCATE(), which calls sfs_truncate().
+
+b) SYS_write: Call VOP_WRITE() which calls sfs_write() which calls sfs_io(). This calls sfs_partialio() to fill in the rest of the current block, then repeated calls to sfs_blockio() to write as many block-sized chunks as possible (obtained via sfs_bmap() by calling sfs_rwblock(), and finally a last call to sfs_partialio() to write and remaining non-block-sized data. Then update the vnode’s length
+
+c) SYS_mkdir: We call vfs_mkdir(), which calls vfs_lookparent() to get the parent directory’s vnode, which we then pass into VOP_LOOKPARENT() and sfs_lookparent(). We increase the refcount via VOP_INCREF(). We pass the parent into VOP_MKDIR(), which will call sfs_mkdir() for us. In here, we call reserve_buffers() to get a buffer, sfs_dinode_load() to load the inode into the buffer, sfs_dinode_map() to get the inode’s pointer, and sfs_dir_findname() to get the inode’s number and slot or slot number. We make sure we’re not trying to make “.” or “..”, and then sfs_makeobj() to make the vnode for the new directory, sfs_dir_link() thrice to make “.”, “..”, and the link from the parent to the new subdirectory, sfs_dinode_mark_dirty() to mark the buffers as dirty and needing to be flushed to disk, sfs_dinode_unload() to unload the inodes, and finally release the locks and reserved buffers
+
+
+3) (combined with 2)
+
+
+4) mkdir tracing (continued): Eventually the buffer will get synced to disk. buffer_sync() gets called, which marks the it as busy via buffer_mark_busy(), makes sure it is still busy and calls buffer_writeout_internal(). This calls FSOP_WRITEBLOCK() which actually writes it to disk. We then release locks and mark it as not busy so it can be reused.
+
+
+5)
+Safe
+Safe
+Safe
+Safe
+Unsafe - we lock file systems in descending order down the tree, so this could cause a deadlock
+
+
+6)
+sfsck can:
+Find and fixed blocks pointed to by inodes that are not shown to be free in the freemap
+Find and fix files with an incorrect link count
+sfsck cannot:
+Find unmapped user data on disk and connect it back to an inode with an uninitialized block pointer
+
+
+7)
+Inconsistent file system states:
+i) A file’s EOF is past the intended end of the file: a truncate call is made, the trailing blocks are freed, but the file’s size in its inode is not updated, this giving insecure access to blocks that will probably be allocated to another file.
+ii) A file appears in 2 directories: a user tries to move the file, and the inode of the target directory is updated, the system then crashes, but the inode of the original directory is not yet updated
+iii) A file has no directory to which it belongs: a user tries to move the file, and the inode of the original directory is updated, the system then crashes, but the inode of the target directory is not yet updated
+iv)  directory has an inconsistent link count: a user creates a new file but the system crashes before the directory’s link_count field is updated
