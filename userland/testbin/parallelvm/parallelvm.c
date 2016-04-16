@@ -338,7 +338,12 @@ makeprocs(bool dowait)
 	for (i=0; i<NJOBS; i++) {
 		pids[i] = fork();
 		if (pids[i]<0) {
-			warn("fork");
+			warn("fork (process %d)", i);
+			if (dowait) {
+				semopen(&s1);
+				semV(&s1, 1);
+				semclose(&s1);
+			}
 		}
 		if (pids[i]==0) {
 			/* child */
