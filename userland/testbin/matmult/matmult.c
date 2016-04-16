@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
- *	The President and Fellows of Harvard College.
+ *  The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,11 +42,11 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#define Dim 	72	/* sum total of the arrays doesn't fit in
-			 * physical memory
-			 */
+#define Dim     72  /* sum total of the arrays doesn't fit in
+             * physical memory
+             */
 
-#define RIGHT  8772192		/* correct answer */
+#define RIGHT  8772192      /* correct answer */
 
 int A[Dim][Dim];
 int B[Dim][Dim];
@@ -54,37 +54,36 @@ int C[Dim][Dim];
 int T[Dim][Dim][Dim];
 
 int
-main(void)
+main()
 {
     int i, j, k, r;
 
-    for (i = 0; i < Dim; i++)		/* first initialize the matrices */
-	for (j = 0; j < Dim; j++) {
-	     A[i][j] = i;
-	     B[i][j] = j;
-	     C[i][j] = 0;
-	}
+    for (i = 0; i < Dim; i++)       /* first initialize the matrices */
+    for (j = 0; j < Dim; j++) {
+         A[i][j] = i;
+         B[i][j] = j;
+         C[i][j] = 0;
+    }
 
-    for (i = 0; i < Dim; i++)		/* then multiply them together */
-	for (j = 0; j < Dim; j++)
+    for (i = 0; i < Dim; i++)       /* then multiply them together */
+    for (j = 0; j < Dim; j++)
             for (k = 0; k < Dim; k++)
-		T[i][j][k] = A[i][k] * B[k][j];
+        T[i][j][k] = A[i][k] * B[k][j];
 
     for (i = 0; i < Dim; i++)
-	for (j = 0; j < Dim; j++)
+    for (j = 0; j < Dim; j++)
             for (k = 0; k < Dim; k++)
-                printf("mat");
-		C[i][j] += T[i][j][k];
+        C[i][j] += T[i][j][k];
 
     r = 0;
     for (i = 0; i < Dim; i++)
-	    r += C[i][i];
+        r += C[i][i];
 
     printf("matmult finished.\n");
     printf("answer is: %d (should be %d)\n", r, RIGHT);
     if (r != RIGHT) {
-	    printf("FAILED\n");
-	    return 1;
+        printf("FAILED\n");
+        return 1;
     }
     printf("Passed.\n");
     return 0;
