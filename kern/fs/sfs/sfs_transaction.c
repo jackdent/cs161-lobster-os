@@ -48,21 +48,14 @@ sfs_create_transaction(void)
 void
 sfs_destroy_transaction(struct sfs_transaction* tx)
 {
-        int i;
+        KASSERT(tx != NULL);
+        KASSERT(tx->tx_id < MAX_TRANSACTIONS);
 
         lock_acquire(tx_tracker.tx_lock);
-        for (i = 0; i < MAX_TRANSACTIONS; i++) {
-                if (tx_tracker.tx_transactions[i] == tx) {
-                        tx_tracker.tx_transactions[i] = NULL;
-                        break;
-                }
-        }
-
-        if (i == MAX_TRANSACTIONS) {
-                panic("Trying to destroy untracked transaction?\n");
-        }
-
+        KASSERT(tx_tracker.tx_transactions[tx->tx_id] = tx);
+        tx_tracker.tx_transactions[tx->tx_id] = NULL;
         lock_release(tx_tracker.tx_lock);
+
         VOP_DECREF(tx->tx_device);
         kfree(tx);
 }
