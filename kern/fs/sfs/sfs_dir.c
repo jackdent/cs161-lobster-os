@@ -39,6 +39,7 @@
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_record.h"
 
 /*
  * Read the directory entry out of slot SLOT of a directory vnode.
@@ -68,11 +69,19 @@ sfs_readdir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd)
 int
 sfs_writedir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd)
 {
+	struct sfs_record *rec;
 	off_t actualpos;
 
 	/* Compute the actual position in the directory. */
 	KASSERT(slot>=0);
 	actualpos = slot * sizeof(struct sfs_direntry);
+
+	// Logging
+	rec = sfs_create_dir_record(sv->sv_ino, slot, sd->sfd_ino);
+	if (rec == NULL) {
+		return ENOMEM;
+	}
+	// TODO: actually log the rec
 
 	return sfs_metaio(sv, actualpos, sd, sizeof(*sd), UIO_WRITE);
 }

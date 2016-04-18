@@ -1,4 +1,7 @@
 #include <types.h>
+#include <sfs.h>
+#include <thread.h>
+#include <current.h>
 #include "sfs_transaction.h"
 
 /*
@@ -45,14 +48,9 @@ struct sfs_inode_release {
 
 // Directory records
 
-struct sfs_directory_add {
-        uint32_t dirno;
-        int slot;
-        uint32_t ino;
-};
-
-struct sfs_directory_remove {
-        uint32_t dirno;
+// adding or removing
+struct sfs_directory {
+        uint32_t parent_ino;
         int slot;
         uint32_t ino;
 };
@@ -80,12 +78,12 @@ struct sfs_freemap_release {
 
 struct sfs_record {
         txid_t r_txid;
+        enum sfs_record_type r_type;
         union {
                 struct sfs_inode_capture inode_capture;
                 struct sfs_inode_update inode_update;
                 struct sfs_inode_release inode_release;
-                struct sfs_directory_add directory_add;
-                struct sfs_directory_remove directory_remove;
+                struct sfs_directory directory;
                 struct sfs_block_write block_write;
                 struct sfs_freemap_capture freemap_capture;
                 struct sfs_freemap_release freemap_release;
@@ -93,7 +91,15 @@ struct sfs_record {
 };
 
 /*
- * Record operations
+ * Record creation
+ */
+
+struct sfs_record *sfs_create_dir_record(uint32_t parent_ino, int slot, uint32_t ino);
+struct sfs_record *sfs_create_commit_record(void);
+
+
+/*
+ * Recovery operations
  */
 
 void sfs_record_undo(struct sfs_record record, enum sfs_record_type);

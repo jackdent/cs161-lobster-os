@@ -44,6 +44,7 @@
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_record.h"
 
 /*
  * Locking protocol for sfs:
@@ -936,7 +937,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 		if (result2) {
 			/* XXX: would be better if this case didn't exist */
 			panic("sfs: %s: rmdir: %s; while recovering: %s\n",
-			      sfs->sfs_sb.sb_volname, 
+			      sfs->sfs_sb.sb_volname,
 			      strerror(result), strerror(result2));
 		}
 		goto die_total;
@@ -972,6 +973,8 @@ sfs_remove(struct vnode *dir, const char *name)
 	struct sfs_vnode *victim;
 	struct sfs_dinode *victim_inodeptr;
 	struct sfs_dinode *dir_inodeptr;
+	struct sfs_transaction *tx;
+	struct sfs_record *rec;
 	int slot;
 	int result;
 
@@ -1016,6 +1019,16 @@ sfs_remove(struct vnode *dir, const char *name)
 		goto out_reference;
 	}
 
+	// Journaling begins here
+	tx = sfs_create_transaction();
+	if (tx == NULL) {
+		result = ENOMEM;
+		goto out_reference;
+	}
+
+	vfs_getroot(name, &tx->tx_device);
+
+
 	/* Erase its directory entry. */
 	result = sfs_dir_unlink(sv, slot);
 	if (result) {
@@ -1039,6 +1052,16 @@ out_loadsv:
 out_buffers:
 	lock_release(sv->sv_lock);
 	unreserve_buffers(SFS_BLOCKSIZE);
+
+	// Finish journaling
+	rec = sfs_create_commit_record();
+	if (rec == NULL) {
+		// maybe want to panic, or rollback previous records?
+		result = ENOMEM;
+	}
+	// TODO: actually log it
+	curthread->t_tx = NULL;
+
 	return result;
 }
 

@@ -125,6 +125,12 @@ struct thread {
 	/* VFS */
 	bool t_did_reserve_buffers;	/* reserve_buffers() in effect */
 
+	/* SFS Journaling */
+	struct sfs_transaction *t_tx;	/* pointer to transaction struct if
+					thread is currently doing a I/O
+					transaction, reset to NULL when all
+					records have been journaled */
+
 	/* Scheduling */
 #if USING_SCHEDULER
 	int t_priority;

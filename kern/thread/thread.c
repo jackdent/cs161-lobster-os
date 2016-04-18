@@ -144,6 +144,9 @@ thread_create(const char *name)
 	/* VFS fields */
 	thread->t_did_reserve_buffers = false;
 
+	/* SFS Journaling */
+	thread->t_tx = NULL;
+
 	/* Scheduling */
 	thread->t_priority = PRIORITY_INIT;
 

@@ -1,11 +1,79 @@
-#include "sfs-record.h"
+#include "sfs_record.h"
+#include "sfsprivate.h"
 
+void
+sfs_transaction_init(void)
+{
+        int i;
+
+        tx_tracker.tx_lock = lock_create("transactions lock");
+        if (tx_tracker.tx_lock == NULL) {
+                panic("Could not initialize transactions lock\n");
+        }
+
+        for (i = 0; i < MAX_TRANSACTIONS; i++) {
+                tx_tracker.tx_transactions[i] = NULL;
+        }
+}
+
+struct sfs_transaction *
+sfs_create_transaction(void)
+{
+        struct sfs_transaction *tx;
+        int i;
+
+        tx = kmalloc(sizeof(struct sfs_transaction));
+        if (tx == NULL) {
+                return NULL;
+        }
+
+        lock_acquire(tx_tracker.tx_lock);
+        for (i = 0; i < MAX_TRANSACTIONS; i++) {
+                if (tx_tracker.tx_transactions[i] == NULL) {
+                        tx_tracker.tx_transactions[i] = tx;
+                        tx->tx_id = i;
+                        curthread->t_tx = tx;
+                        lock_release(tx_tracker.tx_lock);
+                        return tx;
+                }
+        }
+
+        // could not find free slot for it
+        lock_release(tx_tracker.tx_lock);
+        kfree(tx);
+        return NULL;
+
+}
+
+void
+sfs_destroy_transaction(struct sfs_transaction* tx)
+{
+        int i;
+
+        lock_acquire(tx_tracker.tx_lock);
+        for (i = 0; i < MAX_TRANSACTIONS; i++) {
+                if (tx_tracker.tx_transactions[i] == tx) {
+                        tx_tracker.tx_transactions[i] = NULL;
+                        break;
+                }
+        }
+
+        if (i == MAX_TRANSACTIONS) {
+                panic("Trying to destroy untracked transaction?\n");
+        }
+
+        lock_release(tx_tracker.tx_lock);
+        VOP_DECREF(tx->tx_device);
+        kfree(tx);
+}
+
+/*
 static
 void
 sfs_transaction_apply(struct sfs_transaction *tx, void (*fn)(struct sfs_record, enum sfs_record_type))
 {
         int err;
-        sfs_jiter *ji;
+        struct sfs_jiter *ji;
 
         enum sfs_record_type record_type;
         void *record_ptr;
@@ -23,7 +91,7 @@ sfs_transaction_apply(struct sfs_transaction *tx, void (*fn)(struct sfs_record, 
                 record_ptr = sfs_jiter_rec(ji, &record_len);
                 record = memcpy(&record, record_ptr, record_len);
 
-                if (record.r_txid == tx->txid) {
+                if (record.r_txid == tx->tx_id) {
                         fn(record, record_type);
                 }
 
@@ -51,3 +119,4 @@ sfs_transaction_redo(struct sfs_transaction *tx)
 
         sfs_transaction_apply(tx, sfs_record_redo);
 }
+*/

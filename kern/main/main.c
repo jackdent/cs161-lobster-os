@@ -54,6 +54,7 @@
 #include <swap.h>
 #include <machine/vm.h>
 #include <daemon.h>
+#include "../fs/sfs/sfs_record.h"
 
 /*
  * These two pieces of data are maintained by the makefiles and build system.
@@ -150,6 +151,7 @@ boot(void)
 
 	kheap_nextgeneration();
 	daemon_init();
+	sfs_transaction_init();
 
 	/*
 	 * Make sure various things aren't screwed up.

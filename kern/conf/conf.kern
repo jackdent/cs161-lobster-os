@@ -445,7 +445,8 @@ optfile   sfs    fs/sfs/sfs_fsops.c
 optfile   sfs    fs/sfs/sfs_inode.c
 optfile   sfs    fs/sfs/sfs_io.c
 optfile   sfs    fs/sfs/sfs_jphys.c
-optfile   sfs    fs/sfs/transaction.c
+optfile   sfs    fs/sfs/sfs_record.c
+optfile   sfs    fs/sfs/sfs_transaction.c
 optfile   sfs    fs/sfs/sfs_vnops.c
 
 #
