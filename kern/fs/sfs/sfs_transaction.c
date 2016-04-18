@@ -52,7 +52,7 @@ sfs_destroy_transaction(struct sfs_transaction* tx)
         KASSERT(tx->tx_id < MAX_TRANSACTIONS);
 
         lock_acquire(tx_tracker.tx_lock);
-        KASSERT(tx_tracker.tx_transactions[tx->tx_id] = tx);
+        KASSERT(tx_tracker.tx_transactions[tx->tx_id] == tx);
         tx_tracker.tx_transactions[tx->tx_id] = NULL;
         lock_release(tx_tracker.tx_lock);
 
