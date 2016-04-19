@@ -22,12 +22,12 @@ struct sfs_transaction_set {
 	struct lock *tx_lock;
 };
 
-struct sfs_transaction_set *sfs_create_transaction_set(void);
-void sfs_destroy_transaction_set(struct sfs_transaction_set *tx);
+struct sfs_transaction_set *sfs_transaction_set_create(void);
+void sfs_transaction_set_destroy(struct sfs_transaction_set *tx);
 
 void sfs_transaction_init(void);
-struct sfs_transaction *sfs_create_transaction(struct sfs_transaction_set *tx_tracker);
-void sfs_destroy_transaction(struct sfs_transaction *tx);
+struct sfs_transaction *sfs_transaction_create(struct sfs_transaction_set *tx_tracker);
+void sfs_transaction_destroy(struct sfs_transaction *tx);
 
 void sfs_transaction_acquire_busy_bit(struct sfs_transaction *tx);
 void sfs_transaction_release_busy_bit(struct sfs_transaction *tx);

@@ -1019,7 +1019,7 @@ sfs_remove(struct vnode *dir, const char *name)
 	}
 
 	// Journaling begins here
-	tx = sfs_create_transaction(sv->sv_absvn.vn_fs->fs_data);
+	tx = sfs_transaction_create(sv->sv_absvn.vn_fs->fs_data);
 	if (tx == NULL) {
 		result = ENOMEM;
 		goto out_reference;

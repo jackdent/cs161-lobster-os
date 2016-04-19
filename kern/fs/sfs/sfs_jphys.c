@@ -424,7 +424,7 @@ sfs_jphys_write_internal(struct sfs_fs *sfs,
 	 * doing so up the call stack and doing it here would make a
 	 * mess. And we must not wait for ourselves.
 	 */
-	already_gettingnext = jp->jp_nextbuf == NULL && 
+	already_gettingnext = jp->jp_nextbuf == NULL &&
 		jp->jp_gettingnext == curthread;
 
 	/*
@@ -784,7 +784,7 @@ sfs_jphys_flushforjournalblock(struct sfs_fs *sfs, daddr_t diskblock)
 
 /*
  * Flush the whole journal.
- */ 
+ */
 int
 sfs_jphys_flushall(struct sfs_fs *sfs)
 {
@@ -800,7 +800,7 @@ sfs_jphys_flushall(struct sfs_fs *sfs)
 	if (result) {
 		return result;
 	}
-	
+
 	return 0;
 }
 

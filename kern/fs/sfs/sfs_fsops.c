@@ -463,7 +463,7 @@ sfs_fs_create(void)
 		goto cleanup_freemaplock;
 	}
 
-	sfs->sfs_transaction_set = sfs_create_transaction_set();
+	sfs->sfs_transaction_set = sfs_transaction_set_create();
 	if (sfs->sfs_transaction_set == NULL) {
 		goto cleanup_renamelock;
 	}
@@ -477,7 +477,7 @@ sfs_fs_create(void)
 	return sfs;
 
 cleanup_transaction_set:
-	sfs_destroy_transaction_set(sfs->sfs_transaction_set);
+	sfs_transaction_set_destroy(sfs->sfs_transaction_set);
 cleanup_renamelock:
 	lock_destroy(sfs->sfs_renamelock);
 cleanup_freemaplock:

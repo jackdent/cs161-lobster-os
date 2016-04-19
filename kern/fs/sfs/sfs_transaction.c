@@ -3,7 +3,7 @@
 #include "limits.h"
 
 struct sfs_transaction_set *
-sfs_create_transaction_set(void)
+sfs_transaction_set_create(void)
 {
         struct sfs_transaction_set *tx_set;
         int i;
@@ -27,14 +27,14 @@ sfs_create_transaction_set(void)
 }
 
 void
-sfs_destroy_transaction_set(struct sfs_transaction_set *tx)
+sfs_transaction_set_destroy(struct sfs_transaction_set *tx)
 {
         lock_destroy(tx->tx_lock);
         kfree(tx);
 }
 
 struct sfs_transaction *
-sfs_create_transaction(struct sfs_transaction_set *tx_tracker)
+sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
 {
         struct sfs_transaction *tx;
         int i;
@@ -68,7 +68,7 @@ sfs_create_transaction(struct sfs_transaction_set *tx_tracker)
 }
 
 void
-sfs_destroy_transaction(struct sfs_transaction *tx)
+sfs_transaction_destroy(struct sfs_transaction *tx)
 {
 
         struct lock *tx_lock;
