@@ -151,7 +151,6 @@ boot(void)
 
 	kheap_nextgeneration();
 	daemon_init();
-	sfs_transaction_init();
 
 	/*
 	 * Make sure various things aren't screwed up.

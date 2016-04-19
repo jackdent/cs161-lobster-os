@@ -69,7 +69,7 @@ sfs_readdir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd)
 int
 sfs_writedir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd)
 {
-	struct sfs_record *rec;
+	struct sfs_record *rec1, *rec2;
 	off_t actualpos;
 
 	/* Compute the actual position in the directory. */
@@ -77,11 +77,20 @@ sfs_writedir(struct sfs_vnode *sv, int slot, struct sfs_direntry *sd)
 	actualpos = slot * sizeof(struct sfs_direntry);
 
 	// Logging
-	rec = sfs_create_dir_record(sv->sv_ino, slot, sd->sfd_ino);
-	if (rec == NULL) {
+	rec1 = sfs_create_dir_record(sv->sv_ino, slot, sd->sfd_ino);
+	if (rec1 == NULL) {
 		return ENOMEM;
 	}
-	// TODO: actually log the rec
+	// TODO: actually log the rec and update transaction struct
+
+	rec2 = sfs_create_commit_record();
+	if (rec2 == NULL) {
+		kfree(rec2);
+		// maybe want to panic, or rollback previous records?
+		return ENOMEM;
+	}
+	// TODO: actually log the rec and update transaction struct
+	curthread->t_tx = NULL;
 
 	return sfs_metaio(sv, actualpos, sd, sizeof(*sd), UIO_WRITE);
 }

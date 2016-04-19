@@ -54,5 +54,6 @@ string of length ARG_MAX - 1, plus a null-terminator */
 #define LOGIN_NAME_MAX  __LOGIN_NAME_MAX
 #define OPEN_MAX        __OPEN_MAX
 #define IOV_MAX         __IOV_MAX
+#define UINT_MAX	(1 << 31)
 
 #endif /* _LIMITS_H_ */

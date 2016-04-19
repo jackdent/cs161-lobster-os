@@ -45,6 +45,7 @@
 #include <device.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_transaction.h"
 
 
 /* Shortcuts for the size macros in kern/sfs.h */
@@ -462,14 +463,21 @@ sfs_fs_create(void)
 		goto cleanup_freemaplock;
 	}
 
+	sfs->sfs_transaction_set = sfs_create_transaction_set();
+	if (sfs->sfs_transaction_set == NULL) {
+		goto cleanup_renamelock;
+	}
+
 	/* journal */
 	sfs->sfs_jphys = sfs_jphys_create();
 	if (sfs->sfs_jphys == NULL) {
-		goto cleanup_renamelock;
+		goto cleanup_transaction_set;
 	}
 
 	return sfs;
 
+cleanup_transaction_set:
+	sfs_destroy_transaction_set(sfs->sfs_transaction_set);
 cleanup_renamelock:
 	lock_destroy(sfs->sfs_renamelock);
 cleanup_freemaplock:

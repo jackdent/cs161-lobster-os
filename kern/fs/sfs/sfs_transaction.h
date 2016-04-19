@@ -4,26 +4,33 @@
 
 #define MAX_TRANSACTIONS 64	// TODO: this should be fine, right?
 
-typedef uint64_t txid_t;
+typedef uint32_t txid_t;
+struct sfs_transaction_set;
 
 struct sfs_transaction {
-        txid_t tx_id;                   // equal to the slot number in the global array
+        txid_t tx_id;                   // equal to the slot number in the per-device array
         uint32_t tx_lowest_LSN;		// For checkpointing
-        uint32_t tx_dirty_buf_count;    // 0 when transaction has completed all side-effects
-        struct vnode *tx_device;	// the volume the transaction is relevant to
+        uint32_t tx_highest_LSN;	// For checkpointing
+        uint32_t tx_commited:1;		// 0 when transaction has completed all side-effects
+        struct sfs_transaction_set *tx_tracker;
+        uint32_t tx_busy_bit:1;		// Locking, accessed via tx_lock
 };
 
-struct sfs_transaction_tracker {
+// Per-device struct that lives in the sfs_fs struct
+struct sfs_transaction_set {
 	struct sfs_transaction *tx_transactions[MAX_TRANSACTIONS];
 	struct lock *tx_lock;
 };
 
-struct sfs_transaction_tracker tx_tracker;
-
+struct sfs_transaction_set *sfs_create_transaction_set(void);
+void sfs_destroy_transaction_set(struct sfs_transaction_set *tx);
 
 void sfs_transaction_init(void);
-struct sfs_transaction *sfs_create_transaction(void);
-void sfs_destroy_transaction(struct sfs_transaction* tx);
+struct sfs_transaction *sfs_create_transaction(struct sfs_transaction_set *tx_tracker);
+void sfs_destroy_transaction(struct sfs_transaction *tx);
+
+void sfs_transaction_acquire_busy_bit(struct sfs_transaction *tx);
+void sfs_transaction_release_busy_bit(struct sfs_transaction *tx);
 
 void sfs_transaction_redo(struct sfs_transaction *tx);
 void sfs_transaction_undo(struct sfs_transaction *tx);
