@@ -12,9 +12,9 @@ sfs_create_dir_record(uint32_t parent_ino, int slot, uint32_t ino)
         if (rec != NULL) {
                 rec->r_txid = curthread->t_tx->tx_id;
                 rec->r_type = R_DIRECTORY_REMOVE;
-                rec->r_parameters.directory.parent_ino = parent_ino;
-                rec->r_parameters.directory.slot = slot;
-                rec->r_parameters.directory.ino = ino;
+                rec->r_parameters.update_directory.parent_ino = parent_ino;
+                rec->r_parameters.update_directory.slot = slot;
+                rec->r_parameters.update_directory.ino = ino;
         }
         return rec;
 }
