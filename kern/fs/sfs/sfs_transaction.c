@@ -147,6 +147,7 @@ sfs_current_transaction_add_record(struct sfs_record *record, enum sfs_record_ty
                 curthread->t_tx = tx;
         }
 
+        record->r_txid = curthread->t_tx->tx_id;
         sfs_transaction_add_record(curthread->t_tx, record, type);
 }
 
