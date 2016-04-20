@@ -50,8 +50,8 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
                         tx_tracker->tx_transactions[i] = tx;
 
                         tx->tx_id = i;
-                        tx->tx_lowest_LSN = UINT_MAX;
-                        tx->tx_highest_LSN = UINT_MAX;
+                        tx->tx_lowest_lsn = 0;
+                        tx->tx_highest_lsn = 0;
                         tx->tx_commited = 0;
                         tx->tx_busy_bit = 0;
 
@@ -70,7 +70,6 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
 void
 sfs_transaction_destroy(struct sfs_transaction *tx)
 {
-
         struct lock *tx_lock;
 
         KASSERT(tx != NULL);
@@ -110,11 +109,45 @@ sfs_transaction_acquire_busy_bit(struct sfs_transaction *tx)
         }
 }
 
-void sfs_transaction_release_busy_bit(struct sfs_transaction *tx)
+void
+sfs_transaction_release_busy_bit(struct sfs_transaction *tx)
 {
         lock_acquire(tx->tx_tracker->tx_lock);
         tx->tx_busy_bit = 0;
         lock_release(tx->tx_tracker->tx_lock);
+}
+
+static
+void
+sfs_transaction_add_record(struct sfs_transaction *tx, struct sfs_record *record, enum sfs_record_type type)
+{
+        sfs_lsn_t lsn;
+
+        KASSERT(curthread->t_sfs_fs != NULL);
+        lsn = sfs_record_write_to_journal(record, curthread->t_sfs_fs->sfs_jphys, type);
+
+        tx->tx_lowest_lsn = 0 ? lsn : tx->tx_lowest_lsn;
+        tx->tx_highest_lsn = lsn;
+}
+
+void
+sfs_current_transaction_add_record(struct sfs_record *record, enum sfs_record_type type)
+{
+        struct sfs_transaction *tx;
+
+        if (curthread->t_tx == NULL) {
+                KASSERT(curthread->t_sfs_fs != NULL);
+
+                tx = sfs_transaction_create(curthread->t_sfs_fs->sfs_transaction_set);
+
+                if (tx == NULL) {
+                        panic("TODO\n");
+                }
+
+                curthread->t_tx = tx;
+        }
+
+        sfs_transaction_add_record(curthread->t_tx, record, type);
 }
 
 /*

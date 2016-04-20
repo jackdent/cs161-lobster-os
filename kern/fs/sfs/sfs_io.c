@@ -42,6 +42,7 @@
 #include <device.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_record.h"
 
 ////////////////////////////////////////////////////////////
 //
@@ -479,6 +480,8 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	char *ioptr;
 	bool doalloc;
 	int result;
+	struct sfs_record *record;
+	struct sfs_meta_update meta_update;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -528,6 +531,23 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		memcpy(data, ioptr + blockoffset, len);
 	}
 	else {
+		/* Create the record */
+		record = kmalloc(sizeof(struct sfs_record));
+		if (record == NULL) {
+			return ENOMEM;
+		}
+
+		KASSERT(len < 128);
+
+		meta_update.block = iobuf->b_physblock;
+		meta_update.pos = blockoffset;
+		meta_update.len = len;
+		memcpy(ioptr + blockoffset, &meta_update.old_value, len);
+		memcpy(&meta_update.new_value, data, len);
+
+		record->r_parameters.meta_update = meta_update;
+		sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 		/* Update the selected region */
 		memcpy(ioptr + blockoffset, data, len);
 		buffer_mark_dirty(iobuf);

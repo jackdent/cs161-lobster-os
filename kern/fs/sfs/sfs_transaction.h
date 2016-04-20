@@ -6,11 +6,13 @@
 
 typedef uint32_t txid_t;
 struct sfs_transaction_set;
+struct sfs_record;
+enum sfs_record_type;
 
 struct sfs_transaction {
         txid_t tx_id;                   // equal to the slot number in the per-device array
-        uint32_t tx_lowest_LSN;		// For checkpointing
-        uint32_t tx_highest_LSN;	// For checkpointing
+        sfs_lsn_t tx_lowest_lsn;	// For checkpointing
+        sfs_lsn_t tx_highest_lsn;	// For checkpointing
         uint32_t tx_commited:1;		// 0 when transaction has completed all side-effects
         struct sfs_transaction_set *tx_tracker;
         uint32_t tx_busy_bit:1;		// Locking, accessed via tx_lock
@@ -31,6 +33,11 @@ void sfs_transaction_destroy(struct sfs_transaction *tx);
 
 void sfs_transaction_acquire_busy_bit(struct sfs_transaction *tx);
 void sfs_transaction_release_busy_bit(struct sfs_transaction *tx);
+
+/*
+ * Create a new transaciton and assign it to curthread, if no current transaction exists.
+ */
+void sfs_current_transaction_add_record(struct sfs_record *, enum sfs_record_type);
 
 void sfs_transaction_redo(struct sfs_transaction *tx);
 void sfs_transaction_undo(struct sfs_transaction *tx);

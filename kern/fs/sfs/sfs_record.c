@@ -1,35 +1,11 @@
 #include "sfs_record.h"
 
-/*
- * Record creation
- */
-
-struct sfs_record *
-sfs_create_dir_record(uint32_t parent_ino, int slot, uint32_t ino)
+sfs_lsn_t
+sfs_record_write_to_journal(struct sfs_record record, enum sfs_record_type type, struct sfs_fs *fs)
 {
-        struct sfs_record *rec;
-        rec = kmalloc(sizeof(struct sfs_record));
-        if (rec != NULL) {
-                rec->r_txid = curthread->t_tx->tx_id;
-                rec->r_type = R_DIRECTORY_REMOVE;
-                rec->r_parameters.update_directory.parent_ino = parent_ino;
-                rec->r_parameters.update_directory.slot = slot;
-                rec->r_parameters.update_directory.ino = ino;
-        }
-        return rec;
+        return sfs_jphys_write(fs, NULL, NULL, type, &record, sizeof(struct sfs_record));
 }
 
-struct sfs_record *
-sfs_create_commit_record(void)
-{
-        struct sfs_record *rec;
-        rec = kmalloc(sizeof(struct sfs_record));
-        if (rec != NULL) {
-                rec->r_txid = curthread->t_tx->tx_id;
-                rec->r_type = R_TX_COMMIT;
-        }
-        return rec;
-}
 
 /*
  * Undo operations
