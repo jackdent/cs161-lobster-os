@@ -1,4 +1,7 @@
+#include <kern/errno.h>
 #include "sfs_record.h"
+#include "sfsprivate.h"
+#include "buf.h"
 
 sfs_lsn_t
 sfs_record_write_to_journal(struct sfs_record *record, enum sfs_record_type type, struct sfs_fs *fs)
@@ -6,6 +9,30 @@ sfs_record_write_to_journal(struct sfs_record *record, enum sfs_record_type type
         return sfs_jphys_write(fs, NULL, NULL, type, record, sizeof(struct sfs_record));
 }
 
+int
+sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dinode, int old_linkcount, int new_linkcount)
+{
+
+        struct sfs_record *record;
+        struct sfs_meta_update *meta_update;
+
+        record = kmalloc(sizeof(struct sfs_record));
+        if (record == NULL) {
+                return ENOMEM;
+        }
+
+        meta_update = &record->r_parameters.meta_update;
+
+        meta_update->block = buffer_get_block_number(vnode->sv_dinobuf);
+        meta_update->pos = (void*)&dinode->sfi_linkcount - (void*)dinode;
+        meta_update->len = sizeof(uint32_t);
+        memcpy((void*)meta_update->old_value, (void*)&old_linkcount, sizeof(uint32_t));
+        memcpy((void*)meta_update->new_value, (void*)&new_linkcount, sizeof(uint32_t));
+
+        sfs_current_transaction_add_record(record, R_META_UPDATE);
+
+        return 0;
+}
 
 /*
  * Undo operations

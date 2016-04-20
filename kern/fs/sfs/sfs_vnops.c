@@ -679,6 +679,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	struct sfs_vnode *sv = dir->vn_data;
 	struct sfs_vnode *f = file->vn_data;
 	struct sfs_dinode *inodeptr;
+	struct sfs_record *record;
 	int result;
 
 	KASSERT(file->vn_fs == dir->vn_fs);
@@ -715,8 +716,22 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 
 	/* and update the link count, marking the inode dirty */
 	inodeptr = sfs_dinode_map(f);
+
+	/* Create the link increment record */
+	result = sfs_record_linkcount_change(f, inodeptr, inodeptr->sfi_linkcount, inodeptr->sfi_linkcount + 1);
+	if (result) {
+		return result;
+	}
+
 	inodeptr->sfi_linkcount++;
 	sfs_dinode_mark_dirty(f);
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
 	sfs_dinode_unload(f);
 	lock_release(f->sv_lock);
@@ -974,10 +989,8 @@ sfs_remove(struct vnode *dir, const char *name)
 	struct sfs_dinode *victim_inodeptr;
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_record *record;
-	struct sfs_meta_update *meta_update;
 	int slot;
 	int result;
-	int link_count;
 
 	/* need to check this to avoid deadlock even in error condition */
 	if (!strcmp(name, ".") || !strcmp(name, "..")) {
@@ -1027,23 +1040,10 @@ sfs_remove(struct vnode *dir, const char *name)
 	}
 
 	/* Create the record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		result = ENOMEM;
+	result = sfs_record_linkcount_change(victim, victim_inodeptr, victim_inodeptr->sfi_linkcount, victim_inodeptr->sfi_linkcount - 1);
+	if (result) {
 		goto out_reference;
 	}
-
-	meta_update = &record->r_parameters.meta_update;
-
-	meta_update->block = buffer_get_block_number(victim->sv_dinobuf);
-	meta_update->pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
-	meta_update->len = sizeof(uint32_t);
-	link_count = victim_inodeptr->sfi_linkcount;
-	memcpy((void*)meta_update->old_value, (void*)&link_count, sizeof(uint32_t));
-	link_count -= 1;
-	memcpy((void*)meta_update->new_value, (void*)&link_count, sizeof(uint32_t));
-
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 	/* Decrement the link count. */
 	KASSERT(victim_inodeptr->sfi_linkcount > 0);
