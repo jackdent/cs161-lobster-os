@@ -182,6 +182,7 @@ void unreserve_buffers(size_t size);
 
 void reserve_fsmanaged_buffers(unsigned count, size_t size);
 void unreserve_fsmanaged_buffers(unsigned count, size_t size);
+daddr_t buffer_get_block_number(struct buf *buf);
 
 /*
  * Print stats.

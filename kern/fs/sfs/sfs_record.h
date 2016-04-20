@@ -46,7 +46,7 @@ struct sfs_record {
         } r_parameters;
 };
 
-sfs_lsn_t sfs_record_write_to_journal(struct sfs_record, enum sfs_record_type, struct sfs_fs *);
+sfs_lsn_t sfs_record_write_to_journal(struct sfs_record *, enum sfs_record_type, struct sfs_fs *);
 
 /*
  * Recovery operations

@@ -973,9 +973,11 @@ sfs_remove(struct vnode *dir, const char *name)
 	struct sfs_vnode *victim;
 	struct sfs_dinode *victim_inodeptr;
 	struct sfs_dinode *dir_inodeptr;
-	struct sfs_transaction *tx;
+	struct sfs_record *record;
+	struct sfs_meta_update *meta_update;
 	int slot;
 	int result;
+	int link_count;
 
 	/* need to check this to avoid deadlock even in error condition */
 	if (!strcmp(name, ".") || !strcmp(name, "..")) {
@@ -1018,18 +1020,30 @@ sfs_remove(struct vnode *dir, const char *name)
 		goto out_reference;
 	}
 
-	// Journaling begins here
-	tx = sfs_transaction_create(sv->sv_absvn.vn_fs->fs_data);
-	if (tx == NULL) {
-		result = ENOMEM;
-		goto out_reference;
-	}
-
 	/* Erase its directory entry. */
 	result = sfs_dir_unlink(sv, slot);
 	if (result) {
 		goto out_reference;
 	}
+
+	/* Create the record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		result = ENOMEM;
+		goto out_reference;
+	}
+
+	meta_update = &record->r_parameters.meta_update;
+
+	meta_update->block = buffer_get_block_number(victim->sv_dinobuf);
+	meta_update->pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
+	meta_update->len = sizeof(uint32_t);
+	link_count = victim_inodeptr->sfi_linkcount;
+	memcpy((void*)meta_update->old_value, (void*)&link_count, sizeof(uint32_t));
+	link_count -= 1;
+	memcpy((void*)meta_update->new_value, (void*)&link_count, sizeof(uint32_t));
+
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 	/* Decrement the link count. */
 	KASSERT(victim_inodeptr->sfi_linkcount > 0);

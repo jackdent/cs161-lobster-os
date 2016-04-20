@@ -481,7 +481,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	bool doalloc;
 	int result;
 	struct sfs_record *record;
-	struct sfs_meta_update meta_update;
+	struct sfs_meta_update *meta_update;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -538,14 +538,14 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		}
 
 		KASSERT(len < 128);
+		meta_update = &record->r_parameters.meta_update;
 
-		meta_update.block = iobuf->b_physblock;
-		meta_update.pos = blockoffset;
-		meta_update.len = len;
-		memcpy(ioptr + blockoffset, &meta_update.old_value, len);
-		memcpy(&meta_update.new_value, data, len);
+		meta_update->block = buffer_get_block_number(iobuf);
+		meta_update->pos = blockoffset;
+		meta_update->len = len;
+		memcpy((void*)meta_update->old_value, (void*)(ioptr + blockoffset), len);
+		memcpy((void*)meta_update->new_value, (void*)data, len);
 
-		record->r_parameters.meta_update = meta_update;
 		sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 		/* Update the selected region */

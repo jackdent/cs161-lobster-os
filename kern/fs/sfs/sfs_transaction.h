@@ -1,6 +1,7 @@
 #include <types.h>
 #include <synch.h>
 #include "lib.h"
+#include "sfsprivate.h"
 
 #define MAX_TRANSACTIONS 64	// TODO: this should be fine, right?
 

@@ -126,10 +126,13 @@ struct thread {
 	bool t_did_reserve_buffers;	/* reserve_buffers() in effect */
 
 	/* SFS Journaling */
-	struct sfs_transaction *t_tx;	/* pointer to transaction struct if
+	struct sfs_transaction *t_tx;	/* pointer to transaction struct of
 					thread is currently doing a I/O
 					transaction, reset to NULL when all
 					records have been journaled */
+
+	struct sfs_fs *t_sfs_fs;	/* like t_tx, but for the current
+					device struct */
 
 	/* Scheduling */
 #if USING_SCHEDULER

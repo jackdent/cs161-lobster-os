@@ -2192,6 +2192,13 @@ unreserve_fsmanaged_buffers(unsigned count, size_t size)
 	lock_release(buffer_lock);
 }
 
+daddr_t
+buffer_get_block_number(struct buf *buf)
+{
+	return buf->b_physblock;
+}
+
+
 ////////////////////////////////////////////////////////////
 // print stats
 

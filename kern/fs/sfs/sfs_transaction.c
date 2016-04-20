@@ -124,7 +124,7 @@ sfs_transaction_add_record(struct sfs_transaction *tx, struct sfs_record *record
         sfs_lsn_t lsn;
 
         KASSERT(curthread->t_sfs_fs != NULL);
-        lsn = sfs_record_write_to_journal(record, curthread->t_sfs_fs->sfs_jphys, type);
+        lsn = sfs_record_write_to_journal(record, type, curthread->t_sfs_fs);
 
         tx->tx_lowest_lsn = 0 ? lsn : tx->tx_lowest_lsn;
         tx->tx_highest_lsn = lsn;
