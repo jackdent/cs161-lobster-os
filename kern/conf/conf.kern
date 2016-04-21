@@ -440,6 +440,7 @@ optfile   semfs  fs/semfs/semfs_vnops.c
 defoption sfs
 optfile   sfs    fs/sfs/sfs_balloc.c
 optfile   sfs    fs/sfs/sfs_bmap.c
+optfile   sfs    fs/sfs/sfs_checkpoint.c
 optfile   sfs    fs/sfs/sfs_dir.c
 optfile   sfs    fs/sfs/sfs_fsops.c
 optfile   sfs    fs/sfs/sfs_inode.c

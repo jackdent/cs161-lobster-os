@@ -27,11 +27,15 @@
  * SUCH DAMAGE.
  */
 
+#include <types.h>
+
 #ifndef _BUF_H_
 #define _BUF_H_
 
 struct fs;  /* fs.h */
 
+typedef uint64_t sfs_lsn_t;
+struct sfs_fs;
 
 /*
  * The buffer cache is physically indexed; that is, the index or "key"
@@ -182,7 +186,19 @@ void unreserve_buffers(size_t size);
 
 void reserve_fsmanaged_buffers(unsigned count, size_t size);
 void unreserve_fsmanaged_buffers(unsigned count, size_t size);
+
+
+
+/* Helper functions for interacting with the buffers */
+
+/* Self-explanatory */
 daddr_t buffer_get_block_number(struct buf *buf);
+
+/* Find the mininum lowest_lsn across all buffers being
+ * used by the file system fs */
+sfs_lsn_t buffer_get_min_low_lsn(struct fs *fs);
+
+
 
 /*
  * Print stats.

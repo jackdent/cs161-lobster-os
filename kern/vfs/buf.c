@@ -34,6 +34,7 @@
 #include <clock.h>
 #include <thread.h>
 #include <current.h>
+#include <limits.h>
 #include <synch.h>
 #include <mainbus.h>
 #include <vfs.h>
@@ -102,6 +103,10 @@ struct buf {
 	size_t b_size;
 
 	void *b_fsdata;		/* fs-specific metadata */
+
+	/* for checkpointing */
+	sfs_lsn_t b_lowest_lsn;
+	sfs_lsn_t b_highest_lsn;
 };
 
 /*
@@ -2196,6 +2201,36 @@ daddr_t
 buffer_get_block_number(struct buf *buf)
 {
 	return buf->b_physblock;
+}
+
+sfs_lsn_t
+buffer_get_min_low_lsn(struct fs *fs)
+{
+	unsigned i, nbufs;
+	sfs_lsn_t min_buf_lowest_lsn;
+	struct buf *b;
+
+	KASSERT(fs != NULL);
+
+	lock_acquire(buffer_lock);
+	bufcheck();
+
+	nbufs = bufarray_num(&dirty_buffers);
+	min_buf_lowest_lsn = ULLONG_MAX;
+
+	for (i = 0; i < nbufs; i++) {
+		b = bufarray_get(&dirty_buffers, i);
+		if (b == NULL || b->b_fs != fs) {
+			continue;
+		}
+
+		if (b->b_lowest_lsn < min_buf_lowest_lsn) {
+			min_buf_lowest_lsn = b->b_lowest_lsn;
+		}
+	}
+
+	lock_release(buffer_lock);
+	return min_buf_lowest_lsn;
 }
 
 
