@@ -2,7 +2,7 @@
 #include <sfs.h>
 #include <thread.h>
 #include <current.h>
-#include "sfs_transaction.h"
+#include "sfsprivate.h"
 
 #define MAX_META_UPDATE_SIZE 128
 
@@ -59,5 +59,5 @@ int sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dino
  * Recovery operations
  */
 
-void sfs_record_undo(struct fs *fs, struct sfs_record, enum sfs_record_type);
-void sfs_record_redo(struct fs *fs, struct sfs_record, enum sfs_record_type);
+void sfs_record_undo(struct sfs_fs *, struct sfs_record, enum sfs_record_type);
+void sfs_record_redo(struct sfs_fs *, struct sfs_record, enum sfs_record_type);

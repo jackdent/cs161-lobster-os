@@ -30,8 +30,6 @@ sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dinode, 
         memcpy((void*)meta_update->old_value, (void*)&old_linkcount, sizeof(uint32_t));
         memcpy((void*)meta_update->new_value, (void*)&new_linkcount, sizeof(uint32_t));
 
-        sfs_current_transaction_add_record(record, R_META_UPDATE);
-
         return 0;
 }
 
@@ -46,14 +44,14 @@ sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dinode, 
 
 static
 void
-sfs_meta_update(struct fs *fs, struct sfs_meta_update meta_update, bool redo)
+sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool redo)
 {
         struct buf *buf;
         int err;
         void *ptr;
         char *meta;
 
-        err = buffer_read(fs, meta_update.block, SFS_BLOCKSIZE, &buf);
+        err = buffer_read(&sfs->sfs_absfs, meta_update.block, SFS_BLOCKSIZE, &buf);
         if (err) {
                 panic("Tried to undo meta update to invalid block\n");
         }
@@ -71,15 +69,9 @@ sfs_meta_update(struct fs *fs, struct sfs_meta_update meta_update, bool redo)
         buffer_release(buf);
 }
 
-// TODO: after recovery, flush freemap and buffer
-
 void
-sfs_record_undo(struct fs *fs, struct sfs_record record, enum sfs_record_type record_type)
+sfs_record_undo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_type record_type)
 {
-        struct sfs_fs *sfs;
-
-        sfs = fs->fs_data;
-
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
                 bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
@@ -88,7 +80,7 @@ sfs_record_undo(struct fs *fs, struct sfs_record record, enum sfs_record_type re
                 bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
                 break;
         case R_META_UPDATE:
-                sfs_meta_update(fs, record.r_parameters.meta_update, false);
+                sfs_meta_update(sfs, record.r_parameters.meta_update, false);
                 break;
         case R_TX_BEGIN:
         case R_TX_COMMIT:
@@ -102,12 +94,8 @@ sfs_record_undo(struct fs *fs, struct sfs_record record, enum sfs_record_type re
 }
 
 void
-sfs_record_redo(struct fs *fs, struct sfs_record record, enum sfs_record_type record_type)
+sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_type record_type)
 {
-        struct sfs_fs *sfs;
-
-        sfs = fs->fs_data;
-
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
                 bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
@@ -116,7 +104,7 @@ sfs_record_redo(struct fs *fs, struct sfs_record record, enum sfs_record_type re
                 bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
                 break;
         case R_META_UPDATE:
-                sfs_meta_update(fs, record.r_parameters.meta_update, true);
+                sfs_meta_update(sfs, record.r_parameters.meta_update, true);
                 break;
         case R_TX_BEGIN:
         case R_TX_COMMIT:

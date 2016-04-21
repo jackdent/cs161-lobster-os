@@ -42,7 +42,7 @@
 #include <device.h>
 #include <sfs.h>
 #include "sfsprivate.h"
-#include "sfs_record.h"
+#include "sfs_transaction.h"
 
 ////////////////////////////////////////////////////////////
 //

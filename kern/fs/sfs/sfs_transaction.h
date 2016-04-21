@@ -2,13 +2,11 @@
 #include <synch.h>
 #include "lib.h"
 #include "sfsprivate.h"
+#include "sfs_record.h"
 
 #define MAX_TRANSACTIONS 64	// TODO: this should be fine, right?
 
-typedef uint32_t txid_t;
 struct sfs_transaction_set;
-struct sfs_record;
-enum sfs_record_type;
 
 struct sfs_transaction {
         txid_t tx_id;                   // equal to the slot number in the per-device array
@@ -39,6 +37,3 @@ void sfs_transaction_release_busy_bit(struct sfs_transaction *tx);
  * Create a new transaciton and assign it to curthread, if no current transaction exists.
  */
 void sfs_current_transaction_add_record(struct sfs_record *, enum sfs_record_type);
-
-void sfs_transaction_redo(struct sfs_transaction *tx);
-void sfs_transaction_undo(struct sfs_transaction *tx);
