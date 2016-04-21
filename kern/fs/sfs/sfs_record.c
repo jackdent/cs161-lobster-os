@@ -1,4 +1,5 @@
 #include <kern/errno.h>
+#include <bitmap.h>
 #include "sfs_record.h"
 #include "sfsprivate.h"
 #include "buf.h"
@@ -43,86 +44,87 @@ sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dinode, 
 // We can't quite do that, because the other transaction may have
 // committed while this transaction may not have.
 
-/*
 static
 void
-sfs_undo_inode_release(struct inode_release inode_release)
+sfs_meta_update(struct fs *fs, struct sfs_meta_update meta_update, bool redo)
 {
-        // set inode_release.ino to inode_release.old_inode
+        struct buf *buf;
+        int err;
+        void *ptr;
+        char *meta;
+
+        err = buffer_read(fs, meta_update.block, SFS_BLOCKSIZE, &buf);
+        if (err) {
+                panic("Tried to undo meta update to invalid block\n");
+        }
+
+        ptr = buffer_map(buf);
+
+        if (redo) {
+                meta = meta_update.new_value;
+        } else {
+                meta = meta_update.old_value;
+        }
+
+        memcpy(meta, ptr + meta_update.pos, meta_update.len);
+
+        buffer_release(buf);
 }
 
-static
-void
-sfs_undo_directory_remove(struct sfs_directory_remove directory_remove)
-{
-        // set directory_remove.slot to directory_remove.ino in directory_remove.dirno
-}
-
-static
-void
-sfs_undo_freemap_release(struct sfs_freemap_release freemap_release)
-{
-        // set freemap[freemap_release.block] to 1
-}
+// TODO: after recovery, flush freemap and buffer
 
 void
-sfs_record_undo(struct sfs_record record, enum sfs_record_type record_type)
+sfs_record_undo(struct fs *fs, struct sfs_record record, enum sfs_record_type record_type)
 {
+        struct sfs_fs *sfs;
+
+        sfs = fs->fs_data;
+
         switch (record_type) {
-        case R_INODE_RELEASE:
-                sfs_undo_inode_release(record.r_parameters.inode_release);
-                break;
-        case R_DIRECTORY_REMOVE:
-                sfs_undo_directory_remove(record.r_parameters.directory_remove);
+        case R_FREEMAP_CAPTURE:
+                bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
                 break;
         case R_FREEMAP_RELEASE:
-                sfs_undo_freemap_release(record.r_parameters.freemap_release);
+                bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
                 break;
+        case R_META_UPDATE:
+                sfs_meta_update(fs, record.r_parameters.meta_update, false);
+                break;
+        case R_TX_BEGIN:
+        case R_TX_COMMIT:
+                // NOOP
+                break;
+        case R_USER_BLOCK_WRITE:
+                panic("Tried to undo user write\n");
         default:
                 panic("Undo unsupported for record type\n");
         }
 }
-*/
-/*
- * Redo operations
- */
-/*
-static
-void
-sfs_redo_inode_release(struct inode_release inode_release)
-{
-        // mark inode_release.ino as free
-}
-
-static
-void
-sfs_redo_directory_remove(struct sfs_directory_remove directory_remove)
-{
-        // mark directory_remove.slot as free in directory_remove.dirno
-}
-
-static
-void
-sfs_redo_freemap_release(struct sfs_freemap_release freemap_release)
-{
-        // set freemap[freemap_release.block] to 0
-}
 
 void
-sfs_record_redo(struct sfs_record record, enum sfs_record_type record_type)
+sfs_record_redo(struct fs *fs, struct sfs_record record, enum sfs_record_type record_type)
 {
+        struct sfs_fs *sfs;
+
+        sfs = fs->fs_data;
+
         switch (record_type) {
-        case R_INODE_RELEASE:
-                sfs_redo_inode_release(record.r_parameters.inode_release);
-                break;
-        case R_DIRECTORY_REMOVE:
-                sfs_redo_directory_remove(record.r_parameters.directory_remove);
+        case R_FREEMAP_CAPTURE:
+                bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
                 break;
         case R_FREEMAP_RELEASE:
-                sfs_redo_freemap_release(record.r_parameters.freemap_release);
+                bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
                 break;
+        case R_META_UPDATE:
+                sfs_meta_update(fs, record.r_parameters.meta_update, true);
+                break;
+        case R_TX_BEGIN:
+        case R_TX_COMMIT:
+                // NOOP
+                break;
+        case R_USER_BLOCK_WRITE:
+                panic("Tried to redo user write\n");
         default:
-                panic("Redo unsupported for record type\n");
+                panic("Undo unsupported for record type\n");
         }
 }
-*/

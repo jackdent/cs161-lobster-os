@@ -21,6 +21,10 @@ enum sfs_record_type {
         R_USER_BLOCK_WRITE
 };
 
+struct sfs_freemap_update {
+        uint32_t block;
+};
+
 struct sfs_meta_update {
         daddr_t block;
         off_t pos;
@@ -41,8 +45,9 @@ struct sfs_user_block_write {
 struct sfs_record {
         txid_t r_txid;
         union {
+                struct sfs_freemap_update freemap_update;
                 struct sfs_meta_update meta_update;
-                struct sfs_user_block_write userblock_write;
+                struct sfs_user_block_write user_block_write;
         } r_parameters;
 };
 
@@ -54,5 +59,5 @@ int sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dino
  * Recovery operations
  */
 
-void sfs_record_undo(struct sfs_record, enum sfs_record_type);
-void sfs_record_redo(struct sfs_record, enum sfs_record_type);
+void sfs_record_undo(struct fs *fs, struct sfs_record, enum sfs_record_type);
+void sfs_record_redo(struct fs *fs, struct sfs_record, enum sfs_record_type);
