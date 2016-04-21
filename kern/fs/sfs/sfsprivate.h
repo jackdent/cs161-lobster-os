@@ -123,11 +123,12 @@ const char *sfs_jphys_client_recname(unsigned type);
 bool sfs_block_is_journal(struct sfs_fs *sfs, uint32_t block);
 /* writer interface */
 sfs_lsn_t sfs_jphys_write(struct sfs_fs *sfs,
-		void (*callback)(struct sfs_fs *sfs,
-			sfs_lsn_t newlsn,
-			struct sfs_jphys_writecontext *ctx),
+		void (*callback)(sfs_lsn_t newlsn,
+				 bool commit),
 		struct sfs_jphys_writecontext *ctx,
 		unsigned code, const void *rec, size_t len);
+/* Our callback function */
+void sfs_jphys_write_callback(sfs_lsn_t newlsn, bool commit);
 int sfs_jphys_flush(struct sfs_fs *sfs, sfs_lsn_t lsn);
 int sfs_jphys_flushall(struct sfs_fs *sfs);
 /* these are already deployed in sfs_writeblock */

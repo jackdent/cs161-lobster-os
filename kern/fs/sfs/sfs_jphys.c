@@ -37,6 +37,7 @@
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_record.h"
 
 /*
  * Physical journal container.
@@ -394,9 +395,8 @@ sfs_pad_journal(struct sfs_fs *sfs)
 static
 sfs_lsn_t
 sfs_jphys_write_internal(struct sfs_fs *sfs,
-			 void (*callback)(struct sfs_fs *sfs,
-					  sfs_lsn_t newlsn,
-					  struct sfs_jphys_writecontext *ctx),
+			 void (*callback)(sfs_lsn_t newlsn,
+					  bool commit),
 			 struct sfs_jphys_writecontext *ctx,
 			 unsigned class, unsigned type,
 			 const void *rec, size_t len)
@@ -408,6 +408,8 @@ sfs_jphys_write_internal(struct sfs_fs *sfs,
 	bool already_gettingnext;
 
 	KASSERT(len % 2 == 0);
+
+	(void)ctx;
 
 	/* our total length includes a header */
 	totallen = len + sizeof(hdr);
@@ -495,7 +497,7 @@ sfs_jphys_write_internal(struct sfs_fs *sfs,
 
 	/* Call the callback, if any */
 	if (callback != NULL) {
-		callback(sfs, lsn, ctx);
+		callback(lsn, type == R_TX_COMMIT);
 	}
 
 	/*
@@ -525,9 +527,8 @@ sfs_jphys_write_internal(struct sfs_fs *sfs,
  */
 sfs_lsn_t
 sfs_jphys_write(struct sfs_fs *sfs,
-		void (*callback)(struct sfs_fs *sfs,
-				 sfs_lsn_t newlsn,
-				 struct sfs_jphys_writecontext *ctx),
+		void (*callback)(sfs_lsn_t newlsn,
+				 bool commit),
 		struct sfs_jphys_writecontext *ctx,
 		unsigned code, const void *rec, size_t len)
 {
@@ -538,6 +539,25 @@ sfs_jphys_write(struct sfs_fs *sfs,
 
 	return sfs_jphys_write_internal(sfs, callback, ctx, SFS_JPHYS_CLIENT,
 					code, rec, len);
+}
+
+// Update out transaction struct with the new LSN. The buffer
+// associated with this record's data will be updated when it
+// gets actually written to.
+void
+sfs_jphys_write_callback(sfs_lsn_t newlsn, bool commit)
+{
+	KASSERT(curthread != NULL);
+	KASSERT(curthread->t_tx);
+
+	if (curthread->t_tx->tx_lowest_lsn == 0) {
+		curthread->t_tx->tx_lowest_lsn = newlsn;
+	}
+	curthread->t_tx->tx_highest_lsn = newlsn;
+
+	if (commit) {
+		curthread->t_tx->tx_committed = 1;
+	}
 }
 
 ////////////////////////////////////////////////////////////

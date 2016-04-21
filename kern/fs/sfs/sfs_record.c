@@ -6,7 +6,7 @@
 sfs_lsn_t
 sfs_record_write_to_journal(struct sfs_record *record, enum sfs_record_type type, struct sfs_fs *fs)
 {
-        return sfs_jphys_write(fs, NULL, NULL, type, record, sizeof(struct sfs_record));
+        return sfs_jphys_write(fs, sfs_jphys_write_callback, NULL, type, record, sizeof(struct sfs_record));
 }
 
 int

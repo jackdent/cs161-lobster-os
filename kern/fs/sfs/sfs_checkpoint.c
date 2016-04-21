@@ -33,7 +33,7 @@ checkpoint(struct sfs_fs *fs)
 			continue;
 		}
 
-		if (tx->tx_commited && tx->tx_highest_lsn < min_buf_lowest_lsn) {
+		if (tx->tx_committed && tx->tx_highest_lsn < min_buf_lowest_lsn) {
 			tx_set->tx_transactions[i] = NULL;
 		}
 		else if (tx->tx_lowest_lsn < min_tx_lowest_lsn) {
