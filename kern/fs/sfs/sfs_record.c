@@ -10,27 +10,26 @@ sfs_record_write_to_journal(struct sfs_record *record, enum sfs_record_type type
         return sfs_jphys_write(fs, NULL, NULL, type, record, sizeof(struct sfs_record));
 }
 
-int
-sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dinode, int old_linkcount, int new_linkcount)
+struct sfs_record *
+sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value, char *new_value)
 {
-
         struct sfs_record *record;
         struct sfs_meta_update *meta_update;
 
         record = kmalloc(sizeof(struct sfs_record));
         if (record == NULL) {
-                return ENOMEM;
+                return NULL;
         }
 
         meta_update = &record->r_parameters.meta_update;
 
-        meta_update->block = buffer_get_block_number(vnode->sv_dinobuf);
-        meta_update->pos = (void*)&dinode->sfi_linkcount - (void*)dinode;
-        meta_update->len = sizeof(uint32_t);
-        memcpy((void*)meta_update->old_value, (void*)&old_linkcount, sizeof(uint32_t));
-        memcpy((void*)meta_update->new_value, (void*)&new_linkcount, sizeof(uint32_t));
+        meta_update->block = block;
+        meta_update->pos = pos;
+        meta_update->len = len;
+        memcpy((void*)meta_update->old_value, (void*)&old_value, len);
+        memcpy((void*)meta_update->new_value, (void*)&new_value, len);
 
-        return 0;
+        return record;
 }
 
 /*

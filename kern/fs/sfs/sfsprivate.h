@@ -30,7 +30,9 @@
 #ifndef _SFSPRIVATE_H_
 #define _SFSPRIVATE_H_
 
+#include <types.h>
 #include <uio.h> /* for uio_rw */
+#include <sfs.h>
 struct buf; /* in buf.h */
 
 

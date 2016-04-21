@@ -53,7 +53,7 @@ struct sfs_record {
 
 sfs_lsn_t sfs_record_write_to_journal(struct sfs_record *, enum sfs_record_type, struct sfs_fs *);
 
-int sfs_record_linkcount_change(struct sfs_vnode *vnode, struct sfs_dinode *dinode, int old_linkcount, int new_linkcount);
+struct sfs_record *sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value, char *new_value);
 
 /*
  * Recovery operations

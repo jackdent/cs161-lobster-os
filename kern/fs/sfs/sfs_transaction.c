@@ -1,6 +1,6 @@
-#include "sfs_record.h"
 #include "sfsprivate.h"
 #include "limits.h"
+#include "sfs_transaction.h"
 
 struct sfs_transaction_set *
 sfs_transaction_set_create(void)

@@ -44,7 +44,7 @@
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
-#include "sfs_record.h"
+#include "sfs_transaction.h"
 
 /*
  * Locking protocol for sfs:
@@ -680,7 +680,10 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	struct sfs_vnode *f = file->vn_data;
 	struct sfs_dinode *inodeptr;
 	struct sfs_record *record;
-	int result;
+	int old_linkcount, new_linkcount, result;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	KASSERT(file->vn_fs == dir->vn_fs);
 
@@ -718,10 +721,18 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	inodeptr = sfs_dinode_map(f);
 
 	/* Create the link increment record */
-	result = sfs_record_linkcount_change(f, inodeptr, inodeptr->sfi_linkcount, inodeptr->sfi_linkcount + 1);
-	if (result) {
-		return result;
+
+	block = buffer_get_block_number(f->sv_dinobuf);
+	pos = (void*)&inodeptr->sfi_linkcount - (void*)inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount + 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		return ENOMEM;
 	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 	inodeptr->sfi_linkcount++;
 	sfs_dinode_mark_dirty(f);
@@ -989,8 +1000,10 @@ sfs_remove(struct vnode *dir, const char *name)
 	struct sfs_dinode *victim_inodeptr;
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_record *record;
-	int slot;
-	int result;
+	int slot, old_linkcount, new_linkcount, result;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	/* need to check this to avoid deadlock even in error condition */
 	if (!strcmp(name, ".") || !strcmp(name, "..")) {
@@ -1040,10 +1053,18 @@ sfs_remove(struct vnode *dir, const char *name)
 	}
 
 	/* Create the record */
-	result = sfs_record_linkcount_change(victim, victim_inodeptr, victim_inodeptr->sfi_linkcount, victim_inodeptr->sfi_linkcount - 1);
-	if (result) {
+	block = buffer_get_block_number(victim->sv_dinobuf);
+	pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = victim_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount - 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		result = ENOMEM;
 		goto out_reference;
 	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 	/* Decrement the link count. */
 	KASSERT(victim_inodeptr->sfi_linkcount > 0);

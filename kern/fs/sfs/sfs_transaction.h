@@ -1,12 +1,12 @@
 #include <types.h>
 #include <synch.h>
 #include "lib.h"
-#include "sfsprivate.h"
 #include "sfs_record.h"
 
 #define MAX_TRANSACTIONS 64	// TODO: this should be fine, right?
 
 struct sfs_transaction_set;
+struct sfs_record;
 
 struct sfs_transaction {
         txid_t tx_id;                   // equal to the slot number in the per-device array
