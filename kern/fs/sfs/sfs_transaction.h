@@ -21,6 +21,7 @@ struct sfs_transaction {
 struct sfs_transaction_set {
 	struct sfs_transaction *tx_transactions[MAX_TRANSACTIONS];
 	struct lock *tx_lock;
+	uint64_t tx_id_counter;
 };
 
 struct sfs_transaction_set *sfs_transaction_set_create(void);

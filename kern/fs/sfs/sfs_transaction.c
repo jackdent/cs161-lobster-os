@@ -23,6 +23,8 @@ sfs_transaction_set_create(void)
                 tx_set->tx_transactions[i] = NULL;
         }
 
+        tx_set->tx_id_counter = 0;
+
         return tx_set;
 }
 
@@ -49,7 +51,7 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
                 if (tx_tracker->tx_transactions[i] == NULL) {
                         tx_tracker->tx_transactions[i] = tx;
 
-                        tx->tx_id = i;
+                        tx->tx_id = tx_tracker->tx_id_counter++;
                         tx->tx_lowest_lsn = 0;
                         tx->tx_highest_lsn = 0;
                         tx->tx_commited = 0;
@@ -84,6 +86,8 @@ sfs_transaction_destroy(struct sfs_transaction *tx)
 
         kfree(tx);
 }
+
+
 
 static
 bool
