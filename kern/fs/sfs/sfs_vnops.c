@@ -37,10 +37,12 @@
 #include <kern/fcntl.h>
 #include <limits.h>
 #include <stat.h>
+#include <current.h>
 #include <lib.h>
 #include <uio.h>
 #include <synch.h>
 #include <vfs.h>
+#include <thread.h>
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
@@ -621,11 +623,14 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		return 0;
 	}
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(v->vn_fs->fs_data);
+
 	/* Didn't exist - create it */
 	result = sfs_makeobj(sfs, SFS_TYPE_FILE, &newguy);
 	if (result) {
 		unreserve_buffers(SFS_BLOCKSIZE);
 		lock_release(sv->sv_lock);
+		curthread->t_sfs_fs = NULL;
 		return result;
 	}
 
@@ -643,6 +648,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		VOP_DECREF(&newguy->sv_absvn);
 		lock_release(sv->sv_lock);
 		unreserve_buffers(SFS_BLOCKSIZE);
+		curthread->t_sfs_fs = NULL;
 		return result;
 	}
 
@@ -658,6 +664,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(newguy->sv_lock);
 	lock_release(sv->sv_lock);
+	curthread->t_sfs_fs = NULL;
 	return 0;
 }
 
@@ -1046,6 +1053,8 @@ sfs_remove(struct vnode *dir, const char *name)
 		goto out_reference;
 	}
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(dir->vn_fs->fs_data);
+
 	/* Erase its directory entry. */
 	result = sfs_dir_unlink(sv, slot);
 	if (result) {
@@ -1079,6 +1088,8 @@ sfs_remove(struct vnode *dir, const char *name)
 	}
 	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
+	curthread->t_sfs_fs = NULL;
+
 out_reference:
 	/* Discard the reference that sfs_lookonce got us */
 	sfs_dinode_unload(victim);
@@ -1091,6 +1102,7 @@ out_loadsv:
 out_buffers:
 	lock_release(sv->sv_lock);
 	unreserve_buffers(SFS_BLOCKSIZE);
+	curthread->t_sfs_fs = NULL;
 
 	return result;
 }

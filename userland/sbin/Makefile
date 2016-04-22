@@ -5,6 +5,6 @@
 TOP=../..
 .include "$(TOP)/mk/os161.config.mk"
 
-SUBDIRS=reboot halt poweroff mksfs dumpsfs sfsck
+SUBDIRS=reboot halt poweroff mksfs dumpsfs sfsck remove_test
 
 .include "$(TOP)/mk/os161.subdir.mk"

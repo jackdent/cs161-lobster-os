@@ -139,7 +139,7 @@ readfile(const char *name)
 	struct indexentry x;
 	size_t len, remaining, here;
 	const char *s, *t;
-	
+
 	if (name == NULL || !strcmp(name, "-")) {
 		fd = STDIN_FILENO;
 		closefd = -1;
