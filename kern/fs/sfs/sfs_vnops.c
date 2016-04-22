@@ -664,7 +664,6 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(newguy->sv_lock);
 	lock_release(sv->sv_lock);
-	curthread->t_sfs_fs = NULL;
 	return 0;
 }
 
@@ -1088,8 +1087,6 @@ sfs_remove(struct vnode *dir, const char *name)
 	}
 	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
-	curthread->t_sfs_fs = NULL;
-
 out_reference:
 	/* Discard the reference that sfs_lookonce got us */
 	sfs_dinode_unload(victim);
@@ -1102,7 +1099,6 @@ out_loadsv:
 out_buffers:
 	lock_release(sv->sv_lock);
 	unreserve_buffers(SFS_BLOCKSIZE);
-	curthread->t_sfs_fs = NULL;
 
 	return result;
 }
