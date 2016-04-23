@@ -82,6 +82,7 @@ ARRAYINLINE void array_set(const struct array *, unsigned index, void *val);
 int array_preallocate(struct array *, unsigned num);
 int array_setsize(struct array *, unsigned num);
 ARRAYINLINE int array_add(struct array *, void *val, unsigned *index_ret);
+ARRAYINLINE bool array_contains(struct array *, void *val);
 void array_remove(struct array *, unsigned index);
 void array_zero_out(struct array *a, bool free_entries);
 
@@ -125,6 +126,19 @@ array_add(struct array *a, void *val, unsigned *index_ret)
 		*index_ret = index;
 	}
 	return 0;
+}
+
+ARRAYINLINE bool
+array_contains(struct array *a, void *val)
+{
+	unsigned i;
+
+	for (i = 0; i < a->num; i++) {
+		if (a->v[i] == val) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /*
@@ -181,6 +195,7 @@ array_add(struct array *a, void *val, unsigned *index_ret)
 	INLINE int ARRAY##_preallocate(struct ARRAY *a, unsigned num);	\
 	INLINE int ARRAY##_setsize(struct ARRAY *a, unsigned num);	\
 	INLINE int ARRAY##_add(struct ARRAY *a, T *val, unsigned *index_ret); \
+	INLINE bool ARRAY##_contains(struct ARRAY *a, T *val); \
 	INLINE void ARRAY##_remove(struct ARRAY *a, unsigned index)
 
 #define DEFARRAY_BYTYPE(ARRAY, T, INLINE) \
@@ -248,6 +263,12 @@ array_add(struct array *a, void *val, unsigned *index_ret)
 	ARRAY##_add(struct ARRAY *a, T *val, unsigned *index_ret) \
 	{							\
 		return array_add(&a->arr, (void *)val, index_ret); \
+	}							\
+								\
+	INLINE bool						\
+	ARRAY##_contains(struct ARRAY *a, T *val) 		\
+	{							\
+		return array_contains(&a->arr, (void *)val); 	\
 	}							\
 								\
 	INLINE void						\

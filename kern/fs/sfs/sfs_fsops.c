@@ -33,6 +33,8 @@
  * Filesystem-level interface routines.
  */
 
+#define TXID_TINLINE
+
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
@@ -51,6 +53,14 @@
 #define SFS_FS_NBLOCKS(sfs)        ((sfs)->sfs_sb.sb_nblocks)
 #define SFS_FS_FREEMAPBITS(sfs)    SFS_FREEMAPBITS(SFS_FS_NBLOCKS(sfs))
 #define SFS_FS_FREEMAPBLOCKS(sfs)  SFS_FREEMAPBLOCKS(SFS_FS_NBLOCKS(sfs))
+
+
+#ifndef TXID_TINLINE
+#define TXID_TINLINE INLINE
+#endif
+
+DECLARRAY(txid_t, TXID_TINLINE);
+DEFARRAY(txid_t, TXID_TINLINE);
 
 /*
  * Routine for doing I/O (reads or writes) on the free block bitmap.
@@ -493,11 +503,10 @@ fail:
 
 static
 void
-sfs_undo_records(struct sfs_fs *sfs)
+sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commited_txs)
 {
 	int err;
 	struct sfs_jiter *ji;
-
 	enum sfs_record_type record_type;
 	void *record_ptr;
 	size_t record_len;
@@ -513,7 +522,39 @@ sfs_undo_records(struct sfs_fs *sfs)
 		record_ptr = sfs_jiter_rec(ji, &record_len);
 		memcpy(&record, record_ptr, record_len);
 
-		sfs_record_undo(sfs, record, record_type);
+		if (!txid_tarray_contains(commited_txs, (void*)record.r_txid)) {
+			sfs_record_undo(sfs, record, record_type);
+		}
+
+		err = sfs_jiter_prev(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+}
+
+static
+void
+sfs_redo_records(struct sfs_fs *sfs)
+{
+	int err;
+	struct sfs_jiter *ji;
+	enum sfs_record_type record_type;
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	err = sfs_jiter_fwdcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+		record_ptr = sfs_jiter_rec(ji, &record_len);
+		memcpy(&record, record_ptr, record_len);
+
+		sfs_record_redo(sfs, record, record_type);
 
 		err = sfs_jiter_next(sfs, ji);
 		if (err) {
@@ -524,107 +565,26 @@ sfs_undo_records(struct sfs_fs *sfs)
 	sfs_jiter_destroy(ji);
 }
 
+// Returns an array of transaction id's that have commit records
 static
-void
-sfs_return_ji_to_start(struct sfs_fs *sfs, struct sfs_jiter *ji, sfs_lsn_t tx_start)
+struct txid_tarray *
+sfs_check_records(struct sfs_fs *sfs)
 {
-	int err;
-	sfs_lsn_t lsn;
-
-	while (!sfs_jiter_done(ji)) {
-		lsn = sfs_jiter_lsn(ji);
-		KASSERT(lsn >= tx_start);
-
-		if (lsn == tx_start) {
-			return;
-		}
-
-		err = sfs_jiter_prev(sfs, ji);
-		if (err) {
-		panic("Error while reading journal\n");
-		}
-	}
-
-	panic("Could not move jiter back to transaction start\n");
-}
-
-static
-sfs_lsn_t
-sfs_seek_transaction_end(struct sfs_fs *sfs, struct sfs_jiter *ji, sfs_lsn_t tx_start)
-{
-	int err;
-
-	enum sfs_record_type record_type;
-	void *record_ptr;
-	size_t record_len;
-	struct sfs_record record;
-
-	while (!sfs_jiter_done(ji)) {
-		record_type = sfs_jiter_type(ji);
-		record_ptr = sfs_jiter_rec(ji, &record_len);
-		memcpy(&record, record_ptr, record_len);
-
-		if (record_type == R_TX_COMMIT && record.r_txid == tx_start) {
-			return sfs_jiter_lsn(ji);
-		}
-
-		err = sfs_jiter_next(sfs, ji);
-		if (err) {
-			panic("Error while reading journal\n");
-		}
-	}
-
-	// Could not find a commit record for the transaction
-	return 0;
-}
-
-static
-void
-sfs_redo_successful_transaction(struct sfs_fs *sfs, struct sfs_jiter *ji)
-{
-	int err;
-	sfs_lsn_t tx_start, tx_end;
-
-	enum sfs_record_type record_type;
-	void *record_ptr;
-	size_t record_len;
-	struct sfs_record record;
-
-	tx_start = sfs_jiter_lsn(ji);
-	tx_end = sfs_seek_transaction_end(sfs, ji, tx_start);
-
-	sfs_return_ji_to_start(sfs, ji, tx_start);
-
-	if (tx_end == 0) {
-		return;
-	}
-
-	while (sfs_jiter_lsn(ji) <= tx_end) {
-		record_type = sfs_jiter_type(ji);
-		record_ptr = sfs_jiter_rec(ji, &record_len);
-		memcpy(&record, record_ptr, record_len);
-
-		if (record.r_txid == tx_start) {
-			sfs_record_redo(sfs, record, record_type);
-		}
-
-		err = sfs_jiter_next(sfs, ji);
-		if (err) {
-			panic("Error while reading journal\n");
-		}
-	}
-
-	sfs_return_ji_to_start(sfs, ji, tx_start);
-}
-
-static
-void
-sfs_redo_successful_transactions(struct sfs_fs *sfs)
-{
+	// TODO: also check checksums to see which user writes
+	// made it to disk
 	int err;
 	struct sfs_jiter *ji;
-
 	enum sfs_record_type record_type;
+	struct txid_tarray *commited_txs;
+
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	commited_txs = txid_tarray_create();
+	if (commited_txs == NULL) {
+		panic("Error while reading journal\n");
+	}
 
 	err = sfs_jiter_fwdcreate(sfs, &ji);
 	if (err) {
@@ -634,8 +594,14 @@ sfs_redo_successful_transactions(struct sfs_fs *sfs)
 	while (!sfs_jiter_done(ji)) {
 		record_type = sfs_jiter_type(ji);
 
-		if (record_type == R_TX_BEGIN) {
-			sfs_redo_successful_transaction(sfs, ji);
+		if (record_type == R_TX_COMMIT) {
+			record_ptr = sfs_jiter_rec(ji, &record_len);
+			memcpy(&record, record_ptr, record_len);
+
+			err = txid_tarray_add(commited_txs, (void*)record.r_txid, NULL);
+			if (err) {
+				panic("Error while reading journal\n");
+			}
 		}
 
 		err = sfs_jiter_next(sfs, ji);
@@ -645,6 +611,7 @@ sfs_redo_successful_transactions(struct sfs_fs *sfs)
 	}
 
 	sfs_jiter_destroy(ji);
+	return commited_txs;
 }
 
 static
@@ -652,9 +619,21 @@ void
 sfs_recover(struct sfs_fs *sfs)
 {
 	int err;
+	struct txid_tarray *commited_txs;
 
-	sfs_undo_records(sfs);
-	sfs_redo_successful_transactions(sfs);
+	// Pass 1: (forward) note which transactions committed successfully
+	// TODO: which user data blocks made it to disk via checksums for pass 2
+	commited_txs = sfs_check_records(sfs);
+
+	// Pass 2: (forward) redo every transaction
+	// TODO: handle metadata->userdata changes and 0ing out user data
+	sfs_redo_records(sfs);
+
+	// Pass 3: (reverse) undo transactions without a commit record
+	sfs_undo_unsuccessful_transactions(sfs, commited_txs);
+
+
+	txid_tarray_destroy(commited_txs);
 
 	// TODO: what if we get a crash during recovery, between freemap sync
 	// and before buffer sync

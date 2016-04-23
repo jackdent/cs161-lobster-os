@@ -43,7 +43,7 @@ struct buf; /* in buf.h */
 typedef uint64_t sfs_lsn_t;
 
 /* Type for transaction IDs */
-typedef uint64_t txid_t;
+typedef uint32_t txid_t;
 
 /* jphys write callback context; define it however is convenient */
 struct sfs_jphys_writecontext;
