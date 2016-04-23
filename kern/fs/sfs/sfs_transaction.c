@@ -73,18 +73,22 @@ void
 sfs_transaction_destroy(struct sfs_transaction *tx)
 {
         struct lock *tx_lock;
+        int i;
 
         KASSERT(tx != NULL);
-        KASSERT(tx->tx_id < MAX_TRANSACTIONS);
 
         tx_lock = tx->tx_tracker->tx_lock;
 
         lock_acquire(tx_lock);
-        KASSERT(tx->tx_tracker->tx_transactions[tx->tx_id] == tx);
-        tx->tx_tracker->tx_transactions[tx->tx_id] = NULL;
-        lock_release(tx_lock);
-
-        kfree(tx);
+        for (i = 0; i < MAX_TRANSACTIONS; i++) {
+                if (tx->tx_tracker->tx_transactions[i] == tx) {
+                        tx->tx_tracker->tx_transactions[tx->tx_id] = NULL;
+                        lock_release(tx_lock);
+                        kfree(tx);
+                        return;
+                }
+        }
+        panic("Trying to destroy transactions not in transaction set table?\n");
 }
 
 
