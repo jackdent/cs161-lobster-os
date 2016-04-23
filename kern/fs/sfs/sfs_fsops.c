@@ -359,7 +359,6 @@ sfs_unmount(struct fs *fs)
 {
 	struct sfs_fs *sfs = fs->fs_data;
 
-
 	lock_acquire(sfs->sfs_vnlock);
 	lock_acquire(sfs->sfs_freemaplock);
 
@@ -625,13 +624,12 @@ sfs_recover(struct sfs_fs *sfs)
 	// TODO: which user data blocks made it to disk via checksums for pass 2
 	commited_txs = sfs_check_records(sfs);
 
-	// Pass 2: (forward) redo every transaction
+	// Pass 2: (forward) redo every record
 	// TODO: handle metadata->userdata changes and 0ing out user data
 	sfs_redo_records(sfs);
 
 	// Pass 3: (reverse) undo transactions without a commit record
 	sfs_undo_unsuccessful_transactions(sfs, commited_txs);
-
 
 	txid_tarray_destroy(commited_txs);
 

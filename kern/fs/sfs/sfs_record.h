@@ -51,9 +51,10 @@ struct sfs_record {
         } r_parameters;
 };
 
-sfs_lsn_t sfs_record_write_to_journal(struct sfs_record *, enum sfs_record_type, struct sfs_fs *);
-
+sfs_lsn_t sfs_record_write_to_journal(struct sfs_fs *, struct sfs_record *, enum sfs_record_type);
 struct sfs_record *sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value, char *new_value);
+struct sfs_record *sfs_record_create_user_block_write(daddr_t block, off_t pos, size_t len, char *data);
+bool sfs_record_check_user_block_write(struct sfs_fs *, struct sfs_record *);
 
 /*
  * Recovery operations

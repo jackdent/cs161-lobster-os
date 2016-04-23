@@ -1,3 +1,4 @@
+#include <types.h>
 #include <kern/errno.h>
 #include <bitmap.h>
 #include "sfs_record.h"
@@ -5,7 +6,7 @@
 #include "buf.h"
 
 sfs_lsn_t
-sfs_record_write_to_journal(struct sfs_record *record, enum sfs_record_type type, struct sfs_fs *fs)
+sfs_record_write_to_journal(struct sfs_fs *fs, struct sfs_record *record, enum sfs_record_type type)
 {
         return sfs_jphys_write(fs, NULL, NULL, type, record, sizeof(struct sfs_record));
 }
@@ -28,6 +29,83 @@ sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value
         meta_update->len = len;
         memcpy((void*)meta_update->old_value, (void*)&old_value, len);
         memcpy((void*)meta_update->new_value, (void*)&new_value, len);
+
+        return record;
+}
+
+/*
+ * Modified version of Fletcher's checksum, from Wikipedia
+ */
+static
+uint32_t
+sfs_record_user_data_checksum(char *data, size_t len)
+{
+        KASSERT(len < SFS_BLOCKSIZE);
+
+        uint32_t sum1, sum2;
+        uint32_t mask;
+        size_t i;
+
+        sum1 = 0;
+        sum2 = 0;
+        mask = (1 << 16) - 1;
+
+        for (i = 0; i < len; i++) {
+                sum1 = (sum1 + data[i]) % mask;
+                sum2 = (sum2 + sum1) % mask;
+        }
+
+        return (sum2 << 16) | sum1;
+}
+
+/*
+ * Assumes called has reserved 1 buffer
+ */
+bool
+sfs_record_check_user_block_write(struct sfs_fs *sfs, struct sfs_record *record)
+{
+        int result;
+        struct sfs_user_block_write *user_block_write;
+        struct buf *iobuffer;
+        char *ioptr;
+        uint32_t checksum;
+
+        user_block_write = &record->r_parameters.user_block_write;
+
+        result = buffer_read(&sfs->sfs_absfs, user_block_write->block, SFS_BLOCKSIZE, &iobuffer);
+        if (result) {
+                panic("Could not read from buffer associated with record\n");
+        }
+
+        ioptr = buffer_map(iobuffer);
+        checksum = sfs_record_user_data_checksum(ioptr + user_block_write->pos, user_block_write->len);
+
+        buffer_release(iobuffer);
+
+        return checksum == user_block_write->checksum;
+}
+
+struct sfs_record *
+sfs_record_create_user_block_write(daddr_t block, off_t pos, size_t len, char *data)
+{
+        KASSERT(pos < SFS_BLOCKSIZE);
+        KASSERT(len < SFS_BLOCKSIZE);
+
+        struct sfs_record *record;
+        struct sfs_user_block_write *user_block_write;
+
+        record = kmalloc(sizeof(struct sfs_record));
+        if (record == NULL) {
+                return NULL;
+        }
+
+        user_block_write = &record->r_parameters.user_block_write;
+
+        user_block_write->block = block;
+        user_block_write->pos = pos;
+        user_block_write->len = len;
+
+        user_block_write->checksum = sfs_record_user_data_checksum(data, len);
 
         return record;
 }

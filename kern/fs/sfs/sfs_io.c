@@ -201,6 +201,7 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	char *ioptr;
 	daddr_t diskblock;
 	uint32_t fileblock;
+	struct sfs_record *record;
 	int result;
 
 	/* Allocate missing blocks if and only if we're writing */
@@ -239,10 +240,19 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 		}
 	}
 
+	ioptr = buffer_map(iobuffer);
+
+	/*
+	 * Log a write to the journal
+	 */
+	if (uio->uio_rw == UIO_WRITE) {
+		record = sfs_record_create_user_block_write(diskblock, uio->uio_offset, uio->uio_resid, ioptr + uio->uio_offset);
+		sfs_current_transaction_add_record(record, R_USER_BLOCK_WRITE);
+	}
+
 	/*
 	 * Now perform the requested operation into/out of the buffer.
 	 */
-	ioptr = buffer_map(iobuffer);
 	result = uiomove(ioptr+skipstart, len, uio);
 	if (result) {
 		buffer_release(iobuffer);
@@ -277,6 +287,7 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	daddr_t diskblock;
 	uint32_t fileblock;
 	int result;
+	struct sfs_record *record;
 	bool doalloc = (uio->uio_rw==UIO_WRITE);
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
@@ -313,10 +324,19 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 		return result;
 	}
 
+	ioptr = buffer_map(iobuf);
+
+	/*
+	 * Log a write to the journal
+	 */
+	if (uio->uio_rw == UIO_WRITE) {
+		record = sfs_record_create_user_block_write(diskblock, 0, SFS_BLOCKSIZE, ioptr);
+		sfs_current_transaction_add_record(record, R_USER_BLOCK_WRITE);
+	}
+
 	/*
 	 * Do the I/O into the buffer.
 	 */
-	ioptr = buffer_map(iobuf);
 	result = uiomove(ioptr, SFS_BLOCKSIZE, uio);
 	if (result) {
 		buffer_release(iobuf);

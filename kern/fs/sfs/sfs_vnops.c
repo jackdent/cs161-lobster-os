@@ -657,7 +657,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		return result;
 	}
 
-	/* Create the link increment record for itself*/
+	/* Create the link increment record for itself */
 
 	block = buffer_get_block_number(newguy->sv_dinobuf);
 	pos = (void*)&new_dino->sfi_linkcount - (void*)new_dino;
