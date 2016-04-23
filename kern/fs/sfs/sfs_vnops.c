@@ -572,6 +572,11 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	struct sfs_dinode *new_dino;
 	uint32_t ino;
 	int result;
+	struct sfs_record *record;
+	int old_linkcount, new_linkcount;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	lock_acquire(sv->sv_lock);
 	reserve_buffers(SFS_BLOCKSIZE);
@@ -652,6 +657,20 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		return result;
 	}
 
+	/* Create the link increment record for itself*/
+
+	block = buffer_get_block_number(newguy->sv_dinobuf);
+	pos = (void*)&new_dino->sfi_linkcount - (void*)new_dino;
+	len = sizeof(uint32_t);
+	old_linkcount = new_dino->sfi_linkcount;
+	new_linkcount = old_linkcount + 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	/* Update the linkcount of the new file */
 	new_dino->sfi_linkcount++;
 
@@ -659,6 +678,13 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	sfs_dinode_mark_dirty(newguy);
 
 	*ret = &newguy->sv_absvn;
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
 	sfs_dinode_unload(newguy);
 	unreserve_buffers(SFS_BLOCKSIZE);
