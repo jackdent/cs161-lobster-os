@@ -531,6 +531,7 @@ sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commi
 			panic("Error while reading journal\n");
 		}
 	}
+	sfs_jiter_destroy(ji);
 }
 
 static

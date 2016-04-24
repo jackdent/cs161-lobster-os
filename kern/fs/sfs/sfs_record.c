@@ -59,7 +59,7 @@ sfs_record_user_data_checksum(char *data, size_t len)
 }
 
 /*
- * Assumes called has reserved 1 buffer
+ * Assumes caller has reserved 1 buffer
  */
 bool
 sfs_record_check_user_block_write(struct sfs_fs *sfs, struct sfs_record *record)
