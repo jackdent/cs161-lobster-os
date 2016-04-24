@@ -240,6 +240,12 @@ sfs_sync(struct fs *fs)
 
 	sfs = fs->fs_data;
 
+	// TODO: is it as simple as moving up jphys flusing to here?
+	result = sfs_jphys_flushall(sfs);
+	if (result) {
+		return result;
+	}
+
 	/* Sync the buffer cache */
 	result = sync_fs_buffers(fs);
 	if (result) {
@@ -254,11 +260,6 @@ sfs_sync(struct fs *fs)
 
 	/* If the superblock needs to be written, write it. */
 	result = sfs_sync_superblock(sfs);
-	if (result) {
-		return result;
-	}
-
-	result = sfs_jphys_flushall(sfs);
 	if (result) {
 		return result;
 	}
