@@ -176,6 +176,8 @@ sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
                 bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                // TODO: we need to call sfs_clearblock(sfs, block, NULL)
+                // here, right? How this be undone?
                 break;
         case R_FREEMAP_RELEASE:
                 bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
