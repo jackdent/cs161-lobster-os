@@ -665,6 +665,7 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 {
 	int result;
 	struct sfs_fs *sfs;
+	sfs_lsn_t next_lsn;
 
 	/* We don't pass any options through mount */
 	(void)options;
@@ -801,9 +802,9 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	reserve_buffers(SFS_BLOCKSIZE);
 
-	/**************************************/
-	/* Maybe call more recovery code here */
-	/**************************************/
+	/* Trim journal to be empty */
+	next_lsn = sfs_jphys_peeknextlsn(sfs);
+	sfs_jphys_trim(sfs, next_lsn);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 
