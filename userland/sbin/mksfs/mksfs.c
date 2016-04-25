@@ -62,6 +62,7 @@
 
 /* Block number for the initial root directory contents */
 static uint32_t rootdir_data_block;
+static uint32_t graveyard_data_block;
 
 /* Journal location and size */
 static uint32_t journalstart, journalblocks;
@@ -111,9 +112,10 @@ initfreemap(uint32_t fsblocks)
 		     "increase MAXFREEMAPBLOCKS and recompile");
 	}
 
-	/* mark the superblock and root inode in use */
+	/* mark the superblock, root inode and graveyard in use */
 	allocblock(SFS_SUPER_BLOCK);
 	allocblock(SFS_ROOTDIR_INO);
+	allocblock(SFS_GRAVEYARD_INO);
 
 	/* the freemap blocks must be in use */
 	for (i=0; i<freemapblocks; i++) {
@@ -127,9 +129,12 @@ initfreemap(uint32_t fsblocks)
 		allocblock(journalstart + i);
 	}
 
-	/* allocate a block for the root directory contents */
+	/* allocate blocks for the root directory and graveyard contents */
 	rootdir_data_block = journalstart + journalblocks;
 	allocblock(rootdir_data_block);
+
+	graveyard_data_block = rootdir_data_block + 1;
+	allocblock(graveyard_data_block);
 
 	/* all blocks in the freemap but past the volume end are "in use" */
 	for (i=fsblocks; i<freemapbits; i++) {
@@ -215,6 +220,40 @@ writerootdir(void)
 	strcpy(sfd[1].sfd_name, "..");
 
 	diskwrite(sfd, rootdir_data_block);
+}
+
+/*
+ * Write out the root directory inode.
+ */
+static
+void
+writegraveyard(void)
+{
+	struct sfs_dinode sfi;
+	struct sfs_direntry sfd[SFS_BLOCKSIZE / sizeof(struct sfs_direntry)];
+
+	assert(graveyard_data_block > 0);
+	assert(sizeof(sfd) >= sizeof(struct sfs_direntry) * 2);
+
+	/* Initialize the dinode */
+	bzero((void *)&sfi, sizeof(sfi));
+
+	sfi.sfi_size = SWAP32(sizeof(struct sfs_direntry) * 2);
+	sfi.sfi_type = SWAP16(SFS_TYPE_DIR);
+	sfi.sfi_linkcount = SWAP16(2);
+	sfi.sfi_direct[0] = SWAP32(graveyard_data_block);
+
+	/* Write it out */
+	diskwrite(&sfi, SFS_GRAVEYARD_INO);
+
+	/* Write out the initial root directory contents */
+	bzero((void *)sfd, sizeof(sfd));
+	sfd[0].sfd_ino = SWAP32(SFS_GRAVEYARD_INO);
+	strcpy(sfd[0].sfd_name, ".");
+	sfd[1].sfd_ino = SWAP32(SFS_GRAVEYARD_INO);
+	strcpy(sfd[1].sfd_name, "..");
+
+	diskwrite(sfd, graveyard_data_block);
 }
 
 /*
@@ -309,8 +348,9 @@ main(int argc, char **argv)
 	initfreemap(size);
 	writesuper(volname, size);
 	writefreemap(size);
-    writejournal();
+	writejournal();
 	writerootdir();
+	writegraveyard();
 
 	closedisk();
 

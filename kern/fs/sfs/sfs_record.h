@@ -22,7 +22,7 @@ enum sfs_record_type {
 };
 
 struct sfs_freemap_update {
-        uint32_t block;
+        daddr_t block;
 };
 
 struct sfs_meta_update {

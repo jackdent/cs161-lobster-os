@@ -46,9 +46,10 @@
 #define SFS_DBPERIDB      128           /* # direct blks per indirect blk */
 #define SFS_NAMELEN       60            /* max length of filename */
 #define SFS_SUPER_BLOCK   0             /* block the superblock lives in */
-#define SFS_FREEMAP_START 2             /* 1st block of the freemap */
+#define SFS_FREEMAP_START 3             /* 1st block of the freemap */
 #define SFS_NOINO         0             /* inode # for free dir entry */
 #define SFS_ROOTDIR_INO   1             /* loc'n of the root dir inode */
+#define SFS_GRAVEYARD_INO 2             /* loc'n of the graveyard inode */
 
 /* Number of bits in a block */
 #define SFS_BITSPERBLOCK (SFS_BLOCKSIZE * CHAR_BIT)

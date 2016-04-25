@@ -177,6 +177,9 @@ sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
                 }
                 // TODO: we need to call sfs_clearblock(sfs, block, NULL)
                 // here, right? How this be undone?
+
+                // mark the blocks that will at some point become user blocks, and then don't
+                // apply any changes to them until a [user write] op
                 break;
         case R_FREEMAP_RELEASE:
                 if (bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {

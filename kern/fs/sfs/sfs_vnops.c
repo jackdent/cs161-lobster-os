@@ -47,6 +47,7 @@
 #include <sfs.h>
 #include "sfsprivate.h"
 #include "sfs_transaction.h"
+#include "sfs_graveyard.h"
 
 /*
  * Locking protocol for sfs:
@@ -1001,6 +1002,10 @@ sfs_rmdir(struct vnode *v, const char *name)
 		goto die_total;
 	}
 
+	if (victim_inodeptr->sfi_linkcount == 0) {
+		graveyard_add(victim->sv_absvn.vn_fs->fs_data, victim->sv_ino);
+	}
+
 die_total:
 	sfs_dinode_unload(victim);
 die_loadvictim:
@@ -1080,6 +1085,7 @@ sfs_remove(struct vnode *dir, const char *name)
 
 	curthread->t_sfs_fs = (struct sfs_fs *)(dir->vn_fs->fs_data);
 
+	// TODO: log the directory metadata changes
 	/* Erase its directory entry. */
 	result = sfs_dir_unlink(sv, slot);
 	if (result) {
@@ -1103,6 +1109,11 @@ sfs_remove(struct vnode *dir, const char *name)
 	/* Decrement the link count. */
 	KASSERT(victim_inodeptr->sfi_linkcount > 0);
 	victim_inodeptr->sfi_linkcount--;
+
+	if (victim_inodeptr->sfi_linkcount == 0) {
+		graveyard_add(victim->sv_absvn.vn_fs->fs_data, victim->sv_ino);
+	}
+
 	sfs_dinode_mark_dirty(victim);
 
 out_reference:

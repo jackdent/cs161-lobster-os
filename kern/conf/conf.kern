@@ -442,6 +442,7 @@ optfile   sfs    fs/sfs/sfs_balloc.c
 optfile   sfs    fs/sfs/sfs_bmap.c
 optfile   sfs    fs/sfs/sfs_dir.c
 optfile   sfs    fs/sfs/sfs_fsops.c
+optfile   sfs    fs/sfs/sfs_graveyard.c
 optfile   sfs    fs/sfs/sfs_inode.c
 optfile   sfs    fs/sfs/sfs_io.c
 optfile   sfs    fs/sfs/sfs_jphys.c

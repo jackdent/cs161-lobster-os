@@ -76,9 +76,7 @@ struct sfs_fs {
 	struct lock *sfs_vnlock;	/* lock for vnode table */
 	struct lock *sfs_freemaplock;	/* lock for freemap/superblock */
 	struct lock *sfs_renamelock;	/* lock for sfs_rename() */
-
 	struct sfs_transaction_set *sfs_transaction_set; /* struct of active transactions on this volume */
-
 	struct sfs_jphys *sfs_jphys;	/* physical journal container */
 };
 
