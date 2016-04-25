@@ -246,7 +246,8 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	 * Log a write to the journal
 	 */
 	if (uio->uio_rw == UIO_WRITE) {
-		record = sfs_record_create_user_block_write(diskblock, uio->uio_offset, uio->uio_resid, ioptr + uio->uio_offset);
+		// Log the checusm of the disk block *before* overwriting the data
+		record = sfs_record_create_user_block_write(diskblock, ioptr);
 		sfs_current_transaction_add_record(record, R_USER_BLOCK_WRITE);
 	}
 
@@ -330,7 +331,8 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	 * Log a write to the journal
 	 */
 	if (uio->uio_rw == UIO_WRITE) {
-		record = sfs_record_create_user_block_write(diskblock, 0, SFS_BLOCKSIZE, ioptr);
+		// Log the checusm of the disk block *before* overwriting the data
+		record = sfs_record_create_user_block_write(diskblock, ioptr);
 		sfs_current_transaction_add_record(record, R_USER_BLOCK_WRITE);
 	}
 

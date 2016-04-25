@@ -38,10 +38,8 @@ sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value
  */
 static
 uint32_t
-sfs_record_user_data_checksum(char *data, size_t len)
+sfs_record_user_data_checksum(char *data)
 {
-        KASSERT(len < SFS_BLOCKSIZE);
-
         uint32_t sum1, sum2;
         uint32_t mask;
         size_t i;
@@ -50,7 +48,7 @@ sfs_record_user_data_checksum(char *data, size_t len)
         sum2 = 0;
         mask = (1 << 16) - 1;
 
-        for (i = 0; i < len; i++) {
+        for (i = 0; i < SFS_BLOCKSIZE; i++) {
                 sum1 = (sum1 + data[i]) % mask;
                 sum2 = (sum2 + sum1) % mask;
         }
@@ -58,39 +56,10 @@ sfs_record_user_data_checksum(char *data, size_t len)
         return (sum2 << 16) | sum1;
 }
 
-/*
- * Assumes called has reserved 1 buffer
- */
-bool
-sfs_record_check_user_block_write(struct sfs_fs *sfs, struct sfs_record *record)
-{
-        int result;
-        struct sfs_user_block_write *user_block_write;
-        struct buf *iobuffer;
-        char *ioptr;
-        uint32_t checksum;
-
-        user_block_write = &record->r_parameters.user_block_write;
-
-        result = buffer_read(&sfs->sfs_absfs, user_block_write->block, SFS_BLOCKSIZE, &iobuffer);
-        if (result) {
-                panic("Could not read from buffer associated with record\n");
-        }
-
-        ioptr = buffer_map(iobuffer);
-        checksum = sfs_record_user_data_checksum(ioptr + user_block_write->pos, user_block_write->len);
-
-        buffer_release(iobuffer);
-
-        return checksum == user_block_write->checksum;
-}
 
 struct sfs_record *
-sfs_record_create_user_block_write(daddr_t block, off_t pos, size_t len, char *data)
+sfs_record_create_user_block_write(daddr_t block, char *data)
 {
-        KASSERT(pos < SFS_BLOCKSIZE);
-        KASSERT(len < SFS_BLOCKSIZE);
-
         struct sfs_record *record;
         struct sfs_user_block_write *user_block_write;
 
@@ -100,14 +69,39 @@ sfs_record_create_user_block_write(daddr_t block, off_t pos, size_t len, char *d
         }
 
         user_block_write = &record->r_parameters.user_block_write;
-
         user_block_write->block = block;
-        user_block_write->pos = pos;
-        user_block_write->len = len;
-
-        user_block_write->checksum = sfs_record_user_data_checksum(data, len);
+        user_block_write->checksum = sfs_record_user_data_checksum(data);
 
         return record;
+}
+
+/*
+ * Assumes caller has reserved 1 buffer
+ */
+static
+void
+sfs_record_redo_user_block_write(struct sfs_fs *sfs, struct sfs_user_block_write user_block_write)
+{
+        int result;
+        struct buf *buf;
+        char *ioptr;
+        uint32_t checksum;
+
+        result = buffer_read(&sfs->sfs_absfs, user_block_write.block, SFS_BLOCKSIZE, &buf);
+        if (result) {
+                panic("Could not read from buffer associated with record\n");
+        }
+
+        ioptr = buffer_map(buf);
+        checksum = sfs_record_user_data_checksum(ioptr);
+
+        // If the data is stale
+        if (checksum == user_block_write.checksum) {
+                memset(ioptr, 0, SFS_BLOCKSIZE);
+        }
+
+        buffer_mark_dirty(buf);
+        buffer_release(buf);
 }
 
 /*
@@ -125,7 +119,7 @@ sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool red
 {
         struct buf *buf;
         int err;
-        void *ptr;
+        void *ioptr;
         char *meta;
 
         err = buffer_read(&sfs->sfs_absfs, meta_update.block, SFS_BLOCKSIZE, &buf);
@@ -133,7 +127,7 @@ sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool red
                 panic("Tried to undo meta update to invalid block\n");
         }
 
-        ptr = buffer_map(buf);
+        ioptr = buffer_map(buf);
 
         if (redo) {
                 meta = meta_update.new_value;
@@ -141,8 +135,9 @@ sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool red
                 meta = meta_update.old_value;
         }
 
-        memcpy(meta, ptr + meta_update.pos, meta_update.len);
+        memcpy(meta, ioptr + meta_update.pos, meta_update.len);
 
+        buffer_mark_dirty(buf);
         buffer_release(buf);
 }
 
@@ -159,12 +154,11 @@ sfs_record_undo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
         case R_META_UPDATE:
                 sfs_meta_update(sfs, record.r_parameters.meta_update, false);
                 break;
+        case R_USER_BLOCK_WRITE:
         case R_TX_BEGIN:
         case R_TX_COMMIT:
                 // NOOP
                 break;
-        case R_USER_BLOCK_WRITE:
-                panic("Tried to undo user write\n");
         default:
                 panic("Undo unsupported for record type\n");
         }
@@ -183,12 +177,12 @@ sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
         case R_META_UPDATE:
                 sfs_meta_update(sfs, record.r_parameters.meta_update, true);
                 break;
+        case R_USER_BLOCK_WRITE:
+                sfs_record_redo_user_block_write(sfs, record.r_parameters.user_block_write);
         case R_TX_BEGIN:
         case R_TX_COMMIT:
                 // NOOP
                 break;
-        case R_USER_BLOCK_WRITE:
-                panic("Tried to redo user write\n");
         default:
                 panic("Undo unsupported for record type\n");
         }

@@ -569,8 +569,6 @@ static
 struct txid_tarray *
 sfs_check_records(struct sfs_fs *sfs)
 {
-	// TODO: also check checksums to see which user writes
-	// made it to disk
 	int err;
 	struct sfs_jiter *ji;
 	enum sfs_record_type record_type;
@@ -621,7 +619,6 @@ sfs_recover(struct sfs_fs *sfs)
 	struct txid_tarray *commited_txs;
 
 	// Pass 1: (forward) note which transactions committed successfully
-	// TODO: which user data blocks made it to disk via checksums for pass 2
 	commited_txs = sfs_check_records(sfs);
 
 	// Pass 2: (forward) redo every record
