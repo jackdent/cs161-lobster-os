@@ -240,6 +240,12 @@ sfs_sync(struct fs *fs)
 
 	sfs = fs->fs_data;
 
+	// TODO: is it as simple as moving up jphys flusing to here?
+	result = sfs_jphys_flushall(sfs);
+	if (result) {
+		return result;
+	}
+
 	/* Sync the buffer cache */
 	result = sync_fs_buffers(fs);
 	if (result) {
@@ -254,11 +260,6 @@ sfs_sync(struct fs *fs)
 
 	/* If the superblock needs to be written, write it. */
 	result = sfs_sync_superblock(sfs);
-	if (result) {
-		return result;
-	}
-
-	result = sfs_jphys_flushall(sfs);
 	if (result) {
 		return result;
 	}
@@ -530,6 +531,7 @@ sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commi
 			panic("Error while reading journal\n");
 		}
 	}
+	sfs_jiter_destroy(ji);
 }
 
 static
@@ -662,6 +664,7 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 {
 	int result;
 	struct sfs_fs *sfs;
+	sfs_lsn_t next_lsn;
 
 	/* We don't pass any options through mount */
 	(void)options;
@@ -798,9 +801,9 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	reserve_buffers(SFS_BLOCKSIZE);
 
-	/**************************************/
-	/* Maybe call more recovery code here */
-	/**************************************/
+	/* Trim journal to be empty */
+	next_lsn = sfs_jphys_peeknextlsn(sfs);
+	sfs_jphys_trim(sfs, next_lsn);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 

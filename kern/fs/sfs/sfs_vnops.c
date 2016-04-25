@@ -1105,6 +1105,12 @@ sfs_remove(struct vnode *dir, const char *name)
 	victim_inodeptr->sfi_linkcount--;
 	sfs_dinode_mark_dirty(victim);
 
+out_reference:
+	/* Discard the reference that sfs_lookonce got us */
+	sfs_dinode_unload(victim);
+	lock_release(victim->sv_lock);
+	VOP_DECREF(&victim->sv_absvn);
+
 	/* Commit record */
 	record = kmalloc(sizeof(struct sfs_record));
 	if (record == NULL) {
@@ -1112,12 +1118,6 @@ sfs_remove(struct vnode *dir, const char *name)
 		goto out_reference;
 	}
 	sfs_current_transaction_add_record(record, R_TX_COMMIT);
-
-out_reference:
-	/* Discard the reference that sfs_lookonce got us */
-	sfs_dinode_unload(victim);
-	lock_release(victim->sv_lock);
-	VOP_DECREF(&victim->sv_absvn);
 
 out_loadsv:
 	sfs_dinode_unload(sv);

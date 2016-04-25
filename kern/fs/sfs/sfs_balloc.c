@@ -33,12 +33,15 @@
  * Block allocation.
  */
 #include <types.h>
+#include <kern/errno.h>
 #include <lib.h>
 #include <bitmap.h>
 #include <synch.h>
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_transaction.h"
+
 
 /*
  * Zero out a disk block.
@@ -86,6 +89,7 @@ int
 sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 {
 	int result;
+	struct sfs_record *record;
 
 	lock_acquire(sfs->sfs_freemaplock);
 
@@ -95,6 +99,17 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 		return result;
 	}
 	sfs->sfs_freemapdirty = true;
+
+	/* Create the record
+	 * (OK that this is after bitmap_alloc since we still have
+	 * the freemap lock, so it won't be flushed yet) */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		return ENOMEM;
+	}
+
+	record->r_parameters.freemap_update.block = result;
+	sfs_current_transaction_add_record(record, R_FREEMAP_CAPTURE);
 
 	lock_release(sfs->sfs_freemaplock);
 
@@ -134,8 +149,22 @@ sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 void
 sfs_bfree(struct sfs_fs *sfs, daddr_t diskblock)
 {
+	struct sfs_record *record;
+
 	lock_acquire(sfs->sfs_freemaplock);
 	sfs_bfree_prelocked(sfs, diskblock);
+
+	/* Create the record
+	 * (OK that this is after bitmap_unmark since we still have
+	 * the freemap lock, so it won't be flushed yet) */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		panic("Out of memory when making record\n");
+	}
+
+	record->r_parameters.freemap_update.block = diskblock;
+	sfs_current_transaction_add_record(record, R_FREEMAP_RELEASE);
+
 	lock_release(sfs->sfs_freemaplock);
 }
 

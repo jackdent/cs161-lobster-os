@@ -56,7 +56,6 @@ sfs_record_user_data_checksum(char *data)
         return (sum2 << 16) | sum1;
 }
 
-
 struct sfs_record *
 sfs_record_create_user_block_write(daddr_t block, char *data)
 {
@@ -146,10 +145,14 @@ sfs_record_undo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
 {
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
-                bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                if (bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
+                        bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                }
                 break;
         case R_FREEMAP_RELEASE:
-                bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                if (!bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
+                        bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                }
                 break;
         case R_META_UPDATE:
                 sfs_meta_update(sfs, record.r_parameters.meta_update, false);
@@ -169,10 +172,16 @@ sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
 {
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
-                bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                if (!bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
+                        bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                }
+                // TODO: we need to call sfs_clearblock(sfs, block, NULL)
+                // here, right? How this be undone?
                 break;
         case R_FREEMAP_RELEASE:
-                bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                if (bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
+                        bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
+                }
                 break;
         case R_META_UPDATE:
                 sfs_meta_update(sfs, record.r_parameters.meta_update, true);

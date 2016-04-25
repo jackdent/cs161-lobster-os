@@ -559,10 +559,11 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 			return ENOMEM;
 		}
 
-		KASSERT(len < 128);
+		KASSERT(len < MAX_META_UPDATE_SIZE);
+		KASSERT(blockoffset + len < SFS_BLOCKSIZE);
 		meta_update = &record->r_parameters.meta_update;
 
-		meta_update->block = buffer_get_block_number(iobuf);
+		meta_update->block = diskblock;
 		meta_update->pos = blockoffset;
 		meta_update->len = len;
 		memcpy((void*)meta_update->old_value, (void*)(ioptr + blockoffset), len);
