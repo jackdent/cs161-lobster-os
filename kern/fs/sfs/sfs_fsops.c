@@ -634,10 +634,16 @@ sfs_recover(struct sfs_fs *sfs)
 
 	// TODO: what if we get a crash during recovery, between freemap sync
 	// and before buffer sync
-	err = sfs_sync(&sfs->sfs_absfs);
+	err = sfs_sync_freemap(sfs);
 	if (err) {
-		panic("Error while syncing with disk during recovery\n");
+		panic("Error while syncing freemap during recovery\n");
 	}
+
+	err = sync_fs_buffers(&sfs->sfs_absfs);
+	if (err) {
+		panic("Error while syncing buffers during recovery\n");
+	}
+
 }
 
 /*
