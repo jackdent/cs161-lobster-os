@@ -474,6 +474,16 @@ pass1_rootdir(void)
 	pass1_dir(SFS_ROOTDIR_INO, path);
 }
 
+
+static
+void
+pass1_graveyard(void) {
+	char path[SFS_VOLNAME_SIZE + 2];
+
+	snprintf(path, sizeof(path), "%s:", sb_volname());
+	pass1_dir(SFS_GRAVEYARD_INO, path);
+}
+
 ////////////////////////////////////////////////////////////
 // public interface
 
@@ -481,6 +491,7 @@ void
 pass1(void)
 {
 	pass1_rootdir();
+	pass1_graveyard();
 }
 
 unsigned long

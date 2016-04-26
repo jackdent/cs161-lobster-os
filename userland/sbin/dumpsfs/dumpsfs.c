@@ -899,6 +899,16 @@ dumpdir(uint32_t ino, const struct sfs_dinode *sfi)
 
 static
 void
+dumpgraveyard()
+{
+	struct sfs_dinode sfi;
+
+	diskread(&sfi, SFS_GRAVEYARD_INO);
+	dumpdir(SFS_GRAVEYARD_INO, &sfi);
+}
+
+static
+void
 recursedirblock(uint32_t fileblock, uint32_t diskblock)
 {
 	struct sfs_direntry sds[SFS_BLOCKSIZE/sizeof(struct sfs_direntry)];
@@ -1077,6 +1087,7 @@ usage(void)
 	warnx("Usage: dumpsfs [options] device/diskfile");
 	warnx("   -s: dump superblock");
 	warnx("   -b: dump free block bitmap");
+	warnx("   -g: dump graveyard");
 	warnx("   -j: dump journal");
 	warnx("   -J: physical dump of journal");
 	warnx("   -i ino: dump specified inode");
@@ -1093,6 +1104,7 @@ main(int argc, char **argv)
 {
 	bool dosb = false;
 	bool dofreemap = false;
+	bool dograveyard = false;
 	bool dojournal = false;
 	bool dophysjournal = false;
 	uint32_t dumpino = 0;
@@ -1113,6 +1125,7 @@ main(int argc, char **argv)
 				switch (argv[i][j]) {
 				    case 's': dosb = true; break;
 				    case 'b': dofreemap = true; break;
+				    case 'g': dograveyard = true; break;
 				    case 'j': dojournal = true; break;
 				    case 'J': dophysjournal = true; break;
 				    case 'i':
@@ -1172,6 +1185,9 @@ main(int argc, char **argv)
 	}
 	if (dofreemap) {
 		dumpfreemap(nblocks);
+	}
+	if (dograveyard) {
+		dumpgraveyard();
 	}
 	if (dophysjournal) {
 		dumpphysjournal();
