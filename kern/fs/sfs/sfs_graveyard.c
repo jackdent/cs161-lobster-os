@@ -1,6 +1,8 @@
 #include <types.h>
+#include <kern/errno.h>
 #include <lib.h>
 #include <sfs.h>
+#include <synch.h>
 #include "sfsprivate.h"
 #include "sfs_graveyard.h"
 
@@ -11,7 +13,7 @@ graveyard_get(struct sfs_fs *sfs)
         int err;
         struct sfs_vnode *graveyard;
 
-        err = sfs_loadvnode(sfs, SFS_GRAVEYARD_INO, SFS_TYPE_DIR, &graveyard);
+        err = sfs_loadvnode(sfs, SFS_GRAVEYARD_INO, SFS_TYPE_INVAL, &graveyard);
         if (err) {
                 panic("Could not load graveyard\n");
         }
@@ -39,15 +41,27 @@ graveyard_add(struct sfs_fs *sfs, uint32_t ino)
 
         graveyard = graveyard_get(sfs);
 
-        err = sfs_dir_findname(graveyard, NULL, NULL, NULL, &slot);
-        if (err || slot < 0) {
-                panic("Could not find empty slot in graveyard\n");
+        lock_acquire(graveyard->sv_lock);
+
+        slot = -1;
+        err = sfs_dir_findname(graveyard, "", NULL, NULL, &slot);
+        if (err != ENOENT) {
+                panic("Graveyard corrupted with empty string file?\n");
+        }
+        /* If we didn't get an empty slot, add the entry at the end. */
+        else if (slot < 0) {
+                err = sfs_dir_nentries(graveyard, &slot);
+                if (err) {
+                        panic("Could not find empty slot in graveyard\n");
+                }
         }
 
         err = sfs_writedir(graveyard, slot, &sd);
         if (err) {
                 panic("Could not add inode to graveyard");
         }
+
+        lock_release(graveyard->sv_lock);
 }
 
 void
