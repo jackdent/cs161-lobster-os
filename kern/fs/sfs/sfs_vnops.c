@@ -408,6 +408,7 @@ int
 sfs_truncate(struct vnode *v, off_t len)
 {
 	struct sfs_vnode *sv = v->vn_data;
+	struct sfs_record *record;
 	int result;
 
 	lock_acquire(sv->sv_lock);
@@ -978,7 +979,11 @@ sfs_rmdir(struct vnode *v, const char *name)
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_dinode *victim_inodeptr;
 	int result, result2;
-	int slot;
+	struct sfs_record *record;
+	int slot, old_linkcount, new_linkcount;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	/* Cannot remove the . or .. entries from a directory! */
 	if (!strcmp(name, ".") || !strcmp(name, "..")) {
@@ -1037,8 +1042,36 @@ sfs_rmdir(struct vnode *v, const char *name)
 	KASSERT(dir_inodeptr->sfi_linkcount > 1);
 	KASSERT(victim_inodeptr->sfi_linkcount==2);
 
+	/* Create the link change record for the parent dir */
+	block = buffer_get_block_number(sv->sv_dinobuf);
+	pos = (void*)&dir_inodeptr->sfi_linkcount - (void*)dir_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = dir_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount - 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		result = ENOMEM;
+		goto die_total;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	dir_inodeptr->sfi_linkcount--;
 	sfs_dinode_mark_dirty(sv);
+
+	/* Create the link change record for the victim dir */
+	block = buffer_get_block_number(victim->sv_dinobuf);
+	pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = victim_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount - 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		result = ENOMEM;
+		goto die_total;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 	victim_inodeptr->sfi_linkcount -= 2;
 	sfs_dinode_mark_dirty(victim);
@@ -1065,7 +1098,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	record = kmalloc(sizeof(struct sfs_record));
 	if (record == NULL) {
 		result = ENOMEM;
-		goto out_reference;
+		goto die_total;
 	}
 	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
