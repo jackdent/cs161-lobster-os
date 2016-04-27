@@ -1125,13 +1125,6 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	/* Set the file size */
 	inodeptr->sfi_size = newlen;
 
-	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		return ENOMEM;
-	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
-
 	/* Mark the inode dirty */
 	sfs_dinode_mark_dirty(sv);
 

@@ -415,6 +415,14 @@ sfs_truncate(struct vnode *v, off_t len)
 
 	result = sfs_itrunc(sv, len);
 
+	/* Commit record (we commit here rather than in sfs_itrunc since
+	   sfs_itrunc is used for other sfs calls, like sfs_rmdir) */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(sv->sv_lock);
 	return result;
@@ -1019,6 +1027,8 @@ sfs_rmdir(struct vnode *v, const char *name)
 		goto die_total;
 	}
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(v->vn_fs->fs_data);
+
 	result = sfs_dir_unlink(sv, slot);
 	if (result) {
 		goto die_total;
@@ -1050,6 +1060,14 @@ sfs_rmdir(struct vnode *v, const char *name)
 	if (victim_inodeptr->sfi_linkcount == 0) {
 		graveyard_add(victim->sv_absvn.vn_fs->fs_data, victim->sv_ino);
 	}
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		result = ENOMEM;
+		goto out_reference;
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
 die_total:
 	sfs_dinode_unload(victim);
