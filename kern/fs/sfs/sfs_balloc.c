@@ -106,7 +106,9 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 	/* Clear block before returning it */
 	result = sfs_clearblock(sfs, *diskblock, bufret);
 	if (result) {
+		lock_acquire(sfs->sfs_freemaplock);
 		bitmap_unmark(sfs->sfs_freemap, *diskblock);
+		lock_release(sfs->sfs_freemaplock);
 	}
 	return result;
 }
