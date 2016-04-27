@@ -915,7 +915,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	pos = (void*)&dir_inodeptr->sfi_linkcount - (void*)dir_inodeptr;
 	len = sizeof(uint32_t);
 	old_linkcount = dir_inodeptr->sfi_linkcount;
-	new_linkcount = old_linkcount + 2;
+	new_linkcount = old_linkcount + 1;
 
 	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
@@ -924,6 +924,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
 	dir_inodeptr->sfi_linkcount++;
+
 	sfs_dinode_mark_dirty(newguy);
 	sfs_dinode_mark_dirty(sv);
 
@@ -1042,7 +1043,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	KASSERT(dir_inodeptr->sfi_linkcount > 1);
 	KASSERT(victim_inodeptr->sfi_linkcount==2);
 
-	/* Create the link change record for the parent dir */
+	/* Create the link decrement record for the parent dir */
 	block = buffer_get_block_number(sv->sv_dinobuf);
 	pos = (void*)&dir_inodeptr->sfi_linkcount - (void*)dir_inodeptr;
 	len = sizeof(uint32_t);
@@ -1059,12 +1060,12 @@ sfs_rmdir(struct vnode *v, const char *name)
 	dir_inodeptr->sfi_linkcount--;
 	sfs_dinode_mark_dirty(sv);
 
-	/* Create the link change record for the victim dir */
+	/* Create the link decrement record for the victim dir */
 	block = buffer_get_block_number(victim->sv_dinobuf);
 	pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
 	len = sizeof(uint32_t);
 	old_linkcount = victim_inodeptr->sfi_linkcount;
-	new_linkcount = old_linkcount - 1;
+	new_linkcount = old_linkcount - 2;
 
 	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
@@ -1188,6 +1189,9 @@ sfs_remove(struct vnode *dir, const char *name)
 		goto out_reference;
 	}
 
+	/* Decrement the link count. */
+	KASSERT(victim_inodeptr->sfi_linkcount > 0);
+
 	/* Create the record */
 	block = buffer_get_block_number(victim->sv_dinobuf);
 	pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
@@ -1202,8 +1206,6 @@ sfs_remove(struct vnode *dir, const char *name)
 	}
 	sfs_current_transaction_add_record(record, R_META_UPDATE);
 
-	/* Decrement the link count. */
-	KASSERT(victim_inodeptr->sfi_linkcount > 0);
 	victim_inodeptr->sfi_linkcount--;
 
 	if (victim_inodeptr->sfi_linkcount == 0) {
@@ -1327,6 +1329,11 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	int result, result2;
 	struct sfs_direntry sd;
 	int found_dir1;
+	struct sfs_record *record;
+	int old_linkcount, new_linkcount;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	/* make gcc happy */
 	obj2_inodeptr = NULL;
@@ -1612,6 +1619,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	 * the operation.
 	 */
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(absdir1->vn_fs->fs_data);
+
 	/* At this point we should have valid slots in both dirs. */
 	KASSERT(slot1>=0);
 	KASSERT(slot2>=0);
@@ -1642,7 +1651,37 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			/* Dispose of the directory */
 			KASSERT(dir2_inodeptr->sfi_linkcount > 1);
 			KASSERT(obj2_inodeptr->sfi_linkcount == 2);
+
+			/* Create the link decrement record for dir2 */
+
+			block = buffer_get_block_number(dir2->sv_dinobuf);
+			pos = (void*)&dir2_inodeptr->sfi_linkcount - (void*)dir2_inodeptr;
+			len = sizeof(uint32_t);
+			old_linkcount = dir2_inodeptr->sfi_linkcount;
+			new_linkcount = old_linkcount - 1;
+
+			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 			dir2_inodeptr->sfi_linkcount--;
+
+			/* Create the link decrement record for obj2 */
+
+			block = buffer_get_block_number(obj2->sv_dinobuf);
+			pos = (void*)&obj2_inodeptr->sfi_linkcount - (void*)obj2_inodeptr;
+			len = sizeof(uint32_t);
+			old_linkcount = obj2_inodeptr->sfi_linkcount;
+			new_linkcount = old_linkcount - 2;
+
+			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 			obj2_inodeptr->sfi_linkcount -= 2;
 			sfs_dinode_mark_dirty(dir2);
 			sfs_dinode_mark_dirty(obj2);
@@ -1665,6 +1704,21 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			/* Dispose of the file */
 			KASSERT(obj2_inodeptr->sfi_linkcount > 0);
+
+			/* Create the link decrement record for obj2 */
+
+			block = buffer_get_block_number(obj2->sv_dinobuf);
+			pos = (void*)&obj2_inodeptr->sfi_linkcount - (void*)obj2_inodeptr;
+			len = sizeof(uint32_t);
+			old_linkcount = obj2_inodeptr->sfi_linkcount;
+			new_linkcount = old_linkcount - 1;
+
+			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 			obj2_inodeptr->sfi_linkcount--;
 			sfs_dinode_mark_dirty(obj2);
 		}
@@ -1692,6 +1746,20 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		goto out4;
 	}
 
+	/* Create the link increment record for obj1 */
+
+	block = buffer_get_block_number(obj1->sv_dinobuf);
+	pos = (void*)&obj1_inodeptr->sfi_linkcount - (void*)obj1_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = obj1_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount + 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	obj1_inodeptr->sfi_linkcount++;
 	sfs_dinode_mark_dirty(obj1);
 
@@ -1716,8 +1784,38 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		if (result) {
 			goto recover1;
 		}
+
+		/* Create the link decrement record for dir1 */
+
+		block = buffer_get_block_number(dir1->sv_dinobuf);
+		pos = (void*)&dir1_inodeptr->sfi_linkcount - (void*)dir1_inodeptr;
+		len = sizeof(uint32_t);
+		old_linkcount = dir1_inodeptr->sfi_linkcount;
+		new_linkcount = old_linkcount - 1;
+
+		record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+		if (record == NULL) {
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 		dir1_inodeptr->sfi_linkcount--;
 		sfs_dinode_mark_dirty(dir1);
+
+		/* Create the link increment record for dir2 */
+
+		block = buffer_get_block_number(dir2->sv_dinobuf);
+		pos = (void*)&dir2_inodeptr->sfi_linkcount - (void*)dir2_inodeptr;
+		len = sizeof(uint32_t);
+		old_linkcount = dir2_inodeptr->sfi_linkcount;
+		new_linkcount = old_linkcount + 1;
+
+		record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+		if (record == NULL) {
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 		dir2_inodeptr->sfi_linkcount++;
 		sfs_dinode_mark_dirty(dir2);
 	}
@@ -1726,6 +1824,21 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	if (result) {
 		goto recover2;
 	}
+
+	/* Create the link decrement record for obj1 */
+
+	block = buffer_get_block_number(obj1->sv_dinobuf);
+	pos = (void*)&obj1_inodeptr->sfi_linkcount - (void*)obj1_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = obj1_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount - 1;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	obj1_inodeptr->sfi_linkcount--;
 	sfs_dinode_mark_dirty(obj1);
 
@@ -1741,8 +1854,39 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 				recovermsg(sfs->sfs_sb.sb_volname,
 					   result, result2);
 			}
+
+			/* Create the link increment record for dir1 */
+
+			block = buffer_get_block_number(dir1->sv_dinobuf);
+			pos = (void*)&dir1_inodeptr->sfi_linkcount - (void*)dir1_inodeptr;
+			len = sizeof(uint32_t);
+			old_linkcount = dir1_inodeptr->sfi_linkcount;
+			new_linkcount = old_linkcount + 1;
+
+			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 			dir1_inodeptr->sfi_linkcount++;
 			sfs_dinode_mark_dirty(dir1);
+
+
+			/* Create the link decrement record for dir2 */
+
+			block = buffer_get_block_number(dir2->sv_dinobuf);
+			pos = (void*)&dir2_inodeptr->sfi_linkcount - (void*)dir2_inodeptr;
+			len = sizeof(uint32_t);
+			old_linkcount = dir2_inodeptr->sfi_linkcount;
+			new_linkcount = old_linkcount - 1;
+
+			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 			dir2_inodeptr->sfi_linkcount--;
 			sfs_dinode_mark_dirty(dir2);
 		}
@@ -1752,9 +1896,32 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			recovermsg(sfs->sfs_sb.sb_volname,
 				   result, result2);
 		}
+
+		/* Create the link decrement record for obj1 */
+
+		block = buffer_get_block_number(obj1->sv_dinobuf);
+		pos = (void*)&obj1_inodeptr->sfi_linkcount - (void*)obj1_inodeptr;
+		len = sizeof(uint32_t);
+		old_linkcount = obj1_inodeptr->sfi_linkcount;
+		new_linkcount = old_linkcount - 1;
+
+		record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+		if (record == NULL) {
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 		obj1_inodeptr->sfi_linkcount--;
 		sfs_dinode_mark_dirty(obj1);
 	}
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		result = ENOMEM;
+		goto out4;
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
  out4:
  	sfs_dinode_unload(dir1);
