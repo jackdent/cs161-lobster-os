@@ -58,10 +58,12 @@ graveyard_add(struct sfs_fs *sfs, uint32_t ino)
 
         err = sfs_writedir(graveyard, slot, &sd);
         if (err) {
-                panic("Could not add inode to graveyard");
+                panic("Could not add inode to graveyard\n");
         }
 
         lock_release(graveyard->sv_lock);
+
+        sfs_reclaim(&graveyard->sv_absvn);
 }
 
 void
