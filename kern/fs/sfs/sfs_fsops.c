@@ -615,9 +615,10 @@ sfs_check_records(struct sfs_fs *sfs)
 
 static
 void
-sfs_recover(struct sfs_fs *sfs)
+sfs_recover(struct fs *fs)
 {
 	int err;
+	struct sfs_fs *sfs = fs->fs_data;
 	struct txid_tarray *commited_txs;
 
 	// Pass 1: (forward) note which transactions committed successfully
@@ -634,16 +635,21 @@ sfs_recover(struct sfs_fs *sfs)
 
 	// TODO: what if we get a crash during recovery, between freemap sync
 	// and before buffer sync
+
+	err = sync_fs_buffers(fs);
+	if (err) {
+		panic("Error while flushing during recovery\n");
+	}
+
 	err = sfs_sync_freemap(sfs);
 	if (err) {
-		panic("Error while syncing freemap during recovery\n");
+		panic("Error while flushing during recovery\n");
 	}
 
-	err = sync_fs_buffers(&sfs->sfs_absfs);
+	err = sfs_sync_superblock(sfs);
 	if (err) {
-		panic("Error while syncing buffers during recovery\n");
+		panic("Error while flushing during recovery\n");
 	}
-
 }
 
 /*
@@ -782,7 +788,7 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	reserve_buffers(SFS_BLOCKSIZE);
 
-	sfs_recover(sfs);
+	sfs_recover(&sfs->sfs_absfs);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 
