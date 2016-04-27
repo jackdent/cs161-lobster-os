@@ -132,7 +132,18 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 void
 sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 {
+	struct sfs_record *record;
+
 	KASSERT(lock_do_i_hold(sfs->sfs_freemaplock));
+
+	/* Create the record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		panic("Out of memory when making record\n");
+	}
+
+	record->r_parameters.freemap_update.block = diskblock;
+	sfs_current_transaction_add_record(record, R_FREEMAP_RELEASE);
 
 	bitmap_unmark(sfs->sfs_freemap, diskblock);
 	sfs->sfs_freemapdirty = true;
@@ -149,22 +160,8 @@ sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 void
 sfs_bfree(struct sfs_fs *sfs, daddr_t diskblock)
 {
-	struct sfs_record *record;
-
 	lock_acquire(sfs->sfs_freemaplock);
 	sfs_bfree_prelocked(sfs, diskblock);
-
-	/* Create the record
-	 * (OK that this is after bitmap_unmark since we still have
-	 * the freemap lock, so it won't be flushed yet) */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		panic("Out of memory when making record\n");
-	}
-
-	record->r_parameters.freemap_update.block = diskblock;
-	sfs_current_transaction_add_record(record, R_FREEMAP_RELEASE);
-
 	lock_release(sfs->sfs_freemaplock);
 }
 

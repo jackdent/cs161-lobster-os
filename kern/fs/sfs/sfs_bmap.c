@@ -38,7 +38,9 @@
 #include <synch.h>
 #include <vfs.h>
 #include <buf.h>
+#include <current.h>
 #include <sfs.h>
+#include "sfs_transaction.h"
 #include "sfsprivate.h"
 
 /*
@@ -1073,6 +1075,11 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	struct sfs_dinode *inodeptr;
 	uint32_t oldblocklen, newblocklen;
 	int result;
+	struct sfs_record *record;
+	uint32_t old_rec_len, new_rec_len;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -1086,6 +1093,8 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	oldblocklen = DIVROUNDUP(inodeptr->sfi_size, SFS_BLOCKSIZE);
 	newblocklen = DIVROUNDUP(newlen, SFS_BLOCKSIZE);
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(sv->sv_absvn.vn_fs->fs_data);
+
 	/* Lock the freemap for the whole truncate */
 	sfs_lock_freemap(sfs);
 
@@ -1094,12 +1103,34 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 		if (result) {
 			sfs_unlock_freemap(sfs);
 			sfs_dinode_unload(sv);
+			curthread->t_sfs_fs = NULL;
 			return result;
 		}
 	}
 
+	/* Create file size change record */
+
+	block = buffer_get_block_number(sv->sv_dinobuf);
+	pos = (void*)&inodeptr->sfi_linkcount - (void*)inodeptr;
+	len = sizeof(uint32_t);
+	old_rec_len = inodeptr->sfi_size;
+	new_rec_len = newlen;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_rec_len, (char *)&new_rec_len);
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	/* Set the file size */
 	inodeptr->sfi_size = newlen;
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
 	/* Mark the inode dirty */
 	sfs_dinode_mark_dirty(sv);
