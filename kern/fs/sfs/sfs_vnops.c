@@ -801,11 +801,15 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 {
 	struct sfs_fs *sfs = v->vn_fs->fs_data;
 	struct sfs_vnode *sv = v->vn_data;
-	int result;
 	uint32_t ino;
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_dinode *new_inodeptr;
 	struct sfs_vnode *newguy;
+	struct sfs_record *record;
+	int old_linkcount, new_linkcount, result;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	(void)mode;
 
@@ -877,10 +881,45 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
          * remove it.
          */
 
+	/* Create the link increment record for itself */
+	block = buffer_get_block_number(newguy->sv_dinobuf);
+	pos = (void*)&new_inodeptr->sfi_linkcount - (void*)new_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = new_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount + 2;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	new_inodeptr->sfi_linkcount += 2;
+
+	/* Create the link increment record for parent dir */
+	block = buffer_get_block_number(sv->sv_dinobuf);
+	pos = (void*)&dir_inodeptr->sfi_linkcount - (void*)dir_inodeptr;
+	len = sizeof(uint32_t);
+	old_linkcount = dir_inodeptr->sfi_linkcount;
+	new_linkcount = old_linkcount + 2;
+
+	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(record, R_META_UPDATE);
+
 	dir_inodeptr->sfi_linkcount++;
 	sfs_dinode_mark_dirty(newguy);
 	sfs_dinode_mark_dirty(sv);
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		result = ENOMEM;
+		goto die_uncreate; // TODO: verify this, and in other cases
+	}
+	sfs_current_transaction_add_record(record, R_TX_COMMIT);
 
 	sfs_dinode_unload(newguy);
 	sfs_dinode_unload(sv);
