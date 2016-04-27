@@ -812,6 +812,8 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 	next_lsn = sfs_jphys_peeknextlsn(sfs);
 	sfs_jphys_trim(sfs, next_lsn);
 
+	sfs_jphys_flushall(sfs);
+
 	unreserve_buffers(SFS_BLOCKSIZE);
 
 	return 0;
