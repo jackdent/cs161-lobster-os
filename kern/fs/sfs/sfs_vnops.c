@@ -740,6 +740,8 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 		return result;
 	}
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(dir->vn_fs->fs_data);
+
 	/* Create the link */
 	result = sfs_dir_link(sv, name, f->sv_ino, NULL);
 	if (result) {
@@ -747,6 +749,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 		lock_release(f->sv_lock);
 		lock_release(sv->sv_lock);
 		unreserve_buffers(SFS_BLOCKSIZE);
+		curthread->t_sfs_fs = NULL;
 		return result;
 	}
 
@@ -850,6 +853,8 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 		      sfs->sfs_sb.sb_volname, name, sv->sv_ino);
 	}
 
+	curthread->t_sfs_fs = (struct sfs_fs *)(v->vn_fs->fs_data);
+
 	result = sfs_makeobj(sfs, SFS_TYPE_DIR, &newguy);
 	if (result) {
 		goto die_simple;
@@ -943,6 +948,7 @@ die_simple:
 die_early:
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(sv->sv_lock);
+	curthread->t_sfs_fs = NULL;
 	return result;
 }
 
