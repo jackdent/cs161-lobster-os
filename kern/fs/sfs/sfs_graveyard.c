@@ -85,6 +85,8 @@ graveyard_remove(struct sfs_fs *sfs, uint32_t ino)
 
         graveyard = graveyard_get(sfs);
 
+        lock_acquire(graveyard->sv_lock);
+
         err = sfs_dir_findname(graveyard, (const char *)&sd.sfd_name, &entry, &slot, NULL);
         if (err || slot < 0) {
                 panic("Could not find slot when removing inode from graveyard\n");
@@ -96,4 +98,8 @@ graveyard_remove(struct sfs_fs *sfs, uint32_t ino)
         if (err) {
                 panic("Could not remove inode from graveyard");
         }
+
+        lock_release(graveyard->sv_lock);
+
+        sfs_reclaim(&graveyard->sv_absvn);
 }
