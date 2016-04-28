@@ -748,20 +748,13 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 
 	result = sfs_dinode_load(f);
 	if (result) {
-		lock_release(f->sv_lock);
-		lock_release(sv->sv_lock);
-		unreserve_buffers(SFS_BLOCKSIZE);
-		return result;
+		goto out0;
 	}
 
 	/* Create the link */
 	result = sfs_dir_link(sv, name, f->sv_ino, NULL);
 	if (result) {
-		sfs_dinode_unload(f);
-		lock_release(f->sv_lock);
-		lock_release(sv->sv_lock);
-		unreserve_buffers(SFS_BLOCKSIZE);
-		return result;
+		goto out1;
 	}
 
 	/* and update the link count, marking the inode dirty */
@@ -777,7 +770,8 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 
 	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
-		return ENOMEM;
+		result = ENOMEM;
+		goto out1;
 	}
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -787,14 +781,19 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	/* Commit record */
 	result = sfs_current_transaction_commit(sfs);
 	if (result) {
-		return result;
+		goto out1;
 	}
 
+	result = 0;
+
+
+out1:
 	sfs_dinode_unload(f);
+out0:
 	lock_release(f->sv_lock);
 	lock_release(sv->sv_lock);
 	unreserve_buffers(SFS_BLOCKSIZE);
-	return 0;
+	return result;
 }
 
 /*
@@ -1652,7 +1651,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
-				return ENOMEM;
+				result = ENOMEM;
+				goto out4;
 			}
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1668,7 +1668,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
-				return ENOMEM;
+				result = ENOMEM;
+				goto out4;
 			}
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1705,7 +1706,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
-				return ENOMEM;
+				result = ENOMEM;
+				goto out4;
 			}
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1746,7 +1748,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
-		return ENOMEM;
+		result = ENOMEM;
+		goto out4;
 	}
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1785,7 +1788,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 		if (record == NULL) {
-			return ENOMEM;
+			result = ENOMEM;
+			goto recover1;
 		}
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1802,7 +1806,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 		if (record == NULL) {
-			return ENOMEM;
+			result = ENOMEM;
+			goto recover1;
 		}
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1825,7 +1830,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
-		return ENOMEM;
+		result = ENOMEM;
+		goto recover2;
 	}
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
@@ -1833,6 +1839,11 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	sfs_dinode_mark_dirty(obj1);
 
 	KASSERT(result==0);
+
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		goto recover2;
+	}
 
 	if (0) {
 		/* Only reached on error */
@@ -1845,37 +1856,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 					   result, result2);
 			}
 
-			/* Create the link increment record for dir1 */
-
-			block = buffer_get_block_number(dir1->sv_dinobuf);
-			pos = (void*)&dir1_inodeptr->sfi_linkcount - (void*)dir1_inodeptr;
-			len = sizeof(uint32_t);
-			old_linkcount = dir1_inodeptr->sfi_linkcount;
-			new_linkcount = old_linkcount + 1;
-
-			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
-			if (record == NULL) {
-				return ENOMEM;
-			}
-			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
-
 			dir1_inodeptr->sfi_linkcount++;
 			sfs_dinode_mark_dirty(dir1);
-
-
-			/* Create the link decrement record for dir2 */
-
-			block = buffer_get_block_number(dir2->sv_dinobuf);
-			pos = (void*)&dir2_inodeptr->sfi_linkcount - (void*)dir2_inodeptr;
-			len = sizeof(uint32_t);
-			old_linkcount = dir2_inodeptr->sfi_linkcount;
-			new_linkcount = old_linkcount - 1;
-
-			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
-			if (record == NULL) {
-				return ENOMEM;
-			}
-			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			dir2_inodeptr->sfi_linkcount--;
 			sfs_dinode_mark_dirty(dir2);
@@ -1887,29 +1869,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 				   result, result2);
 		}
 
-		/* Create the link decrement record for obj1 */
-
-		block = buffer_get_block_number(obj1->sv_dinobuf);
-		pos = (void*)&obj1_inodeptr->sfi_linkcount - (void*)obj1_inodeptr;
-		len = sizeof(uint32_t);
-		old_linkcount = obj1_inodeptr->sfi_linkcount;
-		new_linkcount = old_linkcount - 1;
-
-		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
-		if (record == NULL) {
-			return ENOMEM;
-		}
-		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
-
 		obj1_inodeptr->sfi_linkcount--;
 		sfs_dinode_mark_dirty(obj1);
-	}
-
-	/* Commit record */
-	result = sfs_current_transaction_commit(sfs);
-	if (result) {
-		goto out4;
-		return result;
 	}
 
  out4:

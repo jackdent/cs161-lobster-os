@@ -1,3 +1,4 @@
+#include <kern/errno.h>
 #include "sfsprivate.h"
 #include "limits.h"
 #include "sfs_transaction.h"
@@ -166,6 +167,7 @@ sfs_current_transaction_commit(struct sfs_fs *sfs)
                 return ENOMEM;
         }
 
+        KASSERT(curthread->t_tx);
         sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
         curthread->t_tx = NULL;
 

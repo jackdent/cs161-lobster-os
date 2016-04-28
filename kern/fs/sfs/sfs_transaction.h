@@ -1,5 +1,4 @@
 #include <types.h>
-#include <kern/errno.h>
 #include <synch.h>
 #include "lib.h"
 #include "sfs_record.h"
