@@ -34,6 +34,7 @@
  */
 
 #define TXID_TINLINE
+#define BLOCK_INLINE
 
 #include <types.h>
 #include <kern/errno.h>
@@ -60,8 +61,15 @@
 #define TXID_TINLINE INLINE
 #endif
 
+#ifndef BLOCK_INLINE
+#define BLOCK_INLINE INLINE
+#endif
+
 DECLARRAY(txid_t, TXID_TINLINE);
 DEFARRAY(txid_t, TXID_TINLINE);
+
+DECLARRAY(block, BLOCK_INLINE);
+DEFARRAY(block, BLOCK_INLINE);
 
 /*
  * Routine for doing I/O (reads or writes) on the free block bitmap.
@@ -511,8 +519,35 @@ fail:
 }
 
 static
+bool
+sfs_skip_user_block_record(struct sfs_record record, enum sfs_record_type record_type, struct blockarray *user_blocks)
+{
+	daddr_t block;
+
+        switch (record_type) {
+        case R_FREEMAP_CAPTURE:
+        case R_FREEMAP_RELEASE:
+        case R_TX_BEGIN:
+        case R_TX_COMMIT:
+	        return false;
+        case R_META_UPDATE:
+		block = record.r_parameters.meta_update.block;
+        case R_USER_BLOCK_WRITE:
+		block = record.r_parameters.user_block_write.block;
+        default:
+                panic("Unsupported record type\n");
+        }
+
+	if (blockarray_contains(user_blocks, (void *)block)) {
+		return true;
+	}
+
+	return false;
+}
+
+static
 void
-sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commited_txs)
+sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commited_txs, struct blockarray *user_blocks)
 {
 	int err;
 	struct sfs_jiter *ji;
@@ -531,7 +566,8 @@ sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commi
 		record_ptr = sfs_jiter_rec(ji, &record_len);
 		memcpy(&record, record_ptr, record_len);
 
-		if (!txid_tarray_contains(commited_txs, (void*)record.r_txid)) {
+		if (!txid_tarray_contains(commited_txs, (void*)record.r_txid) &&
+		    !sfs_skip_user_block_record(record, record_type, user_blocks)) {
 			sfs_record_undo(sfs, record, record_type);
 		}
 
@@ -546,7 +582,7 @@ sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commi
 
 static
 void
-sfs_redo_records(struct sfs_fs *sfs)
+sfs_redo_records(struct sfs_fs *sfs, struct blockarray *user_blocks)
 {
 	int err;
 	struct sfs_jiter *ji;
@@ -565,7 +601,9 @@ sfs_redo_records(struct sfs_fs *sfs)
 		record_ptr = sfs_jiter_rec(ji, &record_len);
 		memcpy(&record, record_ptr, record_len);
 
-		sfs_record_redo(sfs, record, record_type);
+		if (!sfs_skip_user_block_record(record, record_type, user_blocks)) {
+			sfs_record_redo(sfs, record, record_type);
+		}
 
 		err = sfs_jiter_next(sfs, ji);
 		if (err) {
@@ -574,6 +612,92 @@ sfs_redo_records(struct sfs_fs *sfs)
 	}
 
 	sfs_jiter_destroy(ji);
+}
+
+/*
+ * Returns an array of records to be skipped
+ */
+static
+struct blockarray *
+sfs_find_user_blocks(struct sfs_fs *sfs)
+{
+	int err;
+	struct sfs_jiter *ji;
+
+	enum sfs_record_type record_type;
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	daddr_t block;
+	bool user_block, meta_block;
+	struct blockarray *blocks;
+	struct blockarray *user_blocks;
+
+	blocks = blockarray_create();
+	if (blocks == NULL) {
+		panic("Error while reading journal\n");
+	}
+
+	user_blocks = blockarray_create();
+	if (blocks == NULL) {
+		panic("Error while reading journal\n");
+	}
+
+	err = sfs_jiter_revcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+		record_ptr = sfs_jiter_rec(ji, &record_len);
+		memcpy(&record, record_ptr, record_len);
+
+		block = 0;
+		meta_block = false;
+		user_block = false;
+
+		if (record_type == R_META_UPDATE) {
+			block = record.r_parameters.meta_update.block;
+			meta_block = true;
+		}
+
+		if (record_type == R_USER_BLOCK_WRITE) {
+			block = record.r_parameters.user_block_write.block;
+			user_block = true;
+		}
+
+		// If we haven't seen the block before, add it to the block list
+		// so we only record its final state once. Then, add it to the user
+		// block array only if it is a user block, i.e. only if it ends up
+		// as a user block.
+		if (user_block || meta_block) {
+			if (!blockarray_contains(blocks, (void *)block)) {
+				err = blockarray_add(blocks, (void *)block, NULL);
+				if (err) {
+					panic("Error while reading journal\n");
+				}
+
+				if (user_block) {
+					KASSERT(!blockarray_contains(user_blocks, (void *)block));
+
+					err = blockarray_add(user_blocks, (void *)block, NULL);
+					if (err) {
+						panic("Error while reading journal\n");
+					}
+				}
+			}
+		}
+
+		err = sfs_jiter_prev(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+
+	sfs_jiter_destroy(ji);
+	return user_blocks;
 }
 
 // Returns an array of transaction id's that have commit records
@@ -630,20 +754,26 @@ sfs_recover(struct fs *fs)
 	int err;
 	struct sfs_fs *sfs = fs->fs_data;
 	struct txid_tarray *commited_txs;
+	struct blockarray *user_blocks;
 
 	// Pass 1: (forward) note which transactions committed successfully
 	commited_txs = sfs_check_records(sfs);
 
-	// TODO: handle metadata->userdata changes
+	// Pass 2: (forward) note which blocks ended as user data
+	user_blocks = sfs_find_user_blocks(sfs);
 
-	// Pass 2: (forward) redo every record
-	sfs_redo_records(sfs);
+	// Pass 3: (forward) redo every record, skipping writes to eventual user data
+	sfs_redo_records(sfs, user_blocks);
 
-	// Pass 3: (reverse) undo transactions without a commit record
-	sfs_undo_unsuccessful_transactions(sfs, commited_txs);
+	// Pass 4: (reverse) undo transactions without a commit record, skipping
+	// writes to eventual user data
+	sfs_undo_unsuccessful_transactions(sfs, commited_txs, user_blocks);
 
+	// Cleanup
 	txid_tarray_destroy(commited_txs);
+	blockarray_destroy(user_blocks);
 
+	// Sync our changes to disk
 	err = sync_fs_buffers(fs);
 	if (err) {
 		panic("Error while flushing during recovery\n");

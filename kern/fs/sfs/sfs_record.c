@@ -111,7 +111,6 @@ sfs_record_redo_user_block_write(struct sfs_fs *sfs, struct sfs_user_block_write
 // We can't quite do that, because the other transaction may have
 // committed while this transaction may not have.
 
-// TODO: skip the meta update if the ends up as a user block
 static
 void
 sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool redo)
