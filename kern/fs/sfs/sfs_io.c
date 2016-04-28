@@ -476,7 +476,7 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 		old_size = inodeptr->sfi_size;
 		new_size = uio->uio_offset;
 
-		record = sfs_record_create_metadata(block, pos, len, (char *)&old_size, (char *)&new_size);
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_size, (char *)&new_size);
 		if (record == NULL) {
 			return ENOMEM;
 		}
