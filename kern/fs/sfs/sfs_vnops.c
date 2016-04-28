@@ -169,7 +169,10 @@ int
 sfs_write(struct vnode *v, struct uio *uio)
 {
 	struct sfs_vnode *sv = v->vn_data;
+	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
+	struct sfs_record *record;
 	int result;
+
 
 	KASSERT(uio->uio_rw==UIO_WRITE);
 
@@ -177,6 +180,13 @@ sfs_write(struct vnode *v, struct uio *uio)
 	reserve_buffers(SFS_BLOCKSIZE);
 
 	result = sfs_io(sv, uio);
+
+	/* Commit record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(sv->sv_lock);

@@ -3,8 +3,8 @@
 TOP=../../..
 .include "$(TOP)/mk/os161.config.mk"
 
-PROG=remove_test
-SRCS=remove_test.c
+PROG=test_remove
+SRCS=test_remove.c
 BINDIR=/sbin
 
 
