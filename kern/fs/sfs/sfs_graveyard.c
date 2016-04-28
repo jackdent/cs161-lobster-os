@@ -62,7 +62,6 @@ graveyard_add(struct sfs_fs *sfs, uint32_t ino)
         }
 
         lock_release(graveyard->sv_lock);
-
         sfs_reclaim(&graveyard->sv_absvn);
 }
 
@@ -100,6 +99,44 @@ graveyard_remove(struct sfs_fs *sfs, uint32_t ino)
         }
 
         lock_release(graveyard->sv_lock);
+        sfs_reclaim(&graveyard->sv_absvn);
+}
 
+void
+graveyard_flush(struct sfs_fs *sfs)
+{
+        int err, nentries, i;
+        struct sfs_vnode *graveyard;
+        struct sfs_direntry sd;
+        struct sfs_vnode *sv;
+
+        graveyard = graveyard_get(sfs);
+        lock_acquire(graveyard->sv_lock);
+
+        err = sfs_dir_nentries(graveyard, &nentries);
+        if (err) {
+                panic("Could not read slots while flushing graveyard\n");
+        }
+
+        /* For each slot... */
+        for (i = 0; i < nentries; i++) {
+                err = sfs_readdir(graveyard, i, &sd);
+                if (err) {
+                        panic("Could not read direntry from slot while flushing graveyard\n");
+                }
+
+                if (sd.sfd_ino != SFS_NOINO) {
+                        err = sfs_loadvnode(sfs, sd.sfd_ino, 0, &sv);
+                        if (err) {
+                                panic("Could not load vnode for graveyard entry");
+                        }
+
+                        lock_release(graveyard->sv_lock);
+                        sfs_reclaim(&sv->sv_absvn);
+                        lock_acquire(graveyard->sv_lock);
+                }
+        }
+
+        lock_release(graveyard->sv_lock);
         sfs_reclaim(&graveyard->sv_absvn);
 }
