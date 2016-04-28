@@ -531,6 +531,7 @@ sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commi
 			panic("Error while reading journal\n");
 		}
 	}
+
 	sfs_jiter_destroy(ji);
 }
 
@@ -624,17 +625,15 @@ sfs_recover(struct fs *fs)
 	// Pass 1: (forward) note which transactions committed successfully
 	commited_txs = sfs_check_records(sfs);
 
+	// TODO: handle metadata->userdata changes
+
 	// Pass 2: (forward) redo every record
-	// TODO: handle metadata->userdata changes and 0ing out user data
 	sfs_redo_records(sfs);
 
 	// Pass 3: (reverse) undo transactions without a commit record
 	sfs_undo_unsuccessful_transactions(sfs, commited_txs);
 
 	txid_tarray_destroy(commited_txs);
-
-	// TODO: what if we get a crash during recovery, between freemap sync
-	// and before buffer sync
 
 	err = sync_fs_buffers(fs);
 	if (err) {

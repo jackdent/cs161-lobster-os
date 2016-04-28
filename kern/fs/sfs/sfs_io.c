@@ -503,7 +503,6 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	bool doalloc;
 	int result;
 	struct sfs_record *record;
-	struct sfs_meta_update *meta_update;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -553,22 +552,10 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		memcpy(data, ioptr + blockoffset, len);
 	}
 	else {
-		/* Create the record */
-		record = kmalloc(sizeof(struct sfs_record));
-		if (record == NULL) {
-			return ENOMEM;
-		}
-
 		KASSERT(len < MAX_META_UPDATE_SIZE);
 		KASSERT(blockoffset + len < SFS_BLOCKSIZE);
-		meta_update = &record->r_parameters.meta_update;
 
-		meta_update->block = diskblock;
-		meta_update->pos = blockoffset;
-		meta_update->len = len;
-		memcpy((void*)meta_update->old_value, (void*)(ioptr + blockoffset), len);
-		memcpy((void*)meta_update->new_value, (void*)data, len);
-
+		record = sfs_record_create_meta_update(diskblock, blockoffset, len, (char *)(ioptr + blockoffset), (char *)data);
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		/* Update the selected region */

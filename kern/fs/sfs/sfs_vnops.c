@@ -672,7 +672,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	old_linkcount = new_dino->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		return ENOMEM;
 	}
@@ -768,7 +768,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	old_linkcount = inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		return ENOMEM;
 	}
@@ -895,7 +895,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	old_linkcount = new_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 2;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		return ENOMEM;
 	}
@@ -910,7 +910,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	old_linkcount = dir_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		return ENOMEM;
 	}
@@ -1040,7 +1040,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	old_linkcount = dir_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		result = ENOMEM;
 		goto die_total;
@@ -1057,7 +1057,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	old_linkcount = victim_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 2;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		result = ENOMEM;
 		goto die_total;
@@ -1188,7 +1188,7 @@ sfs_remove(struct vnode *dir, const char *name)
 	old_linkcount = victim_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		result = ENOMEM;
 		goto out_reference;
@@ -1647,7 +1647,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			old_linkcount = dir2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 1;
 
-			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
 				return ENOMEM;
 			}
@@ -1663,7 +1663,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			old_linkcount = obj2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 2;
 
-			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
 				return ENOMEM;
 			}
@@ -1700,7 +1700,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			old_linkcount = obj2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 1;
 
-			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
 				return ENOMEM;
 			}
@@ -1741,7 +1741,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	old_linkcount = obj1_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		return ENOMEM;
 	}
@@ -1780,7 +1780,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		old_linkcount = dir1_inodeptr->sfi_linkcount;
 		new_linkcount = old_linkcount - 1;
 
-		record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 		if (record == NULL) {
 			return ENOMEM;
 		}
@@ -1797,7 +1797,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		old_linkcount = dir2_inodeptr->sfi_linkcount;
 		new_linkcount = old_linkcount + 1;
 
-		record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 		if (record == NULL) {
 			return ENOMEM;
 		}
@@ -1820,7 +1820,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	old_linkcount = obj1_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 1;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 	if (record == NULL) {
 		return ENOMEM;
 	}
@@ -1850,7 +1850,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			old_linkcount = dir1_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount + 1;
 
-			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
 				return ENOMEM;
 			}
@@ -1868,7 +1868,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			old_linkcount = dir2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 1;
 
-			record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 			if (record == NULL) {
 				return ENOMEM;
 			}
@@ -1892,7 +1892,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		old_linkcount = obj1_inodeptr->sfi_linkcount;
 		new_linkcount = old_linkcount - 1;
 
-		record = sfs_record_create_metadata(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_linkcount, (char *)&new_linkcount);
 		if (record == NULL) {
 			return ENOMEM;
 		}
