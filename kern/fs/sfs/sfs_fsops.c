@@ -696,6 +696,7 @@ sfs_find_user_blocks(struct sfs_fs *sfs)
 		}
 	}
 
+	blockarray_destroy(blocks);
 	sfs_jiter_destroy(ji);
 	return user_blocks;
 }
