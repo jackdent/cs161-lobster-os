@@ -760,7 +760,7 @@ sfs_recover(struct fs *fs)
 	// Pass 1: (forward) note which transactions committed successfully
 	commited_txs = sfs_check_records(sfs);
 
-	// Pass 2: (forward) note which blocks ended as user data
+	// Pass 2: (reverse) note which blocks ended as user data
 	user_blocks = sfs_find_user_blocks(sfs);
 
 	// Pass 3: (forward) redo every record, skipping writes to eventual user data
