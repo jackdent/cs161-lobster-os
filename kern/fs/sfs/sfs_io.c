@@ -369,6 +369,12 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 	int result = 0;
 	uint32_t origresid, extraresid = 0;
 	struct sfs_dinode *inodeptr;
+	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
+	struct sfs_record *record;
+	int old_size, new_size;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -462,6 +468,20 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 	if (uio->uio_resid != origresid &&
 	    uio->uio_rw == UIO_WRITE &&
 	    uio->uio_offset > (off_t)inodeptr->sfi_size) {
+
+		/* Create the record */
+		block = buffer_get_block_number(sv->sv_dinobuf);
+		pos = (void*)&inodeptr->sfi_linkcount - (void*)inodeptr;
+		len = sizeof(uint32_t);
+		old_size = inodeptr->sfi_size;
+		new_size = uio->uio_offset;
+
+		record = sfs_record_create_metadata(block, pos, len, (char *)&old_size, (char *)&new_size);
+		if (record == NULL) {
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 		inodeptr->sfi_size = uio->uio_offset;
 		sfs_dinode_mark_dirty(sv);
 	}
