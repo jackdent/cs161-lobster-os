@@ -105,6 +105,9 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 	 * the freemap lock, so it won't be flushed yet) */
 	record = kmalloc(sizeof(struct sfs_record));
 	if (record == NULL) {
+		bitmap_unmark(sfs->sfs_freemap, *diskblock);
+		sfs->sfs_freemapdirty = false;
+		lock_release(sfs->sfs_freemaplock);
 		return ENOMEM;
 	}
 

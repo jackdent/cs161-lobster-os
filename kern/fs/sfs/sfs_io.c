@@ -248,6 +248,10 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	if (uio->uio_rw == UIO_WRITE) {
 		// Log the checusm of the disk block *before* overwriting the data
 		record = sfs_record_create_user_block_write(diskblock, ioptr);
+		if (record == NULL) {
+			buffer_release(iobuffer);
+			return ENOMEM;
+		}
 		sfs_current_transaction_add_record(sfs, record, R_USER_BLOCK_WRITE);
 	}
 
@@ -333,6 +337,10 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	if (uio->uio_rw == UIO_WRITE) {
 		// Log the checusm of the disk block *before* overwriting the data
 		record = sfs_record_create_user_block_write(diskblock, ioptr);
+		if (record == NULL) {
+			buffer_release(iobuf);
+			return ENOMEM;
+		}
 		sfs_current_transaction_add_record(sfs, record, R_USER_BLOCK_WRITE);
 	}
 
@@ -478,6 +486,7 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 
 		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_size, (char *)&new_size);
 		if (record == NULL) {
+			sfs_dinode_unload(sv);
 			return ENOMEM;
 		}
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
@@ -562,8 +571,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		 * XXX: if we allocated, do we need to discard
 		 * the block we allocated? urgh...
 		 */
-		sfs_dinode_unload(sv);
-		return result;
+		goto out0;
 	}
 
 	ioptr = buffer_map(iobuf);
@@ -576,6 +584,9 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		KASSERT(blockoffset + len < SFS_BLOCKSIZE);
 
 		record = sfs_record_create_meta_update(diskblock, blockoffset, len, (char *)(ioptr + blockoffset), (char *)data);
+		if (record == NULL) {
+			goto out1;
+		}
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		/* Update the selected region */
@@ -590,9 +601,13 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		}
 	}
 
+	result = 0;
+
+out1:
 	buffer_release(iobuf);
+out0:
 	sfs_dinode_unload(sv);
 
 	/* Done */
-	return 0;
+	return result;
 }

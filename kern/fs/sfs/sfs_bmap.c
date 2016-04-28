@@ -1115,6 +1115,8 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 
 	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_rec_len, (char *)&new_rec_len);
 	if (record == NULL) {
+		sfs_unlock_freemap(sfs);
+		sfs_dinode_unload(sv);
 		return ENOMEM;
 	}
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
