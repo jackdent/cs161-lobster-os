@@ -48,6 +48,7 @@
 #include <sfs.h>
 #include "sfsprivate.h"
 #include "sfs_transaction.h"
+#include "sfs_graveyard.h"
 
 /* Shortcuts for the size macros in kern/sfs.h */
 #define SFS_FS_NBLOCKS(sfs)        ((sfs)->sfs_sb.sb_nblocks)
@@ -808,10 +809,15 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	reserve_buffers(SFS_BLOCKSIZE);
 
-	/* Trim journal to be empty */
+	/* Empty the journal */
 	next_lsn = sfs_jphys_peeknextlsn(sfs);
 	sfs_jphys_trim(sfs, next_lsn);
+	sfs_jphys_flushall(sfs);
 
+	/* Empty the graveyard, and empty the journal again */
+	graveyard_flush(sfs);
+	next_lsn = sfs_jphys_peeknextlsn(sfs);
+	sfs_jphys_trim(sfs, next_lsn);
 	sfs_jphys_flushall(sfs);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
