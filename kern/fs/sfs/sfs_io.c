@@ -587,6 +587,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 
 		record = sfs_record_create_meta_update(diskblock, blockoffset, len, (char *)(ioptr + blockoffset), (char *)data);
 		if (record == NULL) {
+			result = ENOMEM;
 			goto out1;
 		}
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
@@ -608,7 +609,8 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 
 			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_size, (char *)&new_size);
 			if (record == NULL) {
-				return ENOMEM;
+				result = ENOMEM;
+				goto out1;
 			}
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
