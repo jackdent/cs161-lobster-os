@@ -530,8 +530,10 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	struct buf *iobuf;
 	char *ioptr;
 	bool doalloc;
-	int result;
 	struct sfs_record *record;
+	int old_size, new_size, result;
+	daddr_t block;
+	off_t pos;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -596,6 +598,20 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		/* Update the vnode size if needed */
 		endpos = actualpos + len;
 		if (endpos > (off_t)dino->sfi_size) {
+
+			/* Create the record */
+			block = buffer_get_block_number(sv->sv_dinobuf);
+			pos = (void*)&dino->sfi_linkcount - (void*)dino;
+			len = sizeof(uint32_t);
+			old_size = dino->sfi_size;
+			new_size = endpos;
+
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_size, (char *)&new_size);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			dino->sfi_size = endpos;
 			sfs_dinode_mark_dirty(sv);
 		}
