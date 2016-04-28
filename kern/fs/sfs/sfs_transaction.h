@@ -1,4 +1,5 @@
 #include <types.h>
+#include <kern/errno.h>
 #include <synch.h>
 #include "lib.h"
 #include "sfs_record.h"
@@ -38,3 +39,4 @@ void sfs_transaction_release_busy_bit(struct sfs_transaction *tx);
  * Create a new transaciton and assign it to curthread, if no current transaction exists.
  */
 void sfs_current_transaction_add_record(struct sfs_fs *, struct sfs_record *, enum sfs_record_type);
+int sfs_current_transaction_commit(struct sfs_fs *);

@@ -409,7 +409,6 @@ sfs_truncate(struct vnode *v, off_t len)
 {
 	struct sfs_vnode *sv = v->vn_data;
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
-	struct sfs_record *record;
 	int result;
 
 	lock_acquire(sv->sv_lock);
@@ -419,11 +418,10 @@ sfs_truncate(struct vnode *v, off_t len)
 
 	/* Commit record (we commit here rather than in sfs_itrunc since
 	   sfs_itrunc is used for other sfs calls, like sfs_rmdir) */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		return ENOMEM;
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(sv->sv_lock);
@@ -687,11 +685,10 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	*ret = &newguy->sv_absvn;
 
 	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		return ENOMEM;
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	sfs_dinode_unload(newguy);
 	unreserve_buffers(SFS_BLOCKSIZE);
@@ -778,11 +775,10 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	sfs_dinode_mark_dirty(f);
 
 	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		return ENOMEM;
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	sfs_dinode_unload(f);
 	lock_release(f->sv_lock);
@@ -922,12 +918,11 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	sfs_dinode_mark_dirty(sv);
 
 	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		result = ENOMEM;
-		goto die_uncreate; // TODO: verify this, and in other cases
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		goto die_uncreate;
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	sfs_dinode_unload(newguy);
 	sfs_dinode_unload(sv);
@@ -1086,12 +1081,11 @@ sfs_rmdir(struct vnode *v, const char *name)
 	}
 
 	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		result = ENOMEM;
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
 		goto die_total;
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 die_total:
 	sfs_dinode_unload(victim);
@@ -1210,12 +1204,11 @@ out_reference:
 	VOP_DECREF(&victim->sv_absvn);
 
 	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		result = ENOMEM;
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
 		goto out_reference;
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 out_loadsv:
 	sfs_dinode_unload(sv);
@@ -1903,12 +1896,11 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	}
 
 	/* Commit record */
-	record = kmalloc(sizeof(struct sfs_record));
-	if (record == NULL) {
-		result = ENOMEM;
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
 		goto out4;
+		return result;
 	}
-	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
  out4:
  	sfs_dinode_unload(dir1);

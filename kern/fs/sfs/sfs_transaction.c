@@ -154,8 +154,20 @@ sfs_current_transaction_add_record(struct sfs_fs *sfs, struct sfs_record *record
 
         record->r_txid = curthread->t_tx->tx_id;
         sfs_transaction_add_record(sfs, curthread->t_tx, record, type);
+}
 
-        if (type == R_TX_COMMIT) {
-                curthread->t_tx = NULL;
+int
+sfs_current_transaction_commit(struct sfs_fs *sfs)
+{
+        struct sfs_record *record;
+
+        record = kmalloc(sizeof(struct sfs_record));
+        if (record == NULL) {
+                return ENOMEM;
         }
+
+        sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
+        curthread->t_tx = NULL;
+
+        return 0;
 }
