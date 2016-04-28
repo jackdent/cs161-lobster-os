@@ -111,6 +111,8 @@ graveyard_flush(struct sfs_fs *sfs)
         struct sfs_vnode *sv;
 
         graveyard = graveyard_get(sfs);
+        lock_acquire(graveyard->sv_lock);
+
         err = sfs_dir_nentries(graveyard, &nentries);
         if (err) {
                 panic("Could not read slots while flushing graveyard\n");
@@ -129,9 +131,12 @@ graveyard_flush(struct sfs_fs *sfs)
                                 panic("Could not load vnode for graveyard entry");
                         }
 
+                        lock_release(graveyard->sv_lock);
                         sfs_reclaim(&sv->sv_absvn);
+                        lock_acquire(graveyard->sv_lock);
                 }
         }
 
+        lock_release(graveyard->sv_lock);
         sfs_reclaim(&graveyard->sv_absvn);
 }
