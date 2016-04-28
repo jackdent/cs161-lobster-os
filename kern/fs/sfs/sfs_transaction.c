@@ -127,26 +127,23 @@ sfs_transaction_release_busy_bit(struct sfs_transaction *tx)
 
 static
 void
-sfs_transaction_add_record(struct sfs_transaction *tx, struct sfs_record *record, enum sfs_record_type type)
+sfs_transaction_add_record(struct sfs_fs *sfs, struct sfs_transaction *tx, struct sfs_record *record, enum sfs_record_type type)
 {
         sfs_lsn_t lsn;
 
-        KASSERT(curthread->t_sfs_fs != NULL);
-        lsn = sfs_record_write_to_journal(curthread->t_sfs_fs, record, type);
+        lsn = sfs_record_write_to_journal(sfs, record, type);
 
         tx->tx_lowest_lsn = 0 ? lsn : tx->tx_lowest_lsn;
         tx->tx_highest_lsn = lsn;
 }
 
 void
-sfs_current_transaction_add_record(struct sfs_record *record, enum sfs_record_type type)
+sfs_current_transaction_add_record(struct sfs_fs *sfs, struct sfs_record *record, enum sfs_record_type type)
 {
         struct sfs_transaction *tx;
 
         if (curthread->t_tx == NULL) {
-                KASSERT(curthread->t_sfs_fs != NULL);
-
-                tx = sfs_transaction_create(curthread->t_sfs_fs->sfs_transaction_set);
+                tx = sfs_transaction_create(sfs->sfs_transaction_set);
 
                 if (tx == NULL) {
                         panic("TODO\n");
@@ -156,10 +153,9 @@ sfs_current_transaction_add_record(struct sfs_record *record, enum sfs_record_ty
         }
 
         record->r_txid = curthread->t_tx->tx_id;
-        sfs_transaction_add_record(curthread->t_tx, record, type);
+        sfs_transaction_add_record(sfs, curthread->t_tx, record, type);
 
         if (type == R_TX_COMMIT) {
                 curthread->t_tx = NULL;
-                curthread->t_sfs_fs = NULL;
         }
 }

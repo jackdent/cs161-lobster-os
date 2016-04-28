@@ -248,7 +248,7 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	if (uio->uio_rw == UIO_WRITE) {
 		// Log the checusm of the disk block *before* overwriting the data
 		record = sfs_record_create_user_block_write(diskblock, ioptr);
-		sfs_current_transaction_add_record(record, R_USER_BLOCK_WRITE);
+		sfs_current_transaction_add_record(sfs, record, R_USER_BLOCK_WRITE);
 	}
 
 	/*
@@ -333,7 +333,7 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	if (uio->uio_rw == UIO_WRITE) {
 		// Log the checusm of the disk block *before* overwriting the data
 		record = sfs_record_create_user_block_write(diskblock, ioptr);
-		sfs_current_transaction_add_record(record, R_USER_BLOCK_WRITE);
+		sfs_current_transaction_add_record(sfs, record, R_USER_BLOCK_WRITE);
 	}
 
 	/*
@@ -569,7 +569,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		memcpy((void*)meta_update->old_value, (void*)(ioptr + blockoffset), len);
 		memcpy((void*)meta_update->new_value, (void*)data, len);
 
-		sfs_current_transaction_add_record(record, R_META_UPDATE);
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		/* Update the selected region */
 		memcpy(ioptr + blockoffset, data, len);

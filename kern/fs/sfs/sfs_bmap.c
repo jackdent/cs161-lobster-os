@@ -1093,8 +1093,6 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	oldblocklen = DIVROUNDUP(inodeptr->sfi_size, SFS_BLOCKSIZE);
 	newblocklen = DIVROUNDUP(newlen, SFS_BLOCKSIZE);
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(sv->sv_absvn.vn_fs->fs_data);
-
 	/* Lock the freemap for the whole truncate */
 	sfs_lock_freemap(sfs);
 
@@ -1103,7 +1101,6 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 		if (result) {
 			sfs_unlock_freemap(sfs);
 			sfs_dinode_unload(sv);
-			curthread->t_sfs_fs = NULL;
 			return result;
 		}
 	}
@@ -1120,7 +1117,7 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	/* Set the file size */
 	inodeptr->sfi_size = newlen;

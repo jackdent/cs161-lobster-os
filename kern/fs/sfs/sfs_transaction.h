@@ -37,4 +37,4 @@ void sfs_transaction_release_busy_bit(struct sfs_transaction *tx);
 /*
  * Create a new transaciton and assign it to curthread, if no current transaction exists.
  */
-void sfs_current_transaction_add_record(struct sfs_record *, enum sfs_record_type);
+void sfs_current_transaction_add_record(struct sfs_fs *, struct sfs_record *, enum sfs_record_type);

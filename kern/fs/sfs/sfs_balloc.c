@@ -108,8 +108,8 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 		return ENOMEM;
 	}
 
-	record->r_parameters.freemap_update.block = result;
-	sfs_current_transaction_add_record(record, R_FREEMAP_CAPTURE);
+	record->r_parameters.freemap_update.block = *diskblock;
+	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_CAPTURE);
 
 	lock_release(sfs->sfs_freemaplock);
 
@@ -143,7 +143,7 @@ sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 	}
 
 	record->r_parameters.freemap_update.block = diskblock;
-	sfs_current_transaction_add_record(record, R_FREEMAP_RELEASE);
+	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_RELEASE);
 
 	bitmap_unmark(sfs->sfs_freemap, diskblock);
 	sfs->sfs_freemapdirty = true;

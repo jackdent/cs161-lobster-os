@@ -408,6 +408,7 @@ int
 sfs_truncate(struct vnode *v, off_t len)
 {
 	struct sfs_vnode *sv = v->vn_data;
+	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_record *record;
 	int result;
 
@@ -422,7 +423,7 @@ sfs_truncate(struct vnode *v, off_t len)
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(sv->sv_lock);
@@ -638,14 +639,11 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		return 0;
 	}
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(v->vn_fs->fs_data);
-
 	/* Didn't exist - create it */
 	result = sfs_makeobj(sfs, SFS_TYPE_FILE, &newguy);
 	if (result) {
 		unreserve_buffers(SFS_BLOCKSIZE);
 		lock_release(sv->sv_lock);
-		curthread->t_sfs_fs = NULL;
 		return result;
 	}
 
@@ -663,7 +661,6 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 		VOP_DECREF(&newguy->sv_absvn);
 		lock_release(sv->sv_lock);
 		unreserve_buffers(SFS_BLOCKSIZE);
-		curthread->t_sfs_fs = NULL;
 		return result;
 	}
 
@@ -679,7 +676,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	/* Update the linkcount of the new file */
 	new_dino->sfi_linkcount++;
@@ -694,7 +691,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	sfs_dinode_unload(newguy);
 	unreserve_buffers(SFS_BLOCKSIZE);
@@ -720,6 +717,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 {
 	struct sfs_vnode *sv = dir->vn_data;
 	struct sfs_vnode *f = file->vn_data;
+	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_dinode *inodeptr;
 	struct sfs_record *record;
 	int old_linkcount, new_linkcount, result;
@@ -749,8 +747,6 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 		return result;
 	}
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(dir->vn_fs->fs_data);
-
 	/* Create the link */
 	result = sfs_dir_link(sv, name, f->sv_ino, NULL);
 	if (result) {
@@ -758,7 +754,6 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 		lock_release(f->sv_lock);
 		lock_release(sv->sv_lock);
 		unreserve_buffers(SFS_BLOCKSIZE);
-		curthread->t_sfs_fs = NULL;
 		return result;
 	}
 
@@ -777,7 +772,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	inodeptr->sfi_linkcount++;
 	sfs_dinode_mark_dirty(f);
@@ -787,7 +782,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	sfs_dinode_unload(f);
 	lock_release(f->sv_lock);
@@ -862,8 +857,6 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 		      sfs->sfs_sb.sb_volname, name, sv->sv_ino);
 	}
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(v->vn_fs->fs_data);
-
 	result = sfs_makeobj(sfs, SFS_TYPE_DIR, &newguy);
 	if (result) {
 		goto die_simple;
@@ -906,7 +899,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	new_inodeptr->sfi_linkcount += 2;
 
@@ -921,7 +914,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	dir_inodeptr->sfi_linkcount++;
 
@@ -934,7 +927,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 		result = ENOMEM;
 		goto die_uncreate; // TODO: verify this, and in other cases
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 	sfs_dinode_unload(newguy);
 	sfs_dinode_unload(sv);
@@ -958,7 +951,6 @@ die_simple:
 die_early:
 	unreserve_buffers(SFS_BLOCKSIZE);
 	lock_release(sv->sv_lock);
-	curthread->t_sfs_fs = NULL;
 	return result;
 }
 
@@ -1033,8 +1025,6 @@ sfs_rmdir(struct vnode *v, const char *name)
 		goto die_total;
 	}
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(v->vn_fs->fs_data);
-
 	result = sfs_dir_unlink(sv, slot);
 	if (result) {
 		goto die_total;
@@ -1055,7 +1045,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 		result = ENOMEM;
 		goto die_total;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	dir_inodeptr->sfi_linkcount--;
 	sfs_dinode_mark_dirty(sv);
@@ -1072,7 +1062,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 		result = ENOMEM;
 		goto die_total;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	victim_inodeptr->sfi_linkcount -= 2;
 	sfs_dinode_mark_dirty(victim);
@@ -1101,7 +1091,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 		result = ENOMEM;
 		goto die_total;
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 die_total:
 	sfs_dinode_unload(victim);
@@ -1130,6 +1120,7 @@ int
 sfs_remove(struct vnode *dir, const char *name)
 {
 	struct sfs_vnode *sv = dir->vn_data;
+	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_vnode *victim;
 	struct sfs_dinode *victim_inodeptr;
 	struct sfs_dinode *dir_inodeptr;
@@ -1180,8 +1171,6 @@ sfs_remove(struct vnode *dir, const char *name)
 		goto out_reference;
 	}
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(dir->vn_fs->fs_data);
-
 	// TODO: log the directory metadata changes
 	/* Erase its directory entry. */
 	result = sfs_dir_unlink(sv, slot);
@@ -1204,7 +1193,7 @@ sfs_remove(struct vnode *dir, const char *name)
 		result = ENOMEM;
 		goto out_reference;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	victim_inodeptr->sfi_linkcount--;
 
@@ -1226,7 +1215,7 @@ out_reference:
 		result = ENOMEM;
 		goto out_reference;
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
 out_loadsv:
 	sfs_dinode_unload(sv);
@@ -1619,8 +1608,6 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	 * the operation.
 	 */
 
-	curthread->t_sfs_fs = (struct sfs_fs *)(absdir1->vn_fs->fs_data);
-
 	/* At this point we should have valid slots in both dirs. */
 	KASSERT(slot1>=0);
 	KASSERT(slot2>=0);
@@ -1664,7 +1651,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			if (record == NULL) {
 				return ENOMEM;
 			}
-			sfs_current_transaction_add_record(record, R_META_UPDATE);
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			dir2_inodeptr->sfi_linkcount--;
 
@@ -1680,7 +1667,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			if (record == NULL) {
 				return ENOMEM;
 			}
-			sfs_current_transaction_add_record(record, R_META_UPDATE);
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			obj2_inodeptr->sfi_linkcount -= 2;
 			sfs_dinode_mark_dirty(dir2);
@@ -1717,7 +1704,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			if (record == NULL) {
 				return ENOMEM;
 			}
-			sfs_current_transaction_add_record(record, R_META_UPDATE);
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			obj2_inodeptr->sfi_linkcount--;
 			sfs_dinode_mark_dirty(obj2);
@@ -1758,7 +1745,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	obj1_inodeptr->sfi_linkcount++;
 	sfs_dinode_mark_dirty(obj1);
@@ -1797,7 +1784,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		if (record == NULL) {
 			return ENOMEM;
 		}
-		sfs_current_transaction_add_record(record, R_META_UPDATE);
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		dir1_inodeptr->sfi_linkcount--;
 		sfs_dinode_mark_dirty(dir1);
@@ -1814,7 +1801,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		if (record == NULL) {
 			return ENOMEM;
 		}
-		sfs_current_transaction_add_record(record, R_META_UPDATE);
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		dir2_inodeptr->sfi_linkcount++;
 		sfs_dinode_mark_dirty(dir2);
@@ -1837,7 +1824,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	if (record == NULL) {
 		return ENOMEM;
 	}
-	sfs_current_transaction_add_record(record, R_META_UPDATE);
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	obj1_inodeptr->sfi_linkcount--;
 	sfs_dinode_mark_dirty(obj1);
@@ -1867,7 +1854,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			if (record == NULL) {
 				return ENOMEM;
 			}
-			sfs_current_transaction_add_record(record, R_META_UPDATE);
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			dir1_inodeptr->sfi_linkcount++;
 			sfs_dinode_mark_dirty(dir1);
@@ -1885,7 +1872,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			if (record == NULL) {
 				return ENOMEM;
 			}
-			sfs_current_transaction_add_record(record, R_META_UPDATE);
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			dir2_inodeptr->sfi_linkcount--;
 			sfs_dinode_mark_dirty(dir2);
@@ -1909,7 +1896,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		if (record == NULL) {
 			return ENOMEM;
 		}
-		sfs_current_transaction_add_record(record, R_META_UPDATE);
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		obj1_inodeptr->sfi_linkcount--;
 		sfs_dinode_mark_dirty(obj1);
@@ -1921,7 +1908,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		result = ENOMEM;
 		goto out4;
 	}
-	sfs_current_transaction_add_record(record, R_TX_COMMIT);
+	sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
 
  out4:
  	sfs_dinode_unload(dir1);
