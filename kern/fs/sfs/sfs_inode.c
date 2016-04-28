@@ -42,7 +42,7 @@
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
-
+#include "sfs_graveyard.h"
 
 /*
  * Constructor for sfs_vnode.
@@ -255,6 +255,7 @@ sfs_reclaim(struct vnode *v)
 		}
 		sfs_dinode_unload(sv);
 		/* Discard the inode */
+		graveyard_remove(sfs, sv->sv_ino);
 		buffer_drop(&sfs->sfs_absfs, sv->sv_ino, SFS_BLOCKSIZE);
 		sfs_bfree(sfs, sv->sv_ino);
 	}

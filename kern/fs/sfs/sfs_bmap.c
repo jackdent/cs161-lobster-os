@@ -1113,7 +1113,7 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	old_rec_len = inodeptr->sfi_size;
 	new_rec_len = newlen;
 
-	record = sfs_record_create_metadata(block, pos, len, (char *)&old_rec_len, (char *)&new_rec_len);
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_rec_len, (char *)&new_rec_len);
 	if (record == NULL) {
 		return ENOMEM;
 	}

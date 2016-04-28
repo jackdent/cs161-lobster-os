@@ -12,7 +12,7 @@ sfs_record_write_to_journal(struct sfs_fs *fs, struct sfs_record *record, enum s
 }
 
 struct sfs_record *
-sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value, char *new_value)
+sfs_record_create_meta_update(daddr_t block, off_t pos, size_t len, char *old_value, char *new_value)
 {
         struct sfs_record *record;
         struct sfs_meta_update *meta_update;
@@ -23,7 +23,6 @@ sfs_record_create_metadata(daddr_t block, off_t pos, size_t len, char *old_value
         }
 
         meta_update = &record->r_parameters.meta_update;
-
         meta_update->block = block;
         meta_update->pos = pos;
         meta_update->len = len;
@@ -96,7 +95,7 @@ sfs_record_redo_user_block_write(struct sfs_fs *sfs, struct sfs_user_block_write
 
         // If the data is stale
         if (checksum == user_block_write.checksum) {
-                memset(ioptr, 0, SFS_BLOCKSIZE);
+                bzero(ioptr, SFS_BLOCKSIZE);
         }
 
         buffer_mark_dirty(buf);
@@ -112,6 +111,7 @@ sfs_record_redo_user_block_write(struct sfs_fs *sfs, struct sfs_user_block_write
 // We can't quite do that, because the other transaction may have
 // committed while this transaction may not have.
 
+// TODO: skip the meta update if the ends up as a user block
 static
 void
 sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool redo)
@@ -140,19 +140,30 @@ sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool red
         buffer_release(buf);
 }
 
+static
+void
+sfs_freemap_update(struct sfs_fs *sfs, struct sfs_freemap_update freemap_update, bool capture)
+{
+        bool occupied;
+
+        occupied = bitmap_isset(sfs->sfs_freemap, freemap_update.block);
+
+        if (capture && !occupied) {
+                bitmap_mark(sfs->sfs_freemap, freemap_update.block);
+        } else if (!capture && occupied) {
+                bitmap_unmark(sfs->sfs_freemap, freemap_update.block);
+        }
+}
+
 void
 sfs_record_undo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_type record_type)
 {
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
-                if (bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
-                        bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
-                }
+                sfs_freemap_update(sfs, record.r_parameters.freemap_update, false);
                 break;
         case R_FREEMAP_RELEASE:
-                if (!bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
-                        bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
-                }
+                sfs_freemap_update(sfs, record.r_parameters.freemap_update, true);
                 break;
         case R_META_UPDATE:
                 sfs_meta_update(sfs, record.r_parameters.meta_update, false);
@@ -172,19 +183,10 @@ sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
 {
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
-                if (!bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
-                        bitmap_mark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
-                }
-                // TODO: we need to call sfs_clearblock(sfs, block, NULL)
-                // here, right? How this be undone?
-
-                // mark the blocks that will at some point become user blocks, and then don't
-                // apply any changes to them until a [user write] op
+                sfs_freemap_update(sfs, record.r_parameters.freemap_update, true);
                 break;
         case R_FREEMAP_RELEASE:
-                if (bitmap_isset(sfs->sfs_freemap, record.r_parameters.freemap_update.block)) {
-                        bitmap_unmark(sfs->sfs_freemap, record.r_parameters.freemap_update.block);
-                }
+                sfs_freemap_update(sfs, record.r_parameters.freemap_update, false);
                 break;
         case R_META_UPDATE:
                 sfs_meta_update(sfs, record.r_parameters.meta_update, true);
