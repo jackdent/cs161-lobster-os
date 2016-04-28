@@ -134,7 +134,7 @@ sfs_meta_update(struct sfs_fs *sfs, struct sfs_meta_update meta_update, bool red
                 meta = meta_update.old_value;
         }
 
-        memcpy(meta, ioptr + meta_update.pos, meta_update.len);
+        memcpy(ioptr + meta_update.pos, meta, meta_update.len);
 
         buffer_mark_dirty(buf);
         buffer_release(buf);
