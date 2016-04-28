@@ -2207,9 +2207,12 @@ unreserve_fsmanaged_buffers(unsigned count, size_t size)
 daddr_t
 buffer_get_block_number(struct buf *buf)
 {
+	daddr_t physblock;
+
 	lock_acquire(buffer_lock);
-	return buf->b_physblock;
+	physblock = buf->b_physblock;
 	lock_release(buffer_lock);
+	return physblock;
 }
 
 void
