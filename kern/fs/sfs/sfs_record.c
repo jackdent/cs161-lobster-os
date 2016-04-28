@@ -22,7 +22,7 @@ sfs_record_create_meta_update(daddr_t block, off_t pos, size_t len, char *old_va
                 return NULL;
         }
 
-        meta_update = &record->r_parameters.meta_update;
+        meta_update = &record->data.meta_update;
         meta_update->block = block;
         meta_update->pos = pos;
         meta_update->len = len;
@@ -66,7 +66,7 @@ sfs_record_create_user_block_write(daddr_t block, char *data)
                 return NULL;
         }
 
-        user_block_write = &record->r_parameters.user_block_write;
+        user_block_write = &record->data.user_block_write;
         user_block_write->block = block;
         user_block_write->checksum = sfs_record_user_data_checksum(data);
 
@@ -159,13 +159,13 @@ sfs_record_undo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
 {
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
-                sfs_freemap_update(sfs, record.r_parameters.freemap_update, false);
+                sfs_freemap_update(sfs, record.data.freemap_update, false);
                 break;
         case R_FREEMAP_RELEASE:
-                sfs_freemap_update(sfs, record.r_parameters.freemap_update, true);
+                sfs_freemap_update(sfs, record.data.freemap_update, true);
                 break;
         case R_META_UPDATE:
-                sfs_meta_update(sfs, record.r_parameters.meta_update, false);
+                sfs_meta_update(sfs, record.data.meta_update, false);
                 break;
         case R_USER_BLOCK_WRITE:
         case R_TX_BEGIN:
@@ -182,16 +182,16 @@ sfs_record_redo(struct sfs_fs *sfs, struct sfs_record record, enum sfs_record_ty
 {
         switch (record_type) {
         case R_FREEMAP_CAPTURE:
-                sfs_freemap_update(sfs, record.r_parameters.freemap_update, true);
+                sfs_freemap_update(sfs, record.data.freemap_update, true);
                 break;
         case R_FREEMAP_RELEASE:
-                sfs_freemap_update(sfs, record.r_parameters.freemap_update, false);
+                sfs_freemap_update(sfs, record.data.freemap_update, false);
                 break;
         case R_META_UPDATE:
-                sfs_meta_update(sfs, record.r_parameters.meta_update, true);
+                sfs_meta_update(sfs, record.data.meta_update, true);
                 break;
         case R_USER_BLOCK_WRITE:
-                sfs_record_redo_user_block_write(sfs, record.r_parameters.user_block_write);
+                sfs_record_redo_user_block_write(sfs, record.data.user_block_write);
         case R_TX_BEGIN:
         case R_TX_COMMIT:
                 // NOOP

@@ -585,7 +585,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		memcpy(data, ioptr + blockoffset, len);
 	}
 	else {
-		KASSERT(len < MAX_META_UPDATE_SIZE);
+		KASSERT(len < SFS_MAX_META_UPDATE_SIZE);
 		KASSERT(blockoffset + len < SFS_BLOCKSIZE);
 
 		record = sfs_record_create_meta_update(diskblock, blockoffset, len, (char *)(ioptr + blockoffset), (char *)data);

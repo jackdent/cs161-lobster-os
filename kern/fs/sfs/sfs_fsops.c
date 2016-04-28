@@ -531,9 +531,9 @@ sfs_skip_user_block_record(struct sfs_record record, enum sfs_record_type record
         case R_TX_COMMIT:
 	        return false;
         case R_META_UPDATE:
-		block = record.r_parameters.meta_update.block;
+		block = record.data.meta_update.block;
         case R_USER_BLOCK_WRITE:
-		block = record.r_parameters.user_block_write.block;
+		block = record.data.user_block_write.block;
         default:
                 panic("Unsupported record type\n");
         }
@@ -659,12 +659,12 @@ sfs_find_user_blocks(struct sfs_fs *sfs)
 		user_block = false;
 
 		if (record_type == R_META_UPDATE) {
-			block = record.r_parameters.meta_update.block;
+			block = record.data.meta_update.block;
 			meta_block = true;
 		}
 
 		if (record_type == R_USER_BLOCK_WRITE) {
-			block = record.r_parameters.user_block_write.block;
+			block = record.data.user_block_write.block;
 			user_block = true;
 		}
 

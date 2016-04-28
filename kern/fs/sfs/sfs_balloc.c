@@ -39,9 +39,9 @@
 #include <synch.h>
 #include <buf.h>
 #include <sfs.h>
+#include <kern/sfs.h>
 #include "sfsprivate.h"
 #include "sfs_transaction.h"
-
 
 /*
  * Zero out a disk block.
@@ -112,7 +112,7 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 		return ENOMEM;
 	}
 
-	record->r_parameters.freemap_update.block = *diskblock;
+	record->data.freemap_update.block = *diskblock;
 	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_CAPTURE);
 
 	new_lsn = curthread->t_tx->tx_highest_lsn;
@@ -151,7 +151,7 @@ sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 		panic("Out of memory when making record\n");
 	}
 
-	record->r_parameters.freemap_update.block = diskblock;
+	record->data.freemap_update.block = diskblock;
 	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_RELEASE);
 
 	new_lsn = curthread->t_tx->tx_highest_lsn;

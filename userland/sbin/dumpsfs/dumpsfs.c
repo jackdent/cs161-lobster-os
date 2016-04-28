@@ -364,22 +364,50 @@ dump_client_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
 		   unsigned type, void *data, size_t len)
 {
 	char buf[64];
+	struct sfs_record *record;
+	enum sfs_record_type record_type;
+	uint32_t i;
+
+	(void)len;
+	record = data;
+	record_type = type;
 
 	snprintf(buf, sizeof(buf), "[%u.%u]:", myblock, myoffset);
-	printf("    %-8s %-8llu ", buf, (unsigned long long)mylsn);
-	switch (type) {
+	printf("    %-8s %-8llu %d ", buf, (unsigned long long)mylsn, record->r_txid);
 
-	    /* recovery-level records */
-
-		/*
-		 * You write this.
-		 */
-		(void)data;
-		(void)len;
-
-	    default:
+	switch (record_type) {
+        case R_TX_BEGIN:
+		printf("TX_BEGIN\n");
+        case R_TX_COMMIT:
+		printf("TX_COMMIT\n");
+        case R_FREEMAP_CAPTURE:
+		printf("FREEMAP_CAPTURE ");
+		printf("block:%d\n", record->data.freemap_update.block);
+        case R_FREEMAP_RELEASE:
+		printf("FREEMAP_RELEASE ");
+		printf("block:%d\n", record->data.freemap_update.block);
+        case R_META_UPDATE:
+		printf("META_UPDATE ");
+		printf("block:%d ", record->data.meta_update.block);
+		printf("pos:%llu ", record->data.meta_update.pos);
+		printf("len:%d ", record->data.meta_update.len);
+		printf("old:");
+		for (i = 0; i < record->data.meta_update.len; i++) {
+			printf("%c", record->data.meta_update.old_value[i]);
+		}
+		printf(" new:");
+		for (i = 0; i < record->data.meta_update.len; i++) {
+			printf("%c", record->data.meta_update.new_value[i]);
+		}
+		printf("\n");
+        case R_USER_BLOCK_WRITE:
+		printf("USER_BLOCK_WRITE ");
+		printf("block:%d ", record->data.user_block_write.block);
+		printf("checksum:%d\n", record->data.user_block_write.checksum);
+	default:
 		/* XXX hexdump it */
-		printf("Unknown record type %u\n", type);
+		printf("UNKNOWN_RECORD ");
+		printf("type:%u\n", type);
 		break;
 	}
 }
