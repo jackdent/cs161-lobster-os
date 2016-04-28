@@ -32,6 +32,8 @@
 
 struct fs;  /* fs.h */
 
+typedef uint64_t sfs_lsn_t;
+
 
 /*
  * The buffer cache is physically indexed; that is, the index or "key"
@@ -183,6 +185,7 @@ void unreserve_buffers(size_t size);
 void reserve_fsmanaged_buffers(unsigned count, size_t size);
 void unreserve_fsmanaged_buffers(unsigned count, size_t size);
 daddr_t buffer_get_block_number(struct buf *buf);
+void buffer_update_lsns(struct buf *buf, sfs_lsn_t new_lsn);
 
 /*
  * Print stats.

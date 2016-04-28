@@ -55,7 +55,7 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
                         tx->tx_id = tx_tracker->tx_id_counter++;
                         tx->tx_lowest_lsn = 0;
                         tx->tx_highest_lsn = 0;
-                        tx->tx_commited = 0;
+                        tx->tx_committed = 0;
                         tx->tx_busy_bit = 0;
 
                         curthread->t_tx = tx;

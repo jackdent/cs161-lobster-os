@@ -690,6 +690,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 
 	/* Update the linkcount of the new file */
 	new_dino->sfi_linkcount++;
+	buffer_update_lsns(newguy->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	/* and consequently mark it dirty. */
 	sfs_dinode_mark_dirty(newguy);
@@ -782,6 +783,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	inodeptr->sfi_linkcount++;
+	buffer_update_lsns(f->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 	sfs_dinode_mark_dirty(f);
 
 	/* Commit record */
@@ -914,6 +916,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	new_inodeptr->sfi_linkcount += 2;
+	buffer_update_lsns(newguy->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	/* Create the link increment record for parent dir */
 	block = buffer_get_block_number(sv->sv_dinobuf);
@@ -930,6 +933,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	dir_inodeptr->sfi_linkcount++;
+	buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	sfs_dinode_mark_dirty(newguy);
 	sfs_dinode_mark_dirty(sv);
@@ -1059,6 +1063,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	dir_inodeptr->sfi_linkcount--;
+	buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	/* Create the link decrement record for the victim dir */
 	block = buffer_get_block_number(victim->sv_dinobuf);
@@ -1075,6 +1080,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	victim_inodeptr->sfi_linkcount -= 2;
+	buffer_update_lsns(victim->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	sfs_dinode_mark_dirty(sv);
 	sfs_dinode_mark_dirty(victim);
@@ -1210,6 +1216,7 @@ sfs_remove(struct vnode *dir, const char *name)
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	victim_inodeptr->sfi_linkcount--;
+	buffer_update_lsns(victim->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	if (victim_inodeptr->sfi_linkcount == 0) {
 		graveyard_add(victim->sv_absvn.vn_fs->fs_data, victim->sv_ino);
@@ -1667,6 +1674,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			dir2_inodeptr->sfi_linkcount--;
+			buffer_update_lsns(dir2->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 			/* Create the link decrement record for obj2 */
 
@@ -1684,6 +1692,8 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			obj2_inodeptr->sfi_linkcount -= 2;
+			buffer_update_lsns(obj2->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
+
 			sfs_dinode_mark_dirty(dir2);
 			sfs_dinode_mark_dirty(obj2);
 
@@ -1722,6 +1732,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			obj2_inodeptr->sfi_linkcount--;
+			buffer_update_lsns(obj2->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 			sfs_dinode_mark_dirty(obj2);
 		}
 
@@ -1764,6 +1775,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	obj1_inodeptr->sfi_linkcount++;
+	buffer_update_lsns(obj1->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 	sfs_dinode_mark_dirty(obj1);
 
 	if (obj1->sv_type == SFS_TYPE_DIR && dir1 != dir2) {
@@ -1804,6 +1816,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		dir1_inodeptr->sfi_linkcount--;
+		buffer_update_lsns(dir1->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 		sfs_dinode_mark_dirty(dir1);
 
 		/* Create the link increment record for dir2 */
@@ -1822,6 +1835,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		dir2_inodeptr->sfi_linkcount++;
+		buffer_update_lsns(dir2->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 		sfs_dinode_mark_dirty(dir2);
 	}
 
@@ -1846,6 +1860,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 	obj1_inodeptr->sfi_linkcount--;
+	buffer_update_lsns(obj1->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 	sfs_dinode_mark_dirty(obj1);
 
 	KASSERT(result==0);

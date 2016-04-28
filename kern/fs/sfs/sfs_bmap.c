@@ -1123,6 +1123,7 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 
 	/* Set the file size */
 	inodeptr->sfi_size = newlen;
+	buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	/* Mark the inode dirty */
 	sfs_dinode_mark_dirty(sv);

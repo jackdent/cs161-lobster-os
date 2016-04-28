@@ -268,6 +268,7 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	 * If it was a write, mark the modified block dirty.
 	 */
 	if (uio->uio_rw == UIO_WRITE) {
+		buffer_update_lsns(iobuffer, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(iobuffer);
 	}
 
@@ -355,6 +356,7 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 
 	if (uio->uio_rw == UIO_WRITE) {
 		buffer_mark_valid(iobuf);
+		buffer_update_lsns(iobuf, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(iobuf);
 	}
 
@@ -492,6 +494,7 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		inodeptr->sfi_size = uio->uio_offset;
+		buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 		sfs_dinode_mark_dirty(sv);
 	}
 	sfs_dinode_unload(sv);
@@ -594,6 +597,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 
 		/* Update the selected region */
 		memcpy(ioptr + blockoffset, data, len);
+		buffer_update_lsns(iobuf, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(iobuf);
 
 		/* Update the vnode size if needed */
@@ -615,6 +619,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			dino->sfi_size = endpos;
+			buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 			sfs_dinode_mark_dirty(sv);
 		}
 	}

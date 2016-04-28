@@ -89,6 +89,7 @@ int
 sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 {
 	int result;
+	sfs_lsn_t new_lsn;
 	struct sfs_record *record;
 
 	lock_acquire(sfs->sfs_freemaplock);
@@ -114,6 +115,12 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 	record->r_parameters.freemap_update.block = *diskblock;
 	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_CAPTURE);
 
+	new_lsn = curthread->t_tx->tx_highest_lsn;
+	if (sfs->sfs_freemap_lowest_lsn == 0) {
+		sfs->sfs_freemap_lowest_lsn = new_lsn;
+	}
+	sfs->sfs_freemap_highest_lsn = new_lsn;
+
 	lock_release(sfs->sfs_freemaplock);
 
 	if (*diskblock >= sfs->sfs_sb.sb_nblocks) {
@@ -136,6 +143,7 @@ void
 sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 {
 	struct sfs_record *record;
+	sfs_lsn_t new_lsn;
 
 	KASSERT(lock_do_i_hold(sfs->sfs_freemaplock));
 
@@ -147,6 +155,12 @@ sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 
 	record->r_parameters.freemap_update.block = diskblock;
 	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_RELEASE);
+
+	new_lsn = curthread->t_tx->tx_highest_lsn;
+	if (sfs->sfs_freemap_lowest_lsn == 0) {
+		sfs->sfs_freemap_lowest_lsn = new_lsn;
+	}
+	sfs->sfs_freemap_highest_lsn = new_lsn;
 
 	bitmap_unmark(sfs->sfs_freemap, diskblock);
 	sfs->sfs_freemapdirty = true;

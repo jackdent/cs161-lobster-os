@@ -157,6 +157,8 @@ sfs_sync_freemap(struct sfs_fs *sfs)
 
 	lock_acquire(sfs->sfs_freemaplock);
 
+	sfs_jphys_flush(sfs, sfs->sfs_freemap_highest_lsn);
+
 	if (sfs->sfs_freemapdirty) {
 		result = sfs_freemapio(sfs, UIO_WRITE);
 		if (result) {
@@ -165,6 +167,9 @@ sfs_sync_freemap(struct sfs_fs *sfs)
 		}
 		sfs->sfs_freemapdirty = false;
 	}
+
+	sfs->sfs_freemap_lowest_lsn = 0;
+	sfs->sfs_freemap_highest_lsn = 0;
 
 	lock_release(sfs->sfs_freemaplock);
 	return 0;
@@ -458,6 +463,9 @@ sfs_fs_create(void)
 	/* freemap */
 	sfs->sfs_freemap = NULL;
 	sfs->sfs_freemapdirty = false;
+
+	sfs->sfs_freemap_lowest_lsn = 0;
+	sfs->sfs_freemap_highest_lsn = 0;
 
 	/* locks */
 	sfs->sfs_vnlock = lock_create("sfs_vnlock");
