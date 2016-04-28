@@ -2216,9 +2216,7 @@ void
 buffer_update_lsns(struct buf *buf, sfs_lsn_t new_lsn)
 {
 	lock_acquire(buffer_lock);
-	if (buf->b_lowest_lsn == 0) {
-		buf->b_lowest_lsn = new_lsn;
-	}
+	buf->b_lowest_lsn = (buf->b_lowest_lsn == 0 ? new_lsn : buf->b_lowest_lsn);
 	buf->b_highest_lsn = new_lsn;
 	lock_release(buffer_lock);
 }

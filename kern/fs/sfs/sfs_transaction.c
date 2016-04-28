@@ -134,7 +134,7 @@ sfs_transaction_add_record(struct sfs_fs *sfs, struct sfs_transaction *tx, struc
 
         lsn = sfs_record_write_to_journal(sfs, record, type);
 
-        tx->tx_lowest_lsn = 0 ? lsn : tx->tx_lowest_lsn;
+        tx->tx_lowest_lsn = (tx->tx_lowest_lsn == 0 ? lsn : tx->tx_lowest_lsn);
         tx->tx_highest_lsn = lsn;
 }
 
