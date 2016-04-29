@@ -28,7 +28,7 @@ checkpoint(struct sfs_fs *fs)
 
 	lock_acquire(tx_set->tx_lock);
 
-	min_tx_lowest_lsn = UINT_MAX;
+	min_tx_lowest_lsn = ULLONG_MAX;
 	for (i = 0; i < MAX_TRANSACTIONS; i++) {
 		tx = tx_set->tx_transactions[i];
 

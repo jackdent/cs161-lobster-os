@@ -385,6 +385,12 @@ sfs_unmount(struct fs *fs)
 		return EBUSY;
 	}
 
+	/* Wait for the checkpointing thread to exit, which will do one last checkpoint */
+	sfs->sfs_checkpoint_exit = 1;
+	while (sfs->sfs_checkpoint_exit) {
+		continue;
+	}
+
 	sfs_jphys_stopwriting(sfs);
 
 	unreserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
@@ -395,12 +401,6 @@ sfs_unmount(struct fs *fs)
 
 	/* All buffers should be clean; invalidate them. */
 	drop_fs_buffers(fs);
-
-	/* Wait for the checkpointing thread to exit, which will do one last checkpoint */
-	sfs->sfs_checkpoint_exit = 1;
-	while (sfs->sfs_checkpoint_exit) {
-		continue;
-	}
 
 	/* The vfs layer takes care of the device for us */
 	sfs->sfs_device = NULL;
