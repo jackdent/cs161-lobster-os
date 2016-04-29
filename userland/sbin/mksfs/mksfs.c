@@ -130,6 +130,7 @@ initfreemap(uint32_t fsblocks)
 	}
 
 	/* allocate blocks for the root directory and graveyard contents */
+
 	rootdir_data_block = journalstart + journalblocks;
 	allocblock(rootdir_data_block);
 

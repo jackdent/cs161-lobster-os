@@ -896,7 +896,8 @@ sfs_jphys_trim(struct sfs_fs *sfs, sfs_lsn_t taillsn)
 	for (i=0; i<sfs->sfs_sb.sb_journalblocks; i++) {
 		if (taillsn >= jp->jp_firstlsns[i] &&
 		    (i+1 == sfs->sfs_sb.sb_journalblocks ||
-		     taillsn < jp->jp_firstlsns[i+1])) {
+		     taillsn < jp->jp_firstlsns[i+1] ||
+		     jp->jp_firstlsns[i] > jp->jp_firstlsns[i+1])) {
 			jp->jp_memtailjblock = i;
 			jp->jp_memtaillsn = taillsn;
 			break;

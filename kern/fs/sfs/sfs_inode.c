@@ -510,9 +510,8 @@ sfs_makeobj(struct sfs_fs *sfs, int type, struct sfs_vnode **ret)
 	result = sfs_dinode_load(*ret);
 	if (result) {
 		lock_release((*ret)->sv_lock);
+		/* this reclaims the inode */
 		VOP_DECREF(&(*ret)->sv_absvn);
-		buffer_drop(&sfs->sfs_absfs, ino, SFS_BLOCKSIZE);
-		sfs_bfree(sfs, ino);
 		return result;
 	}
 
