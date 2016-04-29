@@ -596,7 +596,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	uint32_t ino;
 	int result;
 	struct sfs_record *record;
-	uint32_t old_linkcount, new_linkcount;
+	uint16_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -734,7 +734,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_dinode *inodeptr;
 	struct sfs_record *record;
-	uint32_t old_linkcount, new_linkcount;
+	uint16_t old_linkcount, new_linkcount;
 	int result;
 	daddr_t block;
 	off_t pos;
@@ -827,7 +827,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	struct sfs_dinode *new_inodeptr;
 	struct sfs_vnode *newguy;
 	struct sfs_record *record;
-	uint32_t old_linkcount, new_linkcount;
+	uint16_t old_linkcount, new_linkcount;
 	int result;
 	daddr_t block;
 	off_t pos;
@@ -990,7 +990,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	struct sfs_dinode *victim_inodeptr;
 	int result, result2, slot;
 	struct sfs_record *record;
-	uint32_t old_linkcount, new_linkcount;
+	uint16_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -1149,7 +1149,7 @@ sfs_remove(struct vnode *dir, const char *name)
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_record *record;
 	int slot, result;
-	uint32_t old_linkcount, new_linkcount;
+	uint16_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -1341,7 +1341,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	struct sfs_direntry sd;
 	int found_dir1;
 	struct sfs_record *record;
-	uint32_t old_linkcount, new_linkcount;
+	uint16_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
