@@ -255,7 +255,10 @@ sfs_reclaim(struct vnode *v)
 		}
 		sfs_dinode_unload(sv);
 		/* Discard the inode */
+		lock_release(sfs->sfs_vnlock);
 		graveyard_remove(sfs, sv->sv_ino);
+		lock_acquire(sfs->sfs_vnlock);
+
 		buffer_drop(&sfs->sfs_absfs, sv->sv_ino, SFS_BLOCKSIZE);
 		sfs_bfree(sfs, sv->sv_ino);
 	}
@@ -319,6 +322,7 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 
 	/* sfs_vnlock protects the vnodes table */
 	lock_acquire(sfs->sfs_vnlock);
+
 
 	/* Look in the vnodes table */
 	num = vnodearray_num(sfs->sfs_vnodes);
