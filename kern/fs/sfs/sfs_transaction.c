@@ -136,6 +136,9 @@ sfs_transaction_add_record(struct sfs_fs *sfs, struct sfs_transaction *tx, struc
 
         tx->tx_lowest_lsn = (tx->tx_lowest_lsn == 0 ? lsn : tx->tx_lowest_lsn);
         tx->tx_highest_lsn = lsn;
+
+        // We no longer need the record in memory
+        kfree(record);
 }
 
 void
