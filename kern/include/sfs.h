@@ -38,6 +38,8 @@
 
 struct buf; /* in buf.h */
 
+typedef uint64_t sfs_lsn_t;
+
 /*
  * Get abstract structure definitions
  */
@@ -73,13 +75,14 @@ struct sfs_fs {
 	struct vnodearray *sfs_vnodes;  /* vnodes loaded into memory */
 	struct bitmap *sfs_freemap;     /* blocks in use are marked 1 */
 	bool sfs_freemapdirty;          /* true if freemap modified */
+	sfs_lsn_t sfs_freemap_lowest_lsn; /* lowest lsn that modified the in-memory freemap */
+	sfs_lsn_t sfs_freemap_highest_lsn; /* highest lsn that modified the in-memory freemap */
 	struct lock *sfs_vnlock;	/* lock for vnode table */
 	struct lock *sfs_freemaplock;	/* lock for freemap/superblock */
 	struct lock *sfs_renamelock;	/* lock for sfs_rename() */
-
 	struct sfs_transaction_set *sfs_transaction_set; /* struct of active transactions on this volume */
-
 	struct sfs_jphys *sfs_jphys;	/* physical journal container */
+	int sfs_checkpoint_exit:1;	/* boolean to tell checkpointing thread to exit */
 };
 
 /*

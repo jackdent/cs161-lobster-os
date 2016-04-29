@@ -35,7 +35,7 @@
 struct fs;  /* fs.h */
 
 typedef uint64_t sfs_lsn_t;
-struct sfs_fs;
+
 
 /*
  * The buffer cache is physically indexed; that is, the index or "key"
@@ -193,6 +193,7 @@ void unreserve_fsmanaged_buffers(unsigned count, size_t size);
 
 /* Self-explanatory */
 daddr_t buffer_get_block_number(struct buf *buf);
+void buffer_update_lsns(struct buf *buf, sfs_lsn_t new_lsn);
 
 /* Find the mininum lowest_lsn across all buffers being
  * used by the file system fs */

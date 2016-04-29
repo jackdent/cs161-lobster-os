@@ -1,3 +1,1 @@
-struct sfs_fs;
-
-void checkpoint(struct sfs_fs *fs);
+void checkpoint_thread(void *data1, unsigned long data2);

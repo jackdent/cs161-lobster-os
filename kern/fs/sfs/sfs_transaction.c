@@ -1,6 +1,7 @@
-#include "sfs_record.h"
+#include <kern/errno.h>
 #include "sfsprivate.h"
 #include "limits.h"
+#include "sfs_transaction.h"
 
 struct sfs_transaction_set *
 sfs_transaction_set_create(void)
@@ -22,6 +23,12 @@ sfs_transaction_set_create(void)
         for (i = 0; i < MAX_TRANSACTIONS; i++) {
                 tx_set->tx_transactions[i] = NULL;
         }
+
+        /*
+         * Start at 1 to avoid conflicting with the NULL values in an array
+         * when recovering
+         */
+        tx_set->tx_id_counter = 1;
 
         return tx_set;
 }
@@ -49,7 +56,7 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
                 if (tx_tracker->tx_transactions[i] == NULL) {
                         tx_tracker->tx_transactions[i] = tx;
 
-                        tx->tx_id = i;
+                        tx->tx_id = tx_tracker->tx_id_counter++;
                         tx->tx_lowest_lsn = 0;
                         tx->tx_highest_lsn = 0;
                         tx->tx_committed = 0;
@@ -71,19 +78,25 @@ void
 sfs_transaction_destroy(struct sfs_transaction *tx)
 {
         struct lock *tx_lock;
+        int i;
 
         KASSERT(tx != NULL);
-        KASSERT(tx->tx_id < MAX_TRANSACTIONS);
 
         tx_lock = tx->tx_tracker->tx_lock;
 
         lock_acquire(tx_lock);
-        KASSERT(tx->tx_tracker->tx_transactions[tx->tx_id] == tx);
-        tx->tx_tracker->tx_transactions[tx->tx_id] = NULL;
-        lock_release(tx_lock);
-
-        kfree(tx);
+        for (i = 0; i < MAX_TRANSACTIONS; i++) {
+                if (tx->tx_tracker->tx_transactions[i] == tx) {
+                        tx->tx_tracker->tx_transactions[tx->tx_id] = NULL;
+                        lock_release(tx_lock);
+                        kfree(tx);
+                        return;
+                }
+        }
+        panic("Trying to destroy transactions not in transaction set table?\n");
 }
+
+
 
 static
 bool
@@ -119,26 +132,26 @@ sfs_transaction_release_busy_bit(struct sfs_transaction *tx)
 
 static
 void
-sfs_transaction_add_record(struct sfs_transaction *tx, struct sfs_record *record, enum sfs_record_type type)
+sfs_transaction_add_record(struct sfs_fs *sfs, struct sfs_transaction *tx, struct sfs_record *record, enum sfs_record_type type)
 {
         sfs_lsn_t lsn;
 
-        KASSERT(curthread->t_sfs_fs != NULL);
-        lsn = sfs_record_write_to_journal(record, type, curthread->t_sfs_fs);
+        lsn = sfs_record_write_to_journal(sfs, record, type);
 
-        tx->tx_lowest_lsn = 0 ? lsn : tx->tx_lowest_lsn;
+        tx->tx_lowest_lsn = (tx->tx_lowest_lsn == 0 ? lsn : tx->tx_lowest_lsn);
         tx->tx_highest_lsn = lsn;
+
+        // We no longer need the record in memory
+        kfree(record);
 }
 
 void
-sfs_current_transaction_add_record(struct sfs_record *record, enum sfs_record_type type)
+sfs_current_transaction_add_record(struct sfs_fs *sfs, struct sfs_record *record, enum sfs_record_type type)
 {
         struct sfs_transaction *tx;
 
         if (curthread->t_tx == NULL) {
-                KASSERT(curthread->t_sfs_fs != NULL);
-
-                tx = sfs_transaction_create(curthread->t_sfs_fs->sfs_transaction_set);
+                tx = sfs_transaction_create(sfs->sfs_transaction_set);
 
                 if (tx == NULL) {
                         panic("TODO\n");
@@ -148,59 +161,22 @@ sfs_current_transaction_add_record(struct sfs_record *record, enum sfs_record_ty
         }
 
         record->r_txid = curthread->t_tx->tx_id;
-        sfs_transaction_add_record(curthread->t_tx, record, type);
+        sfs_transaction_add_record(sfs, curthread->t_tx, record, type);
 }
 
-/*
-static
-void
-sfs_transaction_apply(struct sfs_transaction *tx, void (*fn)(struct sfs_record, enum sfs_record_type))
+int
+sfs_current_transaction_commit(struct sfs_fs *sfs)
 {
-        int err;
-        struct sfs_jiter *ji;
+        struct sfs_record *record;
 
-        enum sfs_record_type record_type;
-        void *record_ptr;
-        size_t record_len;
-        struct sfs_record record;
-
-        err = sfs_jiter_fwdcreate(sfs, &ji);
-        if (err) {
-                panic("Error while reading journal\n");
+        record = kmalloc(sizeof(struct sfs_record));
+        if (record == NULL) {
+                return ENOMEM;
         }
 
-        while (!sfs_jiter_done(ji)) {
-                record_type = sfs_jiter_type(ji);
+        KASSERT(curthread->t_tx);
+        sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
+        curthread->t_tx = NULL;
 
-                record_ptr = sfs_jiter_rec(ji, &record_len);
-                record = memcpy(&record, record_ptr, record_len);
-
-                if (record.r_txid == tx->tx_id) {
-                        fn(record, record_type);
-                }
-
-                err = sfs_jiter_next(sfs, ji);
-                if (err) {
-                        panic("Error while reading journal\n");
-                }
-        }
-
-        sfs_jiter_destroy(ji);
+        return 0;
 }
-
-void
-sfs_transaction_undo(struct sfs_transaction *tx)
-{
-        KASSERT(tx != NULL);
-
-        sfs_transaction_apply(tx, sfs_record_undo);
-}
-
-void
-sfs_transaction_redo(struct sfs_transaction *tx)
-{
-        KASSERT(tx != NULL);
-
-        sfs_transaction_apply(tx, sfs_record_redo);
-}
-*/

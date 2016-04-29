@@ -38,7 +38,9 @@
 #include <synch.h>
 #include <vfs.h>
 #include <buf.h>
+#include <current.h>
 #include <sfs.h>
+#include "sfs_transaction.h"
 #include "sfsprivate.h"
 
 /*
@@ -326,6 +328,11 @@ sfs_blockobj_set(struct sfs_blockobj *bo, uint32_t offset, uint32_t newval)
 		struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 		struct sfs_dinode *dino;
 		unsigned indirlevel, indirnum;
+		struct sfs_record *record;
+		uint32_t old, new;
+		daddr_t block;
+		off_t pos;
+		size_t len;
 
 		KASSERT(offset == 0);
 
@@ -336,18 +343,78 @@ sfs_blockobj_set(struct sfs_blockobj *bo, uint32_t offset, uint32_t newval)
 		switch (indirlevel) {
 		    case 0:
 			KASSERT(indirnum < SFS_NDIRECT);
+
+			/* Make record */
+
+			block = buffer_get_block_number(bo->bo_inode.i_sv->sv_dinobuf);
+			pos = (void*)&dino->sfi_direct[indirnum] - (void*)dino;
+			len = sizeof(dino->sfi_direct[indirnum]);
+			old = dino->sfi_direct[indirnum];
+			new = newval;
+
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+			if (record == NULL) {
+				panic("Cannot recover from blockobj_set ENOMEM fail\n");
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			dino->sfi_direct[indirnum] = newval;
 			break;
 		    case 1:
 			KASSERT(indirnum == 0);
+
+			/* Make record */
+
+			block = buffer_get_block_number(bo->bo_inode.i_sv->sv_dinobuf);
+			pos = (void*)&dino->sfi_indirect - (void*)dino;
+			len = sizeof(dino->sfi_indirect);
+			old = dino->sfi_indirect;
+			new = newval;
+
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+			if (record == NULL) {
+				panic("Cannot recover from blockobj_set ENOMEM fail\n");
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			dino->sfi_indirect = newval;
 			break;
 		    case 2:
 			KASSERT(indirnum == 0);
+
+			/* Make record */
+
+			block = buffer_get_block_number(bo->bo_inode.i_sv->sv_dinobuf);
+			pos = (void*)&dino->sfi_dindirect - (void*)dino;
+			len = sizeof(dino->sfi_dindirect);
+			old = dino->sfi_dindirect;
+			new = newval;
+
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+			if (record == NULL) {
+				panic("Cannot recover from blockobj_set ENOMEM fail\n");
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			dino->sfi_dindirect = newval;
 			break;
 		    case 3:
 			KASSERT(indirnum == 0);
+
+			/* Make record */
+
+			block = buffer_get_block_number(bo->bo_inode.i_sv->sv_dinobuf);
+			pos = (void*)&dino->sfi_tindirect - (void*)dino;
+			len = sizeof(dino->sfi_tindirect);
+			old = dino->sfi_tindirect;
+			new = newval;
+
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+			if (record == NULL) {
+				panic("Cannot recover from blockobj_set ENOMEM fail\n");
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			dino->sfi_tindirect = newval;
 			break;
 		    default:
@@ -1004,6 +1071,11 @@ sfs_discard(struct sfs_vnode *sv,
 	daddr_t block;
 	uint32_t lo, hi, substart, subend;
 	int result;
+	struct sfs_record *record;
+	uint32_t old, new;
+	daddr_t rec_block;
+	off_t pos;
+	size_t len;
 
 	inodeptr = sfs_dinode_map(sv);
 
@@ -1015,6 +1087,21 @@ sfs_discard(struct sfs_vnode *sv,
 		block = inodeptr->sfi_direct[i];
 		if (i >= startfileblock && i < endfileblock && block != 0) {
 			sfs_bfree_prelocked(sfs, block);
+
+			/* Make record */
+
+			rec_block = buffer_get_block_number(sv->sv_dinobuf);
+			pos = (void*)&inodeptr->sfi_direct[i] - (void*)inodeptr;
+			len = sizeof(inodeptr->sfi_direct[i]);
+			old = inodeptr->sfi_direct[i];
+			new = 0;
+
+			record = sfs_record_create_meta_update(rec_block, pos, len, (char *)&old, (char *)&new);
+			if (record == NULL) {
+				return ENOMEM;
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			inodeptr->sfi_direct[i] = 0;
 			sfs_dinode_mark_dirty(sv);
 		}
@@ -1073,6 +1160,11 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	struct sfs_dinode *inodeptr;
 	uint32_t oldblocklen, newblocklen;
 	int result;
+	struct sfs_record *record;
+	uint32_t old_rec_len, new_rec_len;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -1098,8 +1190,25 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 		}
 	}
 
+	/* Create file size change record */
+
+	block = buffer_get_block_number(sv->sv_dinobuf);
+	pos = (void*)&inodeptr->sfi_size - (void*)inodeptr;
+	len = sizeof(inodeptr->sfi_size);
+	old_rec_len = inodeptr->sfi_size;
+	new_rec_len = newlen;
+
+	record = sfs_record_create_meta_update(block, pos, len, (char *)&old_rec_len, (char *)&new_rec_len);
+	if (record == NULL) {
+		sfs_unlock_freemap(sfs);
+		sfs_dinode_unload(sv);
+		return ENOMEM;
+	}
+	sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 	/* Set the file size */
 	inodeptr->sfi_size = newlen;
+	buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
 	/* Mark the inode dirty */
 	sfs_dinode_mark_dirty(sv);

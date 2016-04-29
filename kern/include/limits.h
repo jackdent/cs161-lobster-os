@@ -55,6 +55,5 @@ string of length ARG_MAX - 1, plus a null-terminator */
 #define OPEN_MAX        __OPEN_MAX
 #define IOV_MAX         __IOV_MAX
 #define UINT_MAX	(1 << 31)
-#define ULLONG_MAX	(1ULL << 63)
 
 #endif /* _LIMITS_H_ */

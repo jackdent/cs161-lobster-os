@@ -40,6 +40,7 @@
 #include <vfs.h>
 #include <fs.h>
 #include <buf.h>
+#include "../fs/sfs/sfsprivate.h"
 
 /* Uncomment this to enable printouts of the syncer state. */
 //#define SYNCER_VERBOSE
@@ -74,6 +75,8 @@ DEFARRAY(buf, static __UNUSED inline);
  * condition should never escape from this file...
  */
 #define EDEADBUF EBADF
+
+typedef uint64_t sfs_lsn_t;
 
 /*
  * One buffer.
@@ -761,6 +764,8 @@ buffer_create(void)
 	b->b_physblock = 0;
 	b->b_size = ONE_TRUE_BUFFER_SIZE;
 	b->b_fsdata = NULL;
+	b->b_lowest_lsn = 0;
+	b->b_highest_lsn = 0;
 	num_total_buffers++;
 	return b;
 }
@@ -927,12 +932,18 @@ buffer_writeout_internal(struct buf *b)
 		return 0;
 	}
 
+	lock_release(buffer_lock);
+	sfs_jphys_flush(b->b_fs->fs_data, b->b_highest_lsn);
+	lock_acquire(buffer_lock);
+
 	num_total_writeouts++;
 	lock_release(buffer_lock);
 	result = FSOP_WRITEBLOCK(b->b_fs, b->b_physblock, b->b_fsdata,
 				 b->b_data, b->b_size);
 	lock_acquire(buffer_lock);
 	if (result == 0) {
+		b->b_lowest_lsn = 0;
+		b->b_highest_lsn = 0;
 		dirty_buffers_count--;
 		b->b_dirty = 0;
 		buffer_remove_dirty(b);
@@ -2200,7 +2211,21 @@ unreserve_fsmanaged_buffers(unsigned count, size_t size)
 daddr_t
 buffer_get_block_number(struct buf *buf)
 {
-	return buf->b_physblock;
+	daddr_t physblock;
+
+	lock_acquire(buffer_lock);
+	physblock = buf->b_physblock;
+	lock_release(buffer_lock);
+	return physblock;
+}
+
+void
+buffer_update_lsns(struct buf *buf, sfs_lsn_t new_lsn)
+{
+	lock_acquire(buffer_lock);
+	buf->b_lowest_lsn = (buf->b_lowest_lsn == 0 ? new_lsn : buf->b_lowest_lsn);
+	buf->b_highest_lsn = new_lsn;
+	lock_release(buffer_lock);
 }
 
 sfs_lsn_t

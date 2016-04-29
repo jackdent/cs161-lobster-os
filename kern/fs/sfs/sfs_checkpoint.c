@@ -1,9 +1,12 @@
 #include <buf.h>
 #include <limits.h>
 #include <synch.h>
-#include "sfs_record.h"
+#include <types.h>
+#include <thread.h>
+#include "sfs_transaction.h"
 #include "sfs_checkpoint.h"
 
+static
 void
 checkpoint(struct sfs_fs *fs)
 {
@@ -14,7 +17,7 @@ checkpoint(struct sfs_fs *fs)
 
 	KASSERT(fs != NULL);
 
-	/* Step 1: Find minimum low_lsn across all buffers */
+	/* Step 1: Find minimum lowest_lsn across all buffers */
 
 	min_buf_lowest_lsn = buffer_get_min_low_lsn(&fs->sfs_absfs);
 
@@ -25,7 +28,7 @@ checkpoint(struct sfs_fs *fs)
 
 	lock_acquire(tx_set->tx_lock);
 
-	min_tx_lowest_lsn = ULLONG_MAX;
+	min_tx_lowest_lsn = UINT_MAX;
 	for (i = 0; i < MAX_TRANSACTIONS; i++) {
 		tx = tx_set->tx_transactions[i];
 
@@ -34,7 +37,7 @@ checkpoint(struct sfs_fs *fs)
 		}
 
 		if (tx->tx_committed && tx->tx_highest_lsn < min_buf_lowest_lsn) {
-			tx_set->tx_transactions[i] = NULL;
+			sfs_transaction_destroy(tx);
 		}
 		else if (tx->tx_lowest_lsn < min_tx_lowest_lsn) {
 			min_tx_lowest_lsn = tx->tx_lowest_lsn;
@@ -46,4 +49,32 @@ checkpoint(struct sfs_fs *fs)
 	/* Step 3: Trim journal records before min_tx_lowest_lsn */
 
 	sfs_jphys_trim(fs, min_tx_lowest_lsn);
+}
+
+void
+checkpoint_thread(void *data1, unsigned long data2)
+{
+	struct sfs_fs *fs;
+	uint32_t threshold, odometer;
+
+	(void)data2;
+
+	fs = (struct sfs_fs *) data1;
+	/* we checkpoint when the journal is > 1/4 full */
+	threshold = fs->sfs_sb.sb_journalblocks / 4;
+
+	while (1) {
+		if (fs->sfs_checkpoint_exit) {
+			checkpoint(fs);
+			/* tell unmounter that we got the message */
+			fs->sfs_checkpoint_exit = 0;
+			thread_exit();
+		}
+		odometer = sfs_jphys_getodometer(fs->sfs_jphys);
+		if (odometer > threshold) {
+			checkpoint(fs);
+		} else {
+			thread_yield();
+		}
+	}
 }

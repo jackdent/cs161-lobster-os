@@ -33,6 +33,9 @@
  * Filesystem-level interface routines.
  */
 
+#define TXID_TINLINE
+#define BLOCK_INLINE
+
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
@@ -46,12 +49,28 @@
 #include <sfs.h>
 #include "sfsprivate.h"
 #include "sfs_transaction.h"
-
+#include "sfs_graveyard.h"
+#include "sfs_checkpoint.h"
 
 /* Shortcuts for the size macros in kern/sfs.h */
 #define SFS_FS_NBLOCKS(sfs)        ((sfs)->sfs_sb.sb_nblocks)
 #define SFS_FS_FREEMAPBITS(sfs)    SFS_FREEMAPBITS(SFS_FS_NBLOCKS(sfs))
 #define SFS_FS_FREEMAPBLOCKS(sfs)  SFS_FREEMAPBLOCKS(SFS_FS_NBLOCKS(sfs))
+
+
+#ifndef TXID_TINLINE
+#define TXID_TINLINE INLINE
+#endif
+
+#ifndef BLOCK_INLINE
+#define BLOCK_INLINE INLINE
+#endif
+
+DECLARRAY(txid_t, TXID_TINLINE);
+DEFARRAY(txid_t, TXID_TINLINE);
+
+DECLARRAY(block, BLOCK_INLINE);
+DEFARRAY(block, BLOCK_INLINE);
 
 /*
  * Routine for doing I/O (reads or writes) on the free block bitmap.
@@ -147,6 +166,8 @@ sfs_sync_freemap(struct sfs_fs *sfs)
 
 	lock_acquire(sfs->sfs_freemaplock);
 
+	sfs_jphys_flush(sfs, sfs->sfs_freemap_highest_lsn);
+
 	if (sfs->sfs_freemapdirty) {
 		result = sfs_freemapio(sfs, UIO_WRITE);
 		if (result) {
@@ -155,6 +176,9 @@ sfs_sync_freemap(struct sfs_fs *sfs)
 		}
 		sfs->sfs_freemapdirty = false;
 	}
+
+	sfs->sfs_freemap_lowest_lsn = 0;
+	sfs->sfs_freemap_highest_lsn = 0;
 
 	lock_release(sfs->sfs_freemaplock);
 	return 0;
@@ -231,6 +255,12 @@ sfs_sync(struct fs *fs)
 
 	sfs = fs->fs_data;
 
+	// TODO: is it as simple as moving up jphys flusing to here?
+	result = sfs_jphys_flushall(sfs);
+	if (result) {
+		return result;
+	}
+
 	/* Sync the buffer cache */
 	result = sync_fs_buffers(fs);
 	if (result) {
@@ -245,11 +275,6 @@ sfs_sync(struct fs *fs)
 
 	/* If the superblock needs to be written, write it. */
 	result = sfs_sync_superblock(sfs);
-	if (result) {
-		return result;
-	}
-
-	result = sfs_jphys_flushall(sfs);
 	if (result) {
 		return result;
 	}
@@ -350,7 +375,6 @@ sfs_unmount(struct fs *fs)
 {
 	struct sfs_fs *sfs = fs->fs_data;
 
-
 	lock_acquire(sfs->sfs_vnlock);
 	lock_acquire(sfs->sfs_freemaplock);
 
@@ -371,6 +395,12 @@ sfs_unmount(struct fs *fs)
 
 	/* All buffers should be clean; invalidate them. */
 	drop_fs_buffers(fs);
+
+	/* Wait for the checkpointing thread to exit, which will do one last checkpoint */
+	sfs->sfs_checkpoint_exit = 1;
+	while (sfs->sfs_checkpoint_exit) {
+		continue;
+	}
 
 	/* The vfs layer takes care of the device for us */
 	sfs->sfs_device = NULL;
@@ -449,6 +479,9 @@ sfs_fs_create(void)
 	sfs->sfs_freemap = NULL;
 	sfs->sfs_freemapdirty = false;
 
+	sfs->sfs_freemap_lowest_lsn = 0;
+	sfs->sfs_freemap_highest_lsn = 0;
+
 	/* locks */
 	sfs->sfs_vnlock = lock_create("sfs_vnlock");
 	if (sfs->sfs_vnlock == NULL) {
@@ -474,6 +507,8 @@ sfs_fs_create(void)
 		goto cleanup_transaction_set;
 	}
 
+	sfs->sfs_checkpoint_exit = 0;
+
 	return sfs;
 
 cleanup_transaction_set:
@@ -490,6 +525,281 @@ cleanup_object:
 	kfree(sfs);
 fail:
 	return NULL;
+}
+
+static
+bool
+sfs_skip_user_block_record(struct sfs_record record, enum sfs_record_type record_type, struct blockarray *user_blocks)
+{
+	daddr_t block;
+
+        switch (record_type) {
+        case R_FREEMAP_CAPTURE:
+        case R_FREEMAP_RELEASE:
+        case R_TX_BEGIN:
+        case R_TX_COMMIT:
+	        return false;
+        case R_META_UPDATE:
+		block = record.data.meta_update.block;
+		break;
+        case R_USER_BLOCK_WRITE:
+		block = record.data.user_block_write.block;
+		break;
+        default:
+                panic("Unsupported record type\n");
+        }
+
+	if (blockarray_contains(user_blocks, (void *)block)) {
+		return true;
+	}
+
+	return false;
+}
+
+static
+void
+sfs_undo_unsuccessful_transactions(struct sfs_fs *sfs, struct txid_tarray *commited_txs, struct blockarray *user_blocks)
+{
+	int err;
+	struct sfs_jiter *ji;
+	enum sfs_record_type record_type;
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	err = sfs_jiter_revcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+		record_ptr = sfs_jiter_rec(ji, &record_len);
+		memcpy(&record, record_ptr, record_len);
+
+		if (!txid_tarray_contains(commited_txs, (void*)record.r_txid) &&
+		    !sfs_skip_user_block_record(record, record_type, user_blocks)) {
+			sfs_record_undo(sfs, record, record_type);
+		}
+
+		err = sfs_jiter_prev(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+
+	sfs_jiter_destroy(ji);
+}
+
+static
+void
+sfs_redo_records(struct sfs_fs *sfs, struct blockarray *user_blocks)
+{
+	int err;
+	struct sfs_jiter *ji;
+	enum sfs_record_type record_type;
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	err = sfs_jiter_fwdcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+		record_ptr = sfs_jiter_rec(ji, &record_len);
+		memcpy(&record, record_ptr, record_len);
+
+		if (!sfs_skip_user_block_record(record, record_type, user_blocks)) {
+			sfs_record_redo(sfs, record, record_type);
+		}
+
+		err = sfs_jiter_next(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+
+	sfs_jiter_destroy(ji);
+}
+
+/*
+ * Returns an array of records to be skipped
+ */
+static
+struct blockarray *
+sfs_find_user_blocks(struct sfs_fs *sfs)
+{
+	int err;
+	struct sfs_jiter *ji;
+
+	enum sfs_record_type record_type;
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	daddr_t block;
+	bool user_block, meta_block;
+	struct blockarray *blocks;
+	struct blockarray *user_blocks;
+
+	blocks = blockarray_create();
+	if (blocks == NULL) {
+		panic("Error while reading journal\n");
+	}
+
+	user_blocks = blockarray_create();
+	if (blocks == NULL) {
+		panic("Error while reading journal\n");
+	}
+
+	err = sfs_jiter_revcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+		record_ptr = sfs_jiter_rec(ji, &record_len);
+		memcpy(&record, record_ptr, record_len);
+
+		block = 0;
+		meta_block = false;
+		user_block = false;
+
+		if (record_type == R_META_UPDATE) {
+			block = record.data.meta_update.block;
+			meta_block = true;
+		}
+
+		if (record_type == R_USER_BLOCK_WRITE) {
+			block = record.data.user_block_write.block;
+			user_block = true;
+		}
+
+		// If we haven't seen the block before, add it to the block list
+		// so we only record its final state once. Then, add it to the user
+		// block array only if it is a user block, i.e. only if it ends up
+		// as a user block.
+		if (user_block || meta_block) {
+			if (!blockarray_contains(blocks, (void *)block)) {
+				err = blockarray_add(blocks, (void *)block, NULL);
+				if (err) {
+					panic("Error while reading journal\n");
+				}
+
+				if (user_block) {
+					KASSERT(!blockarray_contains(user_blocks, (void *)block));
+
+					err = blockarray_add(user_blocks, (void *)block, NULL);
+					if (err) {
+						panic("Error while reading journal\n");
+					}
+				}
+			}
+		}
+
+		err = sfs_jiter_prev(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+
+	blockarray_destroy(blocks);
+	sfs_jiter_destroy(ji);
+	return user_blocks;
+}
+
+// Returns an array of transaction id's that have commit records
+static
+struct txid_tarray *
+sfs_check_records(struct sfs_fs *sfs)
+{
+	int err;
+	struct sfs_jiter *ji;
+	enum sfs_record_type record_type;
+	struct txid_tarray *commited_txs;
+
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	commited_txs = txid_tarray_create();
+	if (commited_txs == NULL) {
+		panic("Error while reading journal\n");
+	}
+
+	err = sfs_jiter_fwdcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+
+		if (record_type == R_TX_COMMIT) {
+			record_ptr = sfs_jiter_rec(ji, &record_len);
+			memcpy(&record, record_ptr, record_len);
+
+			err = txid_tarray_add(commited_txs, (void*)record.r_txid, NULL);
+			if (err) {
+				panic("Error while reading journal\n");
+			}
+		}
+
+		err = sfs_jiter_next(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+
+	sfs_jiter_destroy(ji);
+	return commited_txs;
+}
+
+static
+void
+sfs_recover(struct fs *fs)
+{
+	int err;
+	struct sfs_fs *sfs = fs->fs_data;
+	struct txid_tarray *commited_txs;
+	struct blockarray *user_blocks;
+
+	// Pass 1: (forward) note which transactions committed successfully
+	commited_txs = sfs_check_records(sfs);
+
+	// Pass 2: (reverse) note which blocks ended as user data
+	user_blocks = sfs_find_user_blocks(sfs);
+
+	// Pass 3: (forward) redo every record, skipping writes to eventual user data
+	sfs_redo_records(sfs, user_blocks);
+
+	// Pass 4: (reverse) undo transactions without a commit record, skipping
+	// writes to eventual user data
+	sfs_undo_unsuccessful_transactions(sfs, commited_txs, user_blocks);
+
+	// Cleanup
+	txid_tarray_destroy(commited_txs);
+	blockarray_destroy(user_blocks);
+
+	// Sync our changes to disk
+	err = sync_fs_buffers(fs);
+	if (err) {
+		panic("Error while flushing during recovery\n");
+	}
+
+	err = sfs_sync_freemap(sfs);
+	if (err) {
+		panic("Error while flushing during recovery\n");
+	}
+
+	err = sfs_sync_superblock(sfs);
+	if (err) {
+		panic("Error while flushing during recovery\n");
+	}
 }
 
 /*
@@ -511,6 +821,8 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 {
 	int result;
 	struct sfs_fs *sfs;
+	sfs_lsn_t next_lsn;
+	char *checkpoint_name;
 
 	/* We don't pass any options through mount */
 	(void)options;
@@ -627,9 +939,7 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	reserve_buffers(SFS_BLOCKSIZE);
 
-	/********************************/
-	/* Call your recovery code here */
-	/********************************/
+	sfs_recover(&sfs->sfs_absfs);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
 
@@ -649,11 +959,38 @@ sfs_domount(void *options, struct device *dev, struct fs **ret)
 
 	reserve_buffers(SFS_BLOCKSIZE);
 
-	/**************************************/
-	/* Maybe call more recovery code here */
-	/**************************************/
+	/* Empty the journal */
+	next_lsn = sfs_jphys_peeknextlsn(sfs);
+	sfs_jphys_trim(sfs, next_lsn);
+	sfs_jphys_flushall(sfs);
+
+	/* Empty the graveyard, and empty the journal again */
+	graveyard_flush(sfs);
+	next_lsn = sfs_jphys_peeknextlsn(sfs);
+	sfs_jphys_trim(sfs, next_lsn);
+	sfs_jphys_flushall(sfs);
 
 	unreserve_buffers(SFS_BLOCKSIZE);
+
+	/* Fire up the checkpointing thread */
+	checkpoint_name = kstrdup("checkpointing thread");
+	if (checkpoint_name == NULL) {
+		unreserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
+		drop_fs_buffers(&sfs->sfs_absfs);
+		sfs->sfs_device = NULL;
+		sfs_fs_destroy(sfs);
+		return ENOMEM;
+	}
+
+	result = thread_fork(checkpoint_name, NULL, checkpoint_thread, sfs, 0);
+	if (result) {
+		unreserve_fsmanaged_buffers(2, SFS_BLOCKSIZE);
+		drop_fs_buffers(&sfs->sfs_absfs);
+		sfs->sfs_device = NULL;
+		sfs_fs_destroy(sfs);
+		kfree(checkpoint_name);
+		return ENOMEM;
+	}
 
 	return 0;
 }

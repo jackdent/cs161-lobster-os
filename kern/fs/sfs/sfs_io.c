@@ -42,7 +42,7 @@
 #include <device.h>
 #include <sfs.h>
 #include "sfsprivate.h"
-#include "sfs_record.h"
+#include "sfs_transaction.h"
 
 ////////////////////////////////////////////////////////////
 //
@@ -201,6 +201,7 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	char *ioptr;
 	daddr_t diskblock;
 	uint32_t fileblock;
+	struct sfs_record *record;
 	int result;
 
 	/* Allocate missing blocks if and only if we're writing */
@@ -239,10 +240,24 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 		}
 	}
 
+	ioptr = buffer_map(iobuffer);
+
+	/*
+	 * Log a write to the journal
+	 */
+	if (uio->uio_rw == UIO_WRITE) {
+		// Log the checusm of the disk block *before* overwriting the data
+		record = sfs_record_create_user_block_write(diskblock, ioptr);
+		if (record == NULL) {
+			buffer_release(iobuffer);
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(sfs, record, R_USER_BLOCK_WRITE);
+	}
+
 	/*
 	 * Now perform the requested operation into/out of the buffer.
 	 */
-	ioptr = buffer_map(iobuffer);
 	result = uiomove(ioptr+skipstart, len, uio);
 	if (result) {
 		buffer_release(iobuffer);
@@ -253,6 +268,7 @@ sfs_partialio(struct sfs_vnode *sv, struct uio *uio,
 	 * If it was a write, mark the modified block dirty.
 	 */
 	if (uio->uio_rw == UIO_WRITE) {
+		buffer_update_lsns(iobuffer, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(iobuffer);
 	}
 
@@ -277,6 +293,7 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	daddr_t diskblock;
 	uint32_t fileblock;
 	int result;
+	struct sfs_record *record;
 	bool doalloc = (uio->uio_rw==UIO_WRITE);
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
@@ -313,10 +330,24 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 		return result;
 	}
 
+	ioptr = buffer_map(iobuf);
+
+	/*
+	 * Log a write to the journal
+	 */
+	if (uio->uio_rw == UIO_WRITE) {
+		// Log the checusm of the disk block *before* overwriting the data
+		record = sfs_record_create_user_block_write(diskblock, ioptr);
+		if (record == NULL) {
+			buffer_release(iobuf);
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(sfs, record, R_USER_BLOCK_WRITE);
+	}
+
 	/*
 	 * Do the I/O into the buffer.
 	 */
-	ioptr = buffer_map(iobuf);
 	result = uiomove(ioptr, SFS_BLOCKSIZE, uio);
 	if (result) {
 		buffer_release(iobuf);
@@ -325,6 +356,7 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 
 	if (uio->uio_rw == UIO_WRITE) {
 		buffer_mark_valid(iobuf);
+		buffer_update_lsns(iobuf, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(iobuf);
 	}
 
@@ -347,6 +379,12 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 	int result = 0;
 	uint32_t origresid, extraresid = 0;
 	struct sfs_dinode *inodeptr;
+	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
+	struct sfs_record *record;
+	uint32_t old_size, new_size;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -440,7 +478,23 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 	if (uio->uio_resid != origresid &&
 	    uio->uio_rw == UIO_WRITE &&
 	    uio->uio_offset > (off_t)inodeptr->sfi_size) {
+
+		/* Create the record */
+		block = buffer_get_block_number(sv->sv_dinobuf);
+		pos = (void*)&inodeptr->sfi_size - (void*)inodeptr;
+		len = sizeof(inodeptr->sfi_size);
+		old_size = inodeptr->sfi_size;
+		new_size = uio->uio_offset;
+
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_size, (char *)&new_size);
+		if (record == NULL) {
+			sfs_dinode_unload(sv);
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 		inodeptr->sfi_size = uio->uio_offset;
+		buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 		sfs_dinode_mark_dirty(sv);
 	}
 	sfs_dinode_unload(sv);
@@ -479,9 +533,11 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	struct buf *iobuf;
 	char *ioptr;
 	bool doalloc;
-	int result;
 	struct sfs_record *record;
-	struct sfs_meta_update *meta_update;
+	uint32_t old_size, new_size;
+	int result;
+	daddr_t block;
+	off_t pos;
 
 	KASSERT(lock_do_i_hold(sv->sv_lock));
 
@@ -521,8 +577,7 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		 * XXX: if we allocated, do we need to discard
 		 * the block we allocated? urgh...
 		 */
-		sfs_dinode_unload(sv);
-		return result;
+		goto out0;
 	}
 
 	ioptr = buffer_map(iobuf);
@@ -531,38 +586,52 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 		memcpy(data, ioptr + blockoffset, len);
 	}
 	else {
-		/* Create the record */
-		record = kmalloc(sizeof(struct sfs_record));
+		KASSERT(len < SFS_MAX_META_UPDATE_SIZE);
+		KASSERT(blockoffset + len < SFS_BLOCKSIZE);
+
+		record = sfs_record_create_meta_update(diskblock, blockoffset, len, (char *)(ioptr + blockoffset), (char *)data);
 		if (record == NULL) {
-			return ENOMEM;
+			result = ENOMEM;
+			goto out1;
 		}
-
-		KASSERT(len < 128);
-		meta_update = &record->r_parameters.meta_update;
-
-		meta_update->block = buffer_get_block_number(iobuf);
-		meta_update->pos = blockoffset;
-		meta_update->len = len;
-		memcpy((void*)meta_update->old_value, (void*)(ioptr + blockoffset), len);
-		memcpy((void*)meta_update->new_value, (void*)data, len);
-
-		sfs_current_transaction_add_record(record, R_META_UPDATE);
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		/* Update the selected region */
 		memcpy(ioptr + blockoffset, data, len);
+		buffer_update_lsns(iobuf, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(iobuf);
 
 		/* Update the vnode size if needed */
 		endpos = actualpos + len;
 		if (endpos > (off_t)dino->sfi_size) {
+
+			/* Create the record */
+			block = buffer_get_block_number(sv->sv_dinobuf);
+			pos = (void*)&dino->sfi_size - (void*)dino;
+			len = sizeof(dino->sfi_size);
+			old_size = dino->sfi_size;
+			new_size = endpos;
+
+			record = sfs_record_create_meta_update(block, pos, len, (char *)&old_size, (char *)&new_size);
+			if (record == NULL) {
+				result = ENOMEM;
+				goto out1;
+			}
+			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 			dino->sfi_size = endpos;
+			buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 			sfs_dinode_mark_dirty(sv);
 		}
 	}
 
+	result = 0;
+
+out1:
 	buffer_release(iobuf);
+out0:
 	sfs_dinode_unload(sv);
 
 	/* Done */
-	return 0;
+	return result;
 }

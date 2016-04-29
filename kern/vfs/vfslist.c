@@ -499,7 +499,6 @@ vfs_mount(const char *devname, void *data,
 
 	lock_acquire(knowndevs_lock);
 
-
 	result = findmount(devname, &kd);
 	if (result) {
 		goto fail;
@@ -518,7 +517,7 @@ vfs_mount(const char *devname, void *data,
 	}
 
 	KASSERT(fs != NULL);
-	KASSERT(fs != SWAP_FS); 
+	KASSERT(fs != SWAP_FS);
 
 	kd->kd_fs = fs;
 

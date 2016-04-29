@@ -33,12 +33,15 @@
  * Block allocation.
  */
 #include <types.h>
+#include <kern/errno.h>
 #include <lib.h>
 #include <bitmap.h>
 #include <synch.h>
 #include <buf.h>
 #include <sfs.h>
+#include <kern/sfs.h>
 #include "sfsprivate.h"
+#include "sfs_transaction.h"
 
 /*
  * Zero out a disk block.
@@ -86,6 +89,8 @@ int
 sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 {
 	int result;
+	sfs_lsn_t new_lsn;
+	struct sfs_record *record;
 
 	lock_acquire(sfs->sfs_freemaplock);
 
@@ -95,6 +100,24 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 		return result;
 	}
 	sfs->sfs_freemapdirty = true;
+
+	/* Create the record
+	 * (OK that this is after bitmap_alloc since we still have
+	 * the freemap lock, so it won't be flushed yet) */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		bitmap_unmark(sfs->sfs_freemap, *diskblock);
+		sfs->sfs_freemapdirty = false;
+		lock_release(sfs->sfs_freemaplock);
+		return ENOMEM;
+	}
+
+	record->data.freemap_update.block = *diskblock;
+	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_CAPTURE);
+
+	new_lsn = curthread->t_tx->tx_highest_lsn;
+	sfs->sfs_freemap_lowest_lsn = (sfs->sfs_freemap_lowest_lsn == 0 ? new_lsn : sfs->sfs_freemap_lowest_lsn);
+	sfs->sfs_freemap_highest_lsn = new_lsn;
 
 	lock_release(sfs->sfs_freemaplock);
 
@@ -117,7 +140,23 @@ sfs_balloc(struct sfs_fs *sfs, daddr_t *diskblock, struct buf **bufret)
 void
 sfs_bfree_prelocked(struct sfs_fs *sfs, daddr_t diskblock)
 {
+	struct sfs_record *record;
+	sfs_lsn_t new_lsn;
+
 	KASSERT(lock_do_i_hold(sfs->sfs_freemaplock));
+
+	/* Create the record */
+	record = kmalloc(sizeof(struct sfs_record));
+	if (record == NULL) {
+		panic("Out of memory when making record\n");
+	}
+
+	record->data.freemap_update.block = diskblock;
+	sfs_current_transaction_add_record(sfs, record, R_FREEMAP_RELEASE);
+
+	new_lsn = curthread->t_tx->tx_highest_lsn;
+	sfs->sfs_freemap_lowest_lsn = (sfs->sfs_freemap_lowest_lsn == 0 ? new_lsn : sfs->sfs_freemap_lowest_lsn);
+	sfs->sfs_freemap_highest_lsn = new_lsn;
 
 	bitmap_unmark(sfs->sfs_freemap, diskblock);
 	sfs->sfs_freemapdirty = true;

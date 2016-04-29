@@ -46,9 +46,10 @@
 #define SFS_DBPERIDB      128           /* # direct blks per indirect blk */
 #define SFS_NAMELEN       60            /* max length of filename */
 #define SFS_SUPER_BLOCK   0             /* block the superblock lives in */
-#define SFS_FREEMAP_START 2             /* 1st block of the freemap */
+#define SFS_FREEMAP_START 3             /* 1st block of the freemap */
 #define SFS_NOINO         0             /* inode # for free dir entry */
 #define SFS_ROOTDIR_INO   1             /* loc'n of the root dir inode */
+#define SFS_GRAVEYARD_INO 2             /* loc'n of the graveyard inode */
 
 /* Number of bits in a block */
 #define SFS_BITSPERBLOCK (SFS_BLOCKSIZE * CHAR_BIT)
@@ -156,5 +157,48 @@ struct sfs_jphys_trim {
 	uint64_t jt_taillsn;			/* Tail LSN */
 };
 
+/* The record schema */
+
+#define SFS_MAX_META_UPDATE_SIZE 128
+
+enum sfs_record_type {
+        R_TX_BEGIN,
+        R_TX_COMMIT,
+
+        R_FREEMAP_CAPTURE,
+        R_FREEMAP_RELEASE,
+
+        R_META_UPDATE,
+        R_USER_BLOCK_WRITE
+};
+
+struct sfs_freemap_update {
+        uint32_t block;
+};
+
+struct sfs_meta_update {
+        uint32_t block;
+        uint64_t pos;
+        uint32_t len;
+        char old_value[SFS_MAX_META_UPDATE_SIZE];
+        char new_value[SFS_MAX_META_UPDATE_SIZE];
+};
+
+struct sfs_user_block_write {
+        uint32_t block;
+        uint32_t checksum;
+};
+
+// Journal record (directly serialized)
+typedef uint32_t txid_t;
+
+struct sfs_record {
+        txid_t r_txid;
+        union {
+                struct sfs_freemap_update freemap_update;
+                struct sfs_meta_update meta_update;
+                struct sfs_user_block_write user_block_write;
+        } data;
+};
 
 #endif /* _KERN_SFS_H_ */

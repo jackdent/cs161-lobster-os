@@ -131,9 +131,6 @@ struct thread {
 					transaction, reset to NULL when all
 					records have been journaled */
 
-	struct sfs_fs *t_sfs_fs;	/* like t_tx, but for the current
-					device struct */
-
 	/* Scheduling */
 #if USING_SCHEDULER
 	int t_priority;
