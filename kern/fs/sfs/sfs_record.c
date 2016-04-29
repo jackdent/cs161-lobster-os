@@ -1,6 +1,7 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <bitmap.h>
+#include <lib.h>
 #include "sfs_record.h"
 #include "sfsprivate.h"
 #include "buf.h"
@@ -26,8 +27,12 @@ sfs_record_create_meta_update(daddr_t block, off_t pos, size_t len, char *old_va
         meta_update->block = block;
         meta_update->pos = pos;
         meta_update->len = len;
-        memcpy((void*)meta_update->old_value, (void*)&old_value, len);
-        memcpy((void*)meta_update->new_value, (void*)&new_value, len);
+        memcpy((void*)meta_update->old_value, (void*)old_value, len);
+        memcpy((void*)meta_update->new_value, (void*)new_value, len);
+
+        /* set rest of buffers to 0 for debugging purposes */
+        bzero((void*)meta_update->old_value + len, MAX_META_UPDATE_SIZE - len);
+        bzero((void*)meta_update->new_value + len, MAX_META_UPDATE_SIZE - len);
 
         return record;
 }
