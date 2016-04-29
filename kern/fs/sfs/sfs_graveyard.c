@@ -123,8 +123,8 @@ graveyard_flush(struct sfs_fs *sfs)
                 panic("Could not read slots while flushing graveyard\n");
         }
 
-        /* For each slot... */
-        for (i = 0; i < nentries; i++) {
+        /* For each slot, skipping . and .. */
+        for (i = 2; i < nentries; i++) {
                 err = sfs_readdir(graveyard, i, &sd);
                 if (err) {
                         panic("Could not read direntry from slot while flushing graveyard\n");
