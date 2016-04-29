@@ -165,6 +165,7 @@ sfs_current_transaction_add_record(struct sfs_fs *sfs, struct sfs_record *record
                         panic("Could not create record\n");
                 }
 
+                begin_tx_record->r_txid = curthread->t_tx->tx_id;
                 sfs_transaction_add_record(sfs, curthread->t_tx, begin_tx_record, R_TX_BEGIN);
         }
 
