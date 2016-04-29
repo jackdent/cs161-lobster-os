@@ -178,7 +178,7 @@ struct sfs_freemap_update {
 
 struct sfs_meta_update {
         uint32_t block;
-        uint64_t pos;
+        uint32_t pos;
         uint32_t len;
         char old_value[SFS_MAX_META_UPDATE_SIZE];
         char new_value[SFS_MAX_META_UPDATE_SIZE];
@@ -194,11 +194,9 @@ typedef uint32_t txid_t;
 
 struct sfs_record {
         txid_t r_txid;
-        union {
-                struct sfs_freemap_update freemap_update;
-                struct sfs_meta_update meta_update;
-                struct sfs_user_block_write user_block_write;
-        } data;
+        struct sfs_freemap_update freemap_update;
+        struct sfs_meta_update meta_update;
+        struct sfs_user_block_write user_block_write;
 };
 
 #endif /* _KERN_SFS_H_ */

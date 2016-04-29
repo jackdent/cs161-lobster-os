@@ -364,18 +364,15 @@ dump_client_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
 		   unsigned type, void *data, size_t len)
 {
 	char buf[64];
-	struct sfs_record *record;
-	enum sfs_record_type record_type;
+	struct sfs_record record;
 	uint32_t i;
 
-	(void)len;
-	record = data;
-	record_type = type;
+	copyandzero(&record, sizeof(struct sfs_record), data, len);
 
 	snprintf(buf, sizeof(buf), "[%u.%u]:", myblock, myoffset);
-	printf("    %-8s %-8llu %u ", buf, (unsigned long long)mylsn, record->r_txid);
+	printf("    %-8s %-8llu %u ", buf, (unsigned long long)mylsn, (unsigned)SWAP32(record.r_txid));
 
-	switch (record_type) {
+	switch (type) {
         case R_TX_BEGIN:
 		printf("TX_BEGIN\n");
 		break;
@@ -384,31 +381,31 @@ dump_client_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
 		break;
         case R_FREEMAP_CAPTURE:
 		printf("FREEMAP_CAPTURE ");
-		printf("block:%u\n", record->data.freemap_update.block);
+		printf("block:%u\n", (unsigned)SWAP32(record.freemap_update.block));
 		break;
         case R_FREEMAP_RELEASE:
 		printf("FREEMAP_RELEASE ");
-		printf("block:%u\n", record->data.freemap_update.block);
+		printf("block:%u\n", (unsigned)SWAP32(record.freemap_update.block));
 		break;
         case R_META_UPDATE:
 		printf("META_UPDATE ");
-		printf("block:%u ", record->data.meta_update.block);
-		printf("pos:%llu ", record->data.meta_update.pos);
-		printf("len:%u ", record->data.meta_update.len);
+		printf("block:%u ", (unsigned)SWAP32(record.meta_update.block));
+		printf("pos:%u ", (unsigned)SWAP32(record.meta_update.pos));
+		printf("len:%u ", (unsigned)SWAP32(record.meta_update.len));
 		printf("old:");
-		for (i = 0; i < record->data.meta_update.len; i++) {
-			printf("%c", record->data.meta_update.old_value[i]);
+		for (i = 0; i < (unsigned)SWAP32(record.meta_update.len); i++) {
+			printf("%c", record.meta_update.old_value[i]);
 		}
 		printf(" new:");
-		for (i = 0; i < record->data.meta_update.len; i++) {
-			printf("%c", record->data.meta_update.new_value[i]);
+		for (i = 0; i < (unsigned)SWAP32(record.meta_update.len); i++) {
+			printf("%c", record.meta_update.new_value[i]);
 		}
 		printf("\n");
 		break;
         case R_USER_BLOCK_WRITE:
 		printf("USER_BLOCK_WRITE ");
-		printf("block:%u ", record->data.user_block_write.block);
-		printf("checksum:%u\n", record->data.user_block_write.checksum);
+		printf("block:%u ", (unsigned)SWAP32(record.user_block_write.block));
+		printf("checksum:%u\n", (unsigned)SWAP32(record.user_block_write.checksum));
 		break;
 	default:
 		/* XXX hexdump it */
