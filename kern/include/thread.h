@@ -131,6 +131,17 @@ struct thread {
 					transaction, reset to NULL when all
 					records have been journaled */
 
+	int t_sfs_otrunc;		/* 0 normally, 1 before calling sfs_creat, 2
+					before calling sfs_truncate().
+					*ONLY* used when open() is called with
+					O_TRUNC set so that sfs_creat() knows
+					not to R_TX_COMMIT if creating the file
+					and instead let the subsequent sfs_truncate()
+					call make the commit. This also tells
+					sfs_truncate() to not make R_TX_BEGIN
+					record. Hackish, but necessary to make
+					open() atomic at the vfs layer. */
+
 	/* Scheduling */
 #if USING_SCHEDULER
 	int t_priority;

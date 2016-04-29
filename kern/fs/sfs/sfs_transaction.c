@@ -157,13 +157,15 @@ sfs_current_transaction_add_record(struct sfs_fs *sfs, struct sfs_record *record
 
                 curthread->t_tx = tx;
 
-                begin_tx_record = kmalloc(sizeof(struct sfs_record));
-                if (begin_tx_record == NULL) {
-                        panic("Could not create record\n");
-                }
+                if (curthread->t_sfs_otrunc != 2) {
+                    begin_tx_record = kmalloc(sizeof(struct sfs_record));
+                    if (begin_tx_record == NULL) {
+                            panic("Could not create record\n");
+                    }
 
-                begin_tx_record->r_txid = curthread->t_tx->tx_id;
-                sfs_transaction_add_record(sfs, curthread->t_tx, begin_tx_record, R_TX_BEGIN);
+                    begin_tx_record->r_txid = curthread->t_tx->tx_id;
+                    sfs_transaction_add_record(sfs, curthread->t_tx, begin_tx_record, R_TX_BEGIN);
+                }
         }
 
         record->r_txid = curthread->t_tx->tx_id;

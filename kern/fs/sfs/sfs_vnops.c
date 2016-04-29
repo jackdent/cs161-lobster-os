@@ -697,11 +697,20 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 
 	*ret = &newguy->sv_absvn;
 
-	/* Commit record */
-	result = sfs_current_transaction_commit(sfs);
-	if (result) {
-		VOP_DECREF(&newguy->sv_absvn);
-		goto out;
+	if (curthread->t_sfs_otrunc != 1) {
+		/* Normal case */
+
+		/* Commit record */
+		result = sfs_current_transaction_commit(sfs);
+		if (result) {
+			VOP_DECREF(&newguy->sv_absvn);
+			goto out;
+		}
+	}
+	else {
+		/* Don't commit, and tell sfs_truncate not to log a begin record */
+		curthread->t_sfs_otrunc = 2;
+
 	}
 
 	result = 0;

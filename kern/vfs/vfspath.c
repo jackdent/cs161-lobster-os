@@ -35,6 +35,7 @@
 #include <kern/errno.h>
 #include <kern/fcntl.h>
 #include <limits.h>
+#include <current.h>
 #include <lib.h>
 #include <vfs.h>
 #include <vnode.h>
@@ -61,6 +62,10 @@ vfs_open(char *path, int openflags, mode_t mode, struct vnode **ret)
 		break;
 	    default:
 		return EINVAL;
+	}
+
+	if (openflags & O_TRUNC) {
+		curthread->t_sfs_otrunc = 1;
 	}
 
 	if (openflags & O_CREAT) {
@@ -105,6 +110,8 @@ vfs_open(char *path, int openflags, mode_t mode, struct vnode **ret)
 			return result;
 		}
 	}
+
+	curthread->t_sfs_otrunc = 0;
 
 	*ret = vn;
 
