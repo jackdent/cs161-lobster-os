@@ -31,8 +31,8 @@ sfs_record_create_meta_update(daddr_t block, off_t pos, size_t len, char *old_va
         memcpy((void*)meta_update->new_value, (void*)new_value, len);
 
         /* set rest of buffers to 0 for debugging purposes */
-        bzero((void*)meta_update->old_value + len, MAX_META_UPDATE_SIZE - len);
-        bzero((void*)meta_update->new_value + len, MAX_META_UPDATE_SIZE - len);
+        bzero((void*)meta_update->old_value + len, SFS_MAX_META_UPDATE_SIZE - len);
+        bzero((void*)meta_update->new_value + len, SFS_MAX_META_UPDATE_SIZE - len);
 
         return record;
 }
@@ -154,8 +154,10 @@ sfs_freemap_update(struct sfs_fs *sfs, struct sfs_freemap_update freemap_update,
 
         if (capture && !occupied) {
                 bitmap_mark(sfs->sfs_freemap, freemap_update.block);
+                sfs->sfs_freemapdirty = true;
         } else if (!capture && occupied) {
                 bitmap_unmark(sfs->sfs_freemap, freemap_update.block);
+                sfs->sfs_freemapdirty = true;
         }
 }
 

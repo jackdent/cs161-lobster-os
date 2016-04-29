@@ -24,7 +24,11 @@ sfs_transaction_set_create(void)
                 tx_set->tx_transactions[i] = NULL;
         }
 
-        tx_set->tx_id_counter = 0;
+        /*
+         * Start at 1 to avoid conflicting with the NULL values in an array
+         * when recovering
+         */
+        tx_set->tx_id_counter = 1;
 
         return tx_set;
 }
