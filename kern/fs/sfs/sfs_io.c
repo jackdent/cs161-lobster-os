@@ -381,7 +381,7 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 	struct sfs_dinode *inodeptr;
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_record *record;
-	int old_size, new_size;
+	uint32_t old_size, new_size;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -481,8 +481,8 @@ sfs_io(struct sfs_vnode *sv, struct uio *uio)
 
 		/* Create the record */
 		block = buffer_get_block_number(sv->sv_dinobuf);
-		pos = (void*)&inodeptr->sfi_linkcount - (void*)inodeptr;
-		len = sizeof(uint32_t);
+		pos = (void*)&inodeptr->sfi_size - (void*)inodeptr;
+		len = sizeof(inodeptr->sfi_size);
 		old_size = inodeptr->sfi_size;
 		new_size = uio->uio_offset;
 
@@ -534,7 +534,8 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 	char *ioptr;
 	bool doalloc;
 	struct sfs_record *record;
-	int old_size, new_size, result;
+	uint32_t old_size, new_size;
+	int result;
 	daddr_t block;
 	off_t pos;
 
@@ -606,8 +607,8 @@ sfs_metaio(struct sfs_vnode *sv, off_t actualpos, void *data, size_t len,
 
 			/* Create the record */
 			block = buffer_get_block_number(sv->sv_dinobuf);
-			pos = (void*)&dino->sfi_linkcount - (void*)dino;
-			len = sizeof(uint32_t);
+			pos = (void*)&dino->sfi_size - (void*)dino;
+			len = sizeof(dino->sfi_size);
 			old_size = dino->sfi_size;
 			new_size = endpos;
 

@@ -1108,8 +1108,8 @@ sfs_itrunc(struct sfs_vnode *sv, off_t newlen)
 	/* Create file size change record */
 
 	block = buffer_get_block_number(sv->sv_dinobuf);
-	pos = (void*)&inodeptr->sfi_linkcount - (void*)inodeptr;
-	len = sizeof(uint32_t);
+	pos = (void*)&inodeptr->sfi_size - (void*)inodeptr;
+	len = sizeof(inodeptr->sfi_size);
 	old_rec_len = inodeptr->sfi_size;
 	new_rec_len = newlen;
 

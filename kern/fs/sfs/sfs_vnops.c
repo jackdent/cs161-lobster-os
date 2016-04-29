@@ -596,7 +596,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 	uint32_t ino;
 	int result;
 	struct sfs_record *record;
-	int old_linkcount, new_linkcount;
+	uint32_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -676,7 +676,7 @@ sfs_creat(struct vnode *v, const char *name, bool excl, mode_t mode,
 
 	block = buffer_get_block_number(newguy->sv_dinobuf);
 	pos = (void*)&new_dino->sfi_linkcount - (void*)new_dino;
-	len = sizeof(uint32_t);
+	len = sizeof(new_dino->sfi_linkcount);
 	old_linkcount = new_dino->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
@@ -734,7 +734,8 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 	struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 	struct sfs_dinode *inodeptr;
 	struct sfs_record *record;
-	int old_linkcount, new_linkcount, result;
+	uint32_t old_linkcount, new_linkcount;
+	int result;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -771,7 +772,7 @@ sfs_link(struct vnode *dir, const char *name, struct vnode *file)
 
 	block = buffer_get_block_number(f->sv_dinobuf);
 	pos = (void*)&inodeptr->sfi_linkcount - (void*)inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(inodeptr->sfi_linkcount);
 	old_linkcount = inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
@@ -826,7 +827,8 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	struct sfs_dinode *new_inodeptr;
 	struct sfs_vnode *newguy;
 	struct sfs_record *record;
-	int old_linkcount, new_linkcount, result;
+	uint32_t old_linkcount, new_linkcount;
+	int result;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -904,7 +906,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	/* Create the link increment record for itself */
 	block = buffer_get_block_number(newguy->sv_dinobuf);
 	pos = (void*)&new_inodeptr->sfi_linkcount - (void*)new_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(new_inodeptr->sfi_linkcount);
 	old_linkcount = new_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 2;
 
@@ -921,7 +923,7 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	/* Create the link increment record for parent dir */
 	block = buffer_get_block_number(sv->sv_dinobuf);
 	pos = (void*)&dir_inodeptr->sfi_linkcount - (void*)dir_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(dir_inodeptr->sfi_linkcount);
 	old_linkcount = dir_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
@@ -986,9 +988,9 @@ sfs_rmdir(struct vnode *v, const char *name)
 	struct sfs_vnode *victim;
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_dinode *victim_inodeptr;
-	int result, result2;
+	int result, result2, slot;
 	struct sfs_record *record;
-	int slot, old_linkcount, new_linkcount;
+	uint32_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -1051,7 +1053,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	/* Create the link decrement record for the parent dir */
 	block = buffer_get_block_number(sv->sv_dinobuf);
 	pos = (void*)&dir_inodeptr->sfi_linkcount - (void*)dir_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(dir_inodeptr->sfi_linkcount);
 	old_linkcount = dir_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 1;
 
@@ -1068,7 +1070,7 @@ sfs_rmdir(struct vnode *v, const char *name)
 	/* Create the link decrement record for the victim dir */
 	block = buffer_get_block_number(victim->sv_dinobuf);
 	pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(victim_inodeptr->sfi_linkcount);
 	old_linkcount = victim_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 2;
 
@@ -1146,7 +1148,8 @@ sfs_remove(struct vnode *dir, const char *name)
 	struct sfs_dinode *victim_inodeptr;
 	struct sfs_dinode *dir_inodeptr;
 	struct sfs_record *record;
-	int slot, old_linkcount, new_linkcount, result;
+	int slot, result;
+	uint32_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -1204,7 +1207,7 @@ sfs_remove(struct vnode *dir, const char *name)
 	/* Create the record */
 	block = buffer_get_block_number(victim->sv_dinobuf);
 	pos = (void*)&victim_inodeptr->sfi_linkcount - (void*)victim_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(victim_inodeptr->sfi_linkcount);
 	old_linkcount = victim_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 1;
 
@@ -1338,7 +1341,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 	struct sfs_direntry sd;
 	int found_dir1;
 	struct sfs_record *record;
-	int old_linkcount, new_linkcount;
+	uint32_t old_linkcount, new_linkcount;
 	daddr_t block;
 	off_t pos;
 	size_t len;
@@ -1662,7 +1665,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			block = buffer_get_block_number(dir2->sv_dinobuf);
 			pos = (void*)&dir2_inodeptr->sfi_linkcount - (void*)dir2_inodeptr;
-			len = sizeof(uint32_t);
+			len = sizeof(dir2_inodeptr->sfi_linkcount);
 			old_linkcount = dir2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 1;
 
@@ -1680,7 +1683,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			block = buffer_get_block_number(obj2->sv_dinobuf);
 			pos = (void*)&obj2_inodeptr->sfi_linkcount - (void*)obj2_inodeptr;
-			len = sizeof(uint32_t);
+			len = sizeof(dir2_inodeptr->sfi_linkcount);
 			old_linkcount = obj2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 2;
 
@@ -1720,7 +1723,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			block = buffer_get_block_number(obj2->sv_dinobuf);
 			pos = (void*)&obj2_inodeptr->sfi_linkcount - (void*)obj2_inodeptr;
-			len = sizeof(uint32_t);
+			len = sizeof(dir2_inodeptr->sfi_linkcount);
 			old_linkcount = obj2_inodeptr->sfi_linkcount;
 			new_linkcount = old_linkcount - 1;
 
@@ -1763,7 +1766,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 	block = buffer_get_block_number(obj1->sv_dinobuf);
 	pos = (void*)&obj1_inodeptr->sfi_linkcount - (void*)obj1_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(dir2_inodeptr->sfi_linkcount);
 	old_linkcount = obj1_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount + 1;
 
@@ -1804,7 +1807,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 		block = buffer_get_block_number(dir1->sv_dinobuf);
 		pos = (void*)&dir1_inodeptr->sfi_linkcount - (void*)dir1_inodeptr;
-		len = sizeof(uint32_t);
+		len = sizeof(dir2_inodeptr->sfi_linkcount);
 		old_linkcount = dir1_inodeptr->sfi_linkcount;
 		new_linkcount = old_linkcount - 1;
 
@@ -1823,7 +1826,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 		block = buffer_get_block_number(dir2->sv_dinobuf);
 		pos = (void*)&dir2_inodeptr->sfi_linkcount - (void*)dir2_inodeptr;
-		len = sizeof(uint32_t);
+		len = sizeof(dir2_inodeptr->sfi_linkcount);
 		old_linkcount = dir2_inodeptr->sfi_linkcount;
 		new_linkcount = old_linkcount + 1;
 
@@ -1848,7 +1851,7 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 	block = buffer_get_block_number(obj1->sv_dinobuf);
 	pos = (void*)&obj1_inodeptr->sfi_linkcount - (void*)obj1_inodeptr;
-	len = sizeof(uint32_t);
+	len = sizeof(dir2_inodeptr->sfi_linkcount);
 	old_linkcount = obj1_inodeptr->sfi_linkcount;
 	new_linkcount = old_linkcount - 1;
 
