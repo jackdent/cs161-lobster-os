@@ -532,8 +532,10 @@ sfs_skip_user_block_record(struct sfs_record record, enum sfs_record_type record
 	        return false;
         case R_META_UPDATE:
 		block = record.r_parameters.meta_update.block;
+		break;
         case R_USER_BLOCK_WRITE:
 		block = record.r_parameters.user_block_write.block;
+		break;
         default:
                 panic("Unsupported record type\n");
         }
