@@ -934,10 +934,6 @@ buffer_writeout_internal(struct buf *b)
 	sfs_jphys_flush(b->b_fs->fs_data, b->b_highest_lsn);
 	lock_acquire(buffer_lock);
 
-	if (!b->b_dirty) {
-		return 0;
-	}
-
 	num_total_writeouts++;
 	lock_release(buffer_lock);
 	result = FSOP_WRITEBLOCK(b->b_fs, b->b_physblock, b->b_fsdata,
