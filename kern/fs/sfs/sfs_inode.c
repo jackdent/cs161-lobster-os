@@ -42,6 +42,7 @@
 #include <buf.h>
 #include <sfs.h>
 #include "sfsprivate.h"
+#include "sfs_transaction.h"
 #include "sfs_graveyard.h"
 
 /*
@@ -319,6 +320,11 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 	const struct vnode_ops *ops;
 	unsigned i, num;
 	int result;
+	struct sfs_record *record;
+	uint16_t old_type, new_type;
+	daddr_t block;
+	off_t pos;
+	size_t len;
 
 	/* sfs_vnlock protects the vnodes table */
 	lock_acquire(sfs->sfs_vnlock);
@@ -384,6 +390,21 @@ sfs_loadvnode(struct sfs_fs *sfs, uint32_t ino, int forcetype,
 	 */
 	if (forcetype != SFS_TYPE_INVAL) {
 		KASSERT(dino->sfi_type == SFS_TYPE_INVAL);
+
+		/* Make the record */
+		block = buffer_get_block_number(dinobuf);
+		pos = (void*)&dino->sfi_type - (void*)dino;
+		len = sizeof(dino->sfi_type);
+		old_type = dino->sfi_type;
+		new_type = forcetype;
+
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old_type, (char *)&new_type);
+		if (record == NULL) {
+			lock_release(sfs->sfs_vnlock);
+			return ENOMEM;
+		}
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 		dino->sfi_type = forcetype;
 		buffer_mark_dirty(dinobuf);
 	}
