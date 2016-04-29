@@ -80,7 +80,7 @@ graveyard_remove(struct sfs_fs *sfs, uint32_t ino)
         // Use directory entry buffer to store name
         snprintf(sd.sfd_name, SFS_NAMELEN, "%d", ino);
 
-        /* Remove directory entry from graveyard */
+        /* Find the slot */
 
         graveyard = graveyard_get(sfs);
 
@@ -92,6 +92,11 @@ graveyard_remove(struct sfs_fs *sfs, uint32_t ino)
         }
 
         KASSERT(entry == ino);
+
+        /* Remove directory entry from graveyard */
+
+        bzero(&sd, sizeof(sd));
+        sd.sfd_ino = SFS_NOINO;
 
         err = sfs_writedir(graveyard, slot, &sd);
         if (err) {
