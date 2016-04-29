@@ -373,24 +373,28 @@ dump_client_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
 	record_type = type;
 
 	snprintf(buf, sizeof(buf), "[%u.%u]:", myblock, myoffset);
-	printf("    %-8s %-8llu %d ", buf, (unsigned long long)mylsn, record->r_txid);
+	printf("    %-8s %-8llu %u ", buf, (unsigned long long)mylsn, record->r_txid);
 
 	switch (record_type) {
         case R_TX_BEGIN:
 		printf("TX_BEGIN\n");
+		break;
         case R_TX_COMMIT:
 		printf("TX_COMMIT\n");
+		break;
         case R_FREEMAP_CAPTURE:
 		printf("FREEMAP_CAPTURE ");
-		printf("block:%d\n", record->data.freemap_update.block);
+		printf("block:%u\n", record->data.freemap_update.block);
+		break;
         case R_FREEMAP_RELEASE:
 		printf("FREEMAP_RELEASE ");
-		printf("block:%d\n", record->data.freemap_update.block);
+		printf("block:%u\n", record->data.freemap_update.block);
+		break;
         case R_META_UPDATE:
 		printf("META_UPDATE ");
-		printf("block:%d ", record->data.meta_update.block);
+		printf("block:%u ", record->data.meta_update.block);
 		printf("pos:%llu ", record->data.meta_update.pos);
-		printf("len:%d ", record->data.meta_update.len);
+		printf("len:%u ", record->data.meta_update.len);
 		printf("old:");
 		for (i = 0; i < record->data.meta_update.len; i++) {
 			printf("%c", record->data.meta_update.old_value[i]);
@@ -400,10 +404,12 @@ dump_client_record(uint32_t myblock, unsigned myoffset, uint64_t mylsn,
 			printf("%c", record->data.meta_update.new_value[i]);
 		}
 		printf("\n");
+		break;
         case R_USER_BLOCK_WRITE:
 		printf("USER_BLOCK_WRITE ");
-		printf("block:%d ", record->data.user_block_write.block);
-		printf("checksum:%d\n", record->data.user_block_write.checksum);
+		printf("block:%u ", record->data.user_block_write.block);
+		printf("checksum:%u\n", record->data.user_block_write.checksum);
+		break;
 	default:
 		/* XXX hexdump it */
 		printf("UNKNOWN_RECORD ");
