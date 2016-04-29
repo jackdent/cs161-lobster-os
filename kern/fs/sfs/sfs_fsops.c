@@ -373,6 +373,7 @@ static
 int
 sfs_unmount(struct fs *fs)
 {
+	int result;
 	struct sfs_fs *sfs = fs->fs_data;
 
 	lock_acquire(sfs->sfs_vnlock);
@@ -389,6 +390,11 @@ sfs_unmount(struct fs *fs)
 	sfs->sfs_checkpoint_exit = 1;
 	while (sfs->sfs_checkpoint_exit) {
 		continue;
+	}
+
+	result = sfs_jphys_flushall(sfs);
+	if (result) {
+		panic("Error while flushing during unmount\n");
 	}
 
 	sfs_jphys_stopwriting(sfs);

@@ -940,11 +940,6 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	sfs_dinode_mark_dirty(newguy);
 	sfs_dinode_mark_dirty(sv);
 
-	/* Commit record */
-	result = sfs_current_transaction_commit(sfs);
-	if (result) {
-		goto die_uncreate;
-	}
 
 	sfs_dinode_unload(newguy);
 	sfs_dinode_unload(sv);
@@ -955,6 +950,13 @@ sfs_mkdir(struct vnode *v, const char *name, mode_t mode)
 	unreserve_buffers(SFS_BLOCKSIZE);
 
 	KASSERT(result==0);
+
+	/* Commit record */
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		goto die_uncreate;
+	}
+
 	return result;
 
 die_uncreate:
@@ -1225,12 +1227,6 @@ sfs_remove(struct vnode *dir, const char *name)
 		graveyard_add(victim->sv_absvn.vn_fs->fs_data, victim->sv_ino);
 	}
 
-	/* Commit record */
-	result = sfs_current_transaction_commit(sfs);
-	if (result) {
-		goto out_reference;
-	}
-
 	sfs_dinode_mark_dirty(victim);
 
 out_reference:
@@ -1245,6 +1241,12 @@ out_loadsv:
 out_buffers:
 	lock_release(sv->sv_lock);
 	unreserve_buffers(SFS_BLOCKSIZE);
+
+	/* Commit record */
+	result = sfs_current_transaction_commit(sfs);
+	if (result) {
+		goto out_reference;
+	}
 
 	return result;
 }

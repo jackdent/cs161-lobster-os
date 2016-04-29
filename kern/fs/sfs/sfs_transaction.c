@@ -60,6 +60,7 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
                         tx->tx_lowest_lsn = 0;
                         tx->tx_highest_lsn = 0;
                         tx->tx_committed = 0;
+                        tx->tx_tracker = tx_tracker;
                         tx->tx_busy_bit = 0;
 
                         curthread->t_tx = tx;
@@ -74,21 +75,17 @@ sfs_transaction_create(struct sfs_transaction_set *tx_tracker)
         return NULL;
 }
 
+/* Caller holds the transaction set lock */
 void
 sfs_transaction_destroy(struct sfs_transaction *tx)
 {
-        struct lock *tx_lock;
         int i;
 
         KASSERT(tx != NULL);
 
-        tx_lock = tx->tx_tracker->tx_lock;
-
-        lock_acquire(tx_lock);
         for (i = 0; i < MAX_TRANSACTIONS; i++) {
                 if (tx->tx_tracker->tx_transactions[i] == tx) {
                         tx->tx_tracker->tx_transactions[tx->tx_id] = NULL;
-                        lock_release(tx_lock);
                         kfree(tx);
                         return;
                 }
@@ -176,6 +173,7 @@ sfs_current_transaction_commit(struct sfs_fs *sfs)
 
         KASSERT(curthread->t_tx);
         sfs_current_transaction_add_record(sfs, record, R_TX_COMMIT);
+        curthread->t_tx->tx_committed = 1;
         curthread->t_tx = NULL;
 
         return 0;
