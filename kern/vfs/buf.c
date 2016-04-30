@@ -2269,9 +2269,6 @@ buffer_get_min_low_lsn(struct fs *fs)
 	}
 
 	lock_release(buffer_lock);
-	if (min_buf_lowest_lsn == 0) {
-		min_buf_lowest_lsn = ULLONG_MAX;
-	}
 	return min_buf_lowest_lsn;
 }
 
