@@ -2263,12 +2263,15 @@ buffer_get_min_low_lsn(struct fs *fs)
 			continue;
 		}
 
-		if (b->b_lowest_lsn < min_buf_lowest_lsn && b->b_lowest_lsn > 0) {
+		if (b->b_lowest_lsn < min_buf_lowest_lsn) {
 			min_buf_lowest_lsn = b->b_lowest_lsn;
 		}
 	}
 
 	lock_release(buffer_lock);
+	if (min_buf_lowest_lsn == 0) {
+		min_buf_lowest_lsn = ULLONG_MAX;
+	}
 	return min_buf_lowest_lsn;
 }
 

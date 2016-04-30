@@ -85,7 +85,7 @@ sfs_transaction_destroy(struct sfs_transaction *tx)
 
         for (i = 0; i < MAX_TRANSACTIONS; i++) {
                 if (tx->tx_tracker->tx_transactions[i] == tx) {
-                        tx->tx_tracker->tx_transactions[tx->tx_id] = NULL;
+                        tx->tx_tracker->tx_transactions[i] = NULL;
                         kfree(tx);
                         return;
                 }
