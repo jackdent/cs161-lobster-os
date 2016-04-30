@@ -47,7 +47,7 @@ checkpoint(struct sfs_fs *fs)
 	lock_release(tx_set->tx_lock);
 
 	/* Step 3: Trim journal records before min_tx_lowest_lsn */
-	if (min_tx_lowest_lsn != ULLONG_MAX) {
+	if (min_tx_lowest_lsn != ULLONG_MAX && min_tx_lowest_lsn != 0) {
 		sfs_jphys_trim(fs, min_tx_lowest_lsn);
 	}
 }
@@ -56,13 +56,11 @@ void
 checkpoint_thread(void *data1, unsigned long data2)
 {
 	struct sfs_fs *fs;
-	uint32_t threshold, odometer;
 
 	(void)data2;
 
 	fs = (struct sfs_fs *) data1;
 	/* we checkpoint when the journal is > 1/4 full */
-	threshold = fs->sfs_sb.sb_journalblocks / 4;
 
 	while (1) {
 		if (fs->sfs_checkpoint_exit) {
@@ -71,11 +69,7 @@ checkpoint_thread(void *data1, unsigned long data2)
 			fs->sfs_checkpoint_exit = 0;
 			thread_exit();
 		}
-		odometer = sfs_jphys_getodometer(fs->sfs_jphys);
-		if (odometer > threshold) {
-			checkpoint(fs);
-		} else {
-			thread_yield();
-		}
+		checkpoint(fs);
+		thread_yield();
 	}
 }

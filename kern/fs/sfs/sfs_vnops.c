@@ -1683,6 +1683,10 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			dir2_inodeptr->sfi_linkcount--;
 			buffer_update_lsns(dir2->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 
+			if (dir2_inodeptr->sfi_linkcount == 0) {
+				graveyard_add(dir2->sv_absvn.vn_fs->fs_data, dir2->sv_ino);
+			}
+
 			/* Create the link decrement record for obj2 */
 
 			block = buffer_get_block_number(obj2->sv_dinobuf);
@@ -1740,6 +1744,11 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 			obj2_inodeptr->sfi_linkcount--;
 			buffer_update_lsns(obj2->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
+
+			if (obj2_inodeptr->sfi_linkcount == 0) {
+				graveyard_add(obj2->sv_absvn.vn_fs->fs_data, obj2->sv_ino);
+			}
+
 			sfs_dinode_mark_dirty(obj2);
 		}
 
@@ -1824,6 +1833,11 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 		dir1_inodeptr->sfi_linkcount--;
 		buffer_update_lsns(dir1->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
+
+		if (dir1_inodeptr->sfi_linkcount == 0) {
+			graveyard_add(dir1->sv_absvn.vn_fs->fs_data, dir1->sv_ino);
+		}
+
 		sfs_dinode_mark_dirty(dir1);
 
 		/* Create the link increment record for dir2 */
@@ -1868,6 +1882,10 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 
 	obj1_inodeptr->sfi_linkcount--;
 	buffer_update_lsns(obj1->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
+
+	if (obj1_inodeptr->sfi_linkcount == 0) {
+		graveyard_add(obj1->sv_absvn.vn_fs->fs_data, obj1->sv_ino);
+	}
 	sfs_dinode_mark_dirty(obj1);
 
 	KASSERT(result==0);
@@ -1892,6 +1910,9 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 			sfs_dinode_mark_dirty(dir1);
 
 			dir2_inodeptr->sfi_linkcount--;
+			if (dir2_inodeptr->sfi_linkcount == 0) {
+				graveyard_add(dir2->sv_absvn.vn_fs->fs_data, dir2->sv_ino);
+			}
 			sfs_dinode_mark_dirty(dir2);
 		}
     recover1:
@@ -1902,6 +1923,9 @@ sfs_rename(struct vnode *absdir1, const char *name1,
 		}
 
 		obj1_inodeptr->sfi_linkcount--;
+		if (obj1_inodeptr->sfi_linkcount == 0) {
+			graveyard_add(obj1->sv_absvn.vn_fs->fs_data, obj1->sv_ino);
+		}
 		sfs_dinode_mark_dirty(obj1);
 	}
 
