@@ -140,12 +140,12 @@ array_delete(struct array *a, void *val)
 {
 	unsigned i;
 
-        for (i = 0; i < a->num; i++) {
-        	if (a->v[i] == val) {
-        		a->v[i] = NULL;
-        		break;
-        	}
-        }
+	for (i = 0; i < a->num; i++) {
+		if (a->v[i] == val) {
+			a->v[i] = NULL;
+			break;
+		}
+	}
 }
 
 void

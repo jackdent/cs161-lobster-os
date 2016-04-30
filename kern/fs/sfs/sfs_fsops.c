@@ -837,13 +837,13 @@ sfs_recover(struct fs *fs)
 	// any that allocate a block that a previous uncommitted transaction freed
 	sfs_filter_reused_blocks(sfs, commited_txs);
 
-	// Pass 2: (reverse) note which blocks ended as user data
+	// Pass 3: (reverse) note which blocks ended as user data
 	user_blocks = sfs_find_user_blocks(sfs);
 
-	// Pass 3: (forward) redo every record, skipping writes to eventual user data
+	// Pass 4: (forward) redo every record, skipping writes to eventual user data
 	sfs_redo_records(sfs, user_blocks);
 
-	// Pass 4: (reverse) undo transactions without a commit record, skipping
+	// Pass 5: (reverse) undo transactions without a commit record, skipping
 	// writes to eventual user data
 	sfs_undo_unsuccessful_transactions(sfs, commited_txs, user_blocks);
 
