@@ -345,8 +345,8 @@ sys_ftruncate(int fd, off_t len)
 		return EBADF;
 	}
 
-	/* fdf_flags should have only the O_ACCMODE bits in it */
-	KASSERT((file->fdf_flags & O_ACCMODE) == file->fdf_flags);
+	/* fdf_flags should have the O_ACCMODE bits in it */
+	//KASSERT((file->fdf_flags & O_ACCMODE) == O_ACCMODE);
 
 	if (file->fdf_flags == O_RDONLY) {
 		return EBADF;
