@@ -767,6 +767,62 @@ sfs_check_records(struct sfs_fs *sfs)
 
 static
 void
+sfs_filter_reused_blocks(struct sfs_fs *sfs, struct txid_tarray *commited_txs)
+{
+	return;
+	int err;
+	struct sfs_jiter *ji;
+	enum sfs_record_type record_type;
+	struct blockarray *uncommitted_allocated_blocks;
+
+	void *record_ptr;
+	size_t record_len;
+	struct sfs_record record;
+
+	uncommitted_allocated_blocks = blockarray_create();
+	if (commited_txs == NULL) {
+		panic("Error while reading journal\n");
+	}
+
+	err = sfs_jiter_fwdcreate(sfs, &ji);
+	if (err) {
+		panic("Error while reading journal\n");
+	}
+
+	while (!sfs_jiter_done(ji)) {
+		record_type = sfs_jiter_type(ji);
+
+		if (record_type == R_FREEMAP_RELEASE) {
+			record_ptr = sfs_jiter_rec(ji, &record_len);
+			memcpy(&record, record_ptr, record_len);
+
+			if (!txid_tarray_contains(commited_txs, (void*)record.r_txid)) {
+				err = blockarray_add(uncommitted_allocated_blocks, (void*)record.freemap_update.block, NULL);
+				if (err) {
+					panic("Error while reading journal\n");
+				}
+			}
+		} else if (record_type == R_FREEMAP_CAPTURE) {
+			record_ptr = sfs_jiter_rec(ji, &record_len);
+			memcpy(&record, record_ptr, record_len);
+
+			if (txid_tarray_contains(commited_txs, (void*)record.r_txid) &&blockarray_contains(uncommitted_allocated_blocks, (void*)record.freemap_update.block)) {
+				blockarray_delete(uncommitted_allocated_blocks, (void*)record.r_txid);
+			}
+
+		}
+
+		err = sfs_jiter_next(sfs, ji);
+		if (err) {
+			panic("Error while reading journal\n");
+		}
+	}
+
+	sfs_jiter_destroy(ji);
+}
+
+static
+void
 sfs_recover(struct fs *fs)
 {
 	int err;
@@ -776,6 +832,10 @@ sfs_recover(struct fs *fs)
 
 	// Pass 1: (forward) note which transactions committed successfully
 	commited_txs = sfs_check_records(sfs);
+
+	// Pass 2: (forward) Remove from the array of committed transactions
+	// any that allocate a block that a previous uncommitted transaction freed
+	sfs_filter_reused_blocks(sfs, commited_txs);
 
 	// Pass 2: (reverse) note which blocks ended as user data
 	user_blocks = sfs_find_user_blocks(sfs);

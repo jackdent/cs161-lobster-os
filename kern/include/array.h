@@ -84,6 +84,7 @@ int array_setsize(struct array *, unsigned num);
 ARRAYINLINE int array_add(struct array *, void *val, unsigned *index_ret);
 ARRAYINLINE bool array_contains(struct array *, void *val);
 void array_remove(struct array *, unsigned index);
+void array_delete(struct array *, void *val);
 void array_zero_out(struct array *a, bool free_entries);
 
 /*
@@ -196,7 +197,8 @@ array_contains(struct array *a, void *val)
 	INLINE int ARRAY##_setsize(struct ARRAY *a, unsigned num);	\
 	INLINE int ARRAY##_add(struct ARRAY *a, T *val, unsigned *index_ret); \
 	INLINE bool ARRAY##_contains(struct ARRAY *a, T *val); \
-	INLINE void ARRAY##_remove(struct ARRAY *a, unsigned index)
+	INLINE void ARRAY##_remove(struct ARRAY *a, unsigned index); \
+	INLINE void ARRAY##_delete(struct ARRAY *a, void* val)
 
 #define DEFARRAY_BYTYPE(ARRAY, T, INLINE) \
 	INLINE struct ARRAY *					\
@@ -275,6 +277,11 @@ array_contains(struct array *a, void *val)
 	ARRAY##_remove(struct ARRAY *a, unsigned index)		\
 	{							\
 		array_remove(&a->arr, index);			\
+	}							\
+	INLINE void						\
+	ARRAY##_delete(struct ARRAY *a, void *val)		\
+	{							\
+		array_delete(&a->arr, val);			\
 	}
 
 #define DECLARRAY(T, INLINE) DECLARRAY_BYTYPE(T##array, struct T, INLINE)

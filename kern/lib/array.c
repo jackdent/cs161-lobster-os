@@ -136,6 +136,19 @@ array_remove(struct array *a, unsigned index)
 }
 
 void
+array_delete(struct array *a, void *val)
+{
+	unsigned i;
+
+        for (i = 0; i < a->num; i++) {
+        	if (a->v[i] == val) {
+        		a->v[i] = NULL;
+        		break;
+        	}
+        }
+}
+
+void
 array_zero_out(struct array *a, bool free_entries)
 {
 	unsigned i;
