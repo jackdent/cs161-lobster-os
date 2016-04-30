@@ -336,7 +336,7 @@ sfs_blockio(struct sfs_vnode *sv, struct uio *uio)
 	 * Log a write to the journal
 	 */
 	if (uio->uio_rw == UIO_WRITE) {
-		// Log the checusm of the disk block *before* overwriting the data
+		// Log the checksum of the disk block *before* overwriting the data
 		record = sfs_record_create_user_block_write(diskblock, ioptr);
 		if (record == NULL) {
 			buffer_release(iobuf);

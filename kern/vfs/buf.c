@@ -2219,6 +2219,17 @@ buffer_get_block_number(struct buf *buf)
 	return physblock;
 }
 
+struct fs *
+buffer_get_fs(struct buf *buf)
+{
+	struct fs *fs;
+
+	lock_acquire(buffer_lock);
+	fs = buf->b_fs;
+	lock_release(buffer_lock);
+	return fs;
+}
+
 void
 buffer_update_lsns(struct buf *buf, sfs_lsn_t new_lsn)
 {

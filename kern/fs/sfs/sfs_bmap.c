@@ -323,18 +323,21 @@ static
 void
 sfs_blockobj_set(struct sfs_blockobj *bo, uint32_t offset, uint32_t newval)
 {
+	struct sfs_fs *sfs;
+	struct sfs_record *record;
+	uint32_t old, new;
+	daddr_t block;
+	off_t pos;
+	size_t len;
+
 	if (bo->bo_isinode) {
 		struct sfs_vnode *sv = bo->bo_inode.i_sv;
-		struct sfs_fs *sfs = sv->sv_absvn.vn_fs->fs_data;
 		struct sfs_dinode *dino;
 		unsigned indirlevel, indirnum;
-		struct sfs_record *record;
-		uint32_t old, new;
-		daddr_t block;
-		off_t pos;
-		size_t len;
 
 		KASSERT(offset == 0);
+
+		sfs = sv->sv_absvn.vn_fs->fs_data;
 
 		dino = sfs_dinode_map(bo->bo_inode.i_sv);
 		indirlevel = bo->bo_inode.i_subtree.str_indirlevel;
@@ -431,7 +434,24 @@ sfs_blockobj_set(struct sfs_blockobj *bo, uint32_t offset, uint32_t newval)
 		COMPILE_ASSERT(SFS_DBPERIDB*sizeof(idptr[0]) == SFS_BLOCKSIZE);
 		KASSERT(offset < SFS_DBPERIDB);
 
+		sfs = buffer_get_fs(bo->bo_idblock.id_buf)->fs_data;
+
 		idptr = buffer_map(bo->bo_idblock.id_buf);
+
+		/* Make record */
+
+		block = buffer_get_block_number(bo->bo_idblock.id_buf);
+		pos = (void*)&idptr[offset] - (void*)idptr;
+		len = sizeof(idptr[offset]);
+		old = idptr[offset];
+		new = newval;
+
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+		if (record == NULL) {
+			panic("Cannot recover from blockobj_set ENOMEM fail\n");
+		}
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 		idptr[offset] = newval;
 		buffer_mark_dirty(bo->bo_idblock.id_buf);
 	}
@@ -794,6 +814,12 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 
 	unsigned ii;
 
+	struct sfs_record *record;
+	uint32_t old, new;
+	daddr_t block;
+	off_t pos;
+	size_t len;
+
 	COMPILE_ASSERT(SFS_DBPERIDB * sizeof(layers[0].data[0])
 		       == SFS_BLOCKSIZE);
 
@@ -928,6 +954,21 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 							  endoffset)) {
 					continue;
 				}
+
+				/* Make record */
+
+				block = layers[layer].block;
+				pos = (void*)&layers[layer].data[layers[layer].pos] - (void*)layers[layer].data;
+				len = sizeof(layers[layer].data[layers[layer].pos]);
+				old = layers[layer].data[layers[layer].pos];
+				new = 0;
+
+				record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+				if (record == NULL) {
+					panic("Cannot recover from blockobj_set ENOMEM fail\n");
+				}
+				sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 				layers[layer].data[layers[layer].pos] = 0;
 				layers[layer].modified = true;
 
@@ -943,10 +984,39 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 				 */
 				sfs_bfree_prelocked(sfs, layers[1].block);
 				if (indir == 1) {
+
+					/* Make record */
+
+					block = buffer_get_block_number(sv->sv_dinobuf);
+					pos = (void*)rootptr - buffer_map(sv->sv_dinobuf);
+					len = sizeof(*rootptr);
+					old = *rootptr;
+					new = 0;
+
+					record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+					if (record == NULL) {
+						panic("Cannot recover from blockobj_set ENOMEM fail\n");
+					}
+					sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 					*rootptr = 0;
 					sfs_dinode_mark_dirty(sv);
 				}
 				if (indir != 1) {
+					/* Make record */
+
+					block = layers[2].block;
+					pos = (void*)&layers[2].data[layers[2].pos] - (void*)layers[2].data;
+					len = sizeof(layers[2].data[layers[2].pos]);
+					old = layers[2].data[layers[2].pos];
+					new = 0;
+
+					record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+					if (record == NULL) {
+						panic("Cannot recover from blockobj_set ENOMEM fail\n");
+					}
+					sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 					layers[2].modified = true;
 					layers[2].data[layers[2].pos] = 0;
 				}
@@ -957,6 +1027,7 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 				 * The indirect block
 				 * has been modified
 				 */
+
 				buffer_mark_dirty(layers[1].buf);
 				if (indir != 1) {
 					layers[2].hasnonzero = true;
@@ -996,10 +1067,39 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 			 */
 			sfs_bfree_prelocked(sfs, layers[2].block);
 			if (indir == 2) {
+				/* Make record */
+
+				block = buffer_get_block_number(sv->sv_dinobuf);
+				pos = (void*)rootptr - buffer_map(sv->sv_dinobuf);
+				len = sizeof(*rootptr);
+				old = *rootptr;
+				new = 0;
+
+				record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+				if (record == NULL) {
+					panic("Cannot recover from blockobj_set ENOMEM fail\n");
+				}
+				sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 				*rootptr = 0;
 				sfs_dinode_mark_dirty(sv);
 			}
 			if (indir == 3) {
+
+				/* Make record */
+
+				block = layers[3].block;
+				pos = (void*)&layers[3].data[layers[3].pos] - (void*)layers[3].data;
+				len = sizeof(layers[3].data[layers[3].pos]);
+				old = layers[3].data[layers[3].pos];
+				new = 0;
+
+				record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+				if (record == NULL) {
+					panic("Cannot recover from blockobj_set ENOMEM fail\n");
+				}
+				sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 				layers[3].modified = true;
 				layers[3].data[layers[3].pos] = 0;
 			}
@@ -1037,6 +1137,21 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 		 * empty now; free it
 		 */
 		sfs_bfree_prelocked(sfs, layers[3].block);
+
+		/* Make record */
+
+		block = buffer_get_block_number(sv->sv_dinobuf);
+		pos = (void*)rootptr - buffer_map(sv->sv_dinobuf);
+		len = sizeof(*rootptr);
+		old = *rootptr;
+		new = 0;
+
+		record = sfs_record_create_meta_update(block, pos, len, (char *)&old, (char *)&new);
+		if (record == NULL) {
+			panic("Cannot recover from blockobj_set ENOMEM fail\n");
+		}
+		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
+
 		*rootptr = 0;
 		sfs_dinode_mark_dirty(sv);
 		buffer_release_and_invalidate(layers[3].buf);
