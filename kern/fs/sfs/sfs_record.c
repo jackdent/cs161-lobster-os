@@ -18,7 +18,7 @@ sfs_record_create_meta_update(daddr_t block, off_t pos, size_t len, char *old_va
         struct sfs_record *record;
         struct sfs_meta_update *meta_update;
 
-        KASSERT(pos + len < SFS_BLOCKSIZE);
+        KASSERT(pos + len <= SFS_BLOCKSIZE);
 
         record = kmalloc(sizeof(struct sfs_record));
         if (record == NULL) {
