@@ -2239,6 +2239,9 @@ buffer_update_lsns(struct buf *buf, sfs_lsn_t new_lsn)
 	lock_release(buffer_lock);
 }
 
+/*
+ * Return lowest nonzero lsn from buffers, ULLONG_MAX if all are 0
+ */
 sfs_lsn_t
 buffer_get_min_low_lsn(struct fs *fs)
 {
@@ -2260,7 +2263,7 @@ buffer_get_min_low_lsn(struct fs *fs)
 			continue;
 		}
 
-		if (b->b_lowest_lsn < min_buf_lowest_lsn) {
+		if (b->b_lowest_lsn < min_buf_lowest_lsn && b->b_lowest_lsn > 0) {
 			min_buf_lowest_lsn = b->b_lowest_lsn;
 		}
 	}

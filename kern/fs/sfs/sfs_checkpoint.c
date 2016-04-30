@@ -47,8 +47,8 @@ checkpoint(struct sfs_fs *fs)
 	lock_release(tx_set->tx_lock);
 
 	/* Step 3: Trim journal records before min_tx_lowest_lsn */
-	if (min_tx_lowest_lsn != ULLONG_MAX && min_tx_lowest_lsn != 0) {
-		sfs_jphys_trim(fs, min_tx_lowest_lsn);
+	if (min_buf_lowest_lsn != ULLONG_MAX) {
+		sfs_jphys_trim(fs, min_buf_lowest_lsn);
 	}
 }
 
