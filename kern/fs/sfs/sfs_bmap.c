@@ -426,6 +426,7 @@ sfs_blockobj_set(struct sfs_blockobj *bo, uint32_t offset, uint32_t newval)
 			      sfs->sfs_sb.sb_volname,
 			      indirlevel);
 		}
+		buffer_update_lsns(bo->bo_inode.i_sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 		sfs_dinode_mark_dirty(bo->bo_inode.i_sv);
 	}
 	else {
@@ -453,6 +454,8 @@ sfs_blockobj_set(struct sfs_blockobj *bo, uint32_t offset, uint32_t newval)
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		idptr[offset] = newval;
+
+		buffer_update_lsns(bo->bo_idblock.id_buf, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(bo->bo_idblock.id_buf);
 	}
 }
@@ -1000,6 +1003,7 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 					sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 					*rootptr = 0;
+					buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 					sfs_dinode_mark_dirty(sv);
 				}
 				if (indir != 1) {
@@ -1028,6 +1032,7 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 				 * has been modified
 				 */
 
+				buffer_update_lsns(layers[1].buf, curthread->t_tx->tx_highest_lsn);
 				buffer_mark_dirty(layers[1].buf);
 				if (indir != 1) {
 					layers[2].hasnonzero = true;
@@ -1082,6 +1087,7 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 				sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 				*rootptr = 0;
+				buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 				sfs_dinode_mark_dirty(sv);
 			}
 			if (indir == 3) {
@@ -1110,6 +1116,8 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 			 * The double indirect block
 			 * has been modified
 			 */
+
+			buffer_update_lsns(layers[2].buf, curthread->t_tx->tx_highest_lsn);
 			buffer_mark_dirty(layers[2].buf);
 			if (indir == 3) {
 				layers[3].hasnonzero = true;
@@ -1153,6 +1161,8 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 		sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 		*rootptr = 0;
+
+		buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 		sfs_dinode_mark_dirty(sv);
 		buffer_release_and_invalidate(layers[3].buf);
 	}
@@ -1161,6 +1171,8 @@ sfs_discard_subtree(struct sfs_vnode *sv, uint32_t *rootptr, unsigned indir,
 		 * The triple indirect block has been
 		 * modified
 		 */
+
+		buffer_update_lsns(layers[3].buf, curthread->t_tx->tx_highest_lsn);
 		buffer_mark_dirty(layers[3].buf);
 		buffer_release(layers[3].buf);
 	}
@@ -1218,6 +1230,8 @@ sfs_discard(struct sfs_vnode *sv,
 			sfs_current_transaction_add_record(sfs, record, R_META_UPDATE);
 
 			inodeptr->sfi_direct[i] = 0;
+
+			buffer_update_lsns(sv->sv_dinobuf, curthread->t_tx->tx_highest_lsn);
 			sfs_dinode_mark_dirty(sv);
 		}
 	}
